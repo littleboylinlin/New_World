@@ -163,6 +163,12 @@ h1 { font-family: var(--serif); font-size: clamp(2rem, 4.6vw, 3.45rem); line-hei
 .version-actions { margin-bottom: 12px; }
 .version-hint { color: var(--muted); font-size: .85rem; }
 .version-message:not(:empty) { margin-bottom: 12px; }
+.continuation-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.continuation-list { min-width: 0; }
+.continuation-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.continuation-heading h2 { font-size: 1rem; }
+.continuation-empty { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+@media (max-width: 780px) { .continuation-lists { grid-template-columns: minmax(0, 1fr); } }
 .reader-panel { padding: clamp(14px, 2.7vw, 26px); border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-bottom: 13px; margin-bottom: 13px; border-bottom: 1px solid var(--line); }
 .encoding-field, .pagination { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .84rem; }

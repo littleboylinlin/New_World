@@ -8,8 +8,8 @@ export const libraries = {
     empty: '还没有原创作品',
   },
   reference: {
-    name: '续写／仿写库', index: '02', label: '参考原作',
-    description: '单独收藏准备续写或仿写的原作，查阅时随手可得。',
+    name: '续写／仿写库', index: '02', label: '续写创作',
+    description: '按原作建立续写项目。每个项目都有原文和独立的续写稿。',
     empty: '还没有参考原作',
   },
 } as const
@@ -63,6 +63,10 @@ export function link(href: string, label: string, className = '') {
 
 export function bookPath(library: LibraryId, id?: string, editionId?: string) {
   return `#/${library}${id ? `/${id}` : ''}${editionId ? `/${editionId}` : ''}`
+}
+
+export function originalPath(id: string) {
+  return `${bookPath('reference', id)}/original`
 }
 
 export function breadcrumbs(library: LibraryId, inReader = false) {

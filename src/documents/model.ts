@@ -23,6 +23,7 @@ export interface Edition extends EditionKey {
   name: string
   source: 'original' | 'blank' | 'copy'
   copiedFrom?: string
+  originalId?: string
   notes: string[]
   chapters: ChapterInfo[]
   createdAt: number

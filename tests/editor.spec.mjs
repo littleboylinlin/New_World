@@ -7,6 +7,15 @@ const status = (page) => page.locator('.save-status')
 const shelf = (page, library = 'original') => page.goto(`/#/${library}`)
 
 async function newNovel(page, name) {
+  if (new URL(page.url()).hash === '#/reference') {
+    await upload(page, [file(`${name}.txt`, '续写项目的原文。')])
+    await page.getByRole('link', { name: `查看 ${name}`, exact: true }).click()
+    await page.getByRole('button', { name: '新建续写' }).click()
+    await page.getByRole('textbox', { name: '续写名称' }).fill(name)
+    await page.getByRole('button', { name: '开始续写' }).click()
+    await expect(textArea(page)).toBeVisible()
+    return
+  }
   await page.getByRole('button', { name: '新建小说' }).click()
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
@@ -19,12 +28,15 @@ async function upload(page, files, count = files.length) {
 }
 
 async function openBook(page, title) {
+  const reference = new URL(page.url()).hash === '#/reference'
   await page.getByRole('link', { name: `查看 ${title}`, exact: true }).click()
+  if (reference) await page.getByRole('link', { name: `查看原文 ${title}`, exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()
 }
 
 async function convert(page, isPdf = false) {
-  await page.getByRole('button', { name: isPdf ? '提取文字为编辑稿' : '转换为编辑稿' }).click()
+  const reference = new URL(page.url()).hash.startsWith('#/reference/')
+  await page.getByRole('button', { name: reference ? '以原文为底稿续写' : isPdf ? '提取文字为编辑稿' : '转换为编辑稿' }).click()
   await expect(textArea(page)).toBeVisible()
 }
 
@@ -331,7 +343,7 @@ test('EPUB 阅读顺序、包内图片、章节编辑和受保护章节提示', 
   await shelf(page, 'reference')
   await openBook(page, '受保护样本')
   await expect(page.getByRole('alert').filter({ hasText: 'DRM' })).toBeVisible()
-  await page.getByRole('button', { name: '转换为编辑稿' }).click()
+  await page.getByRole('button', { name: '以原文为底稿续写' }).click()
   await expect(page.locator('.version-message')).toContainText('DRM')
   await expect(textArea(page)).toHaveCount(0)
   await originalBytes(page, protectedBook)

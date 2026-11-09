@@ -393,7 +393,7 @@ export async function renderEdition(
   }))
   saveCopy.addEventListener('click', () => formDialog(root, { title: '另存为独立版本', action: '保存独立版本', fields: [nameField('版本名', `${edition.name} 副本`)] }, async (data) => {
     await flush()
-    const copy = await createEdition(book, await currentChapters(false), { source: 'copy', copiedFrom: edition.id, notes: edition.notes }, String(data.get('name')))
+    const copy = await createEdition(book, await currentChapters(false), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
     window.clearTimeout(timer)
     saved = change
     window.removeEventListener('beforeunload', unsaved)

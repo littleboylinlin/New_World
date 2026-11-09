@@ -1,7 +1,7 @@
-import { acceptedExtensions } from './formats'
+import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { createNovel } from './documents/store'
-import { deleteBook, importBook, listBooks, maxTitleLength, renameBook, storageError } from './library'
+import { deleteBook, listBooks, maxTitleLength, renameBook, storageError } from './library'
 import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
 
@@ -32,7 +32,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   intro.append(
     element('p', 'eyebrow', 'NOVEL LIBRARY'),
     element('h1', '', '我的小说书库'),
-    element('p', 'intro-copy', '把自己的故事和想继续读写的原作，放进各自的书库。'),
+    element('p', 'intro-copy', '在原创库写自己的故事，也可以围绕原作展开续写。'),
   )
 
   const cards = element('div', 'shelf-grid')
@@ -69,7 +69,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
       const count = counts.get(id)!
       try {
         const books = await listBooks(id)
-        if (!signal.aborted) count.textContent = `${books.length} 部作品`
+        if (!signal.aborted) count.textContent = `${books.filter((book) => !book.workId).length} 部作品`
       } catch {
         if (!signal.aborted) count.textContent = '书库暂不可用'
       }
@@ -100,7 +100,7 @@ function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
     if (book.format !== 'draft') form.append(element('p', 'dialog-help', `原文件名 · ${book.originalName}`))
   } else {
     const message = element('p', 'dialog-help')
-    message.append('将从此书库移除「', element('strong', '', book.title), '」及其全部编辑版本和本地原件。')
+    message.append('将从此书库移除「', element('strong', '', book.title), book.library === 'reference' ? '」及项目内全部续写和原文。' : '」及其全部编辑版本和本地原件。')
     form.append(message)
   }
 
@@ -155,7 +155,8 @@ function bookRow(root: HTMLElement, book: Book) {
   const fileIcon = element('span', 'book-icon')
   fileIcon.append(icon('file'))
   const copy = element('div', 'book-copy')
-  copy.append(element('strong', 'book-title', book.title), fileDetails(book))
+  copy.append(element('strong', 'book-title', book.title), book.library === 'reference'
+    ? element('span', 'file-details', '续写项目 · 查看续写和原文') : fileDetails(book))
   open.append(fileIcon, copy)
   const controls = element('div', 'book-controls')
   const rename = button('重命名', 'button button-quiet button-small')
@@ -173,34 +174,21 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   const header = element('div', 'page-heading')
   const heading = element('div')
   heading.append(element('p', 'eyebrow', `${library.index} / ${library.label}`), element('h1', '', library.name), element('p', 'intro-copy', library.description))
-  const choose = button('导入文件', 'button button-primary', 'plus')
+  const { choose, input, progress } = bookImport(id, id === 'reference' ? '导入原作建立项目' : '导入文件', () => changes.dispatchEvent(new Event('update')))
   const create = button('新建小说', 'button button-quiet', 'plus')
   const controls = element('div', 'shelf-actions')
-  const input = element('input')
-  input.type = 'file'
-  input.multiple = true
-  input.accept = acceptedExtensions
-  input.hidden = true
-  input.setAttribute('aria-label', '选择小说文件')
-  choose.addEventListener('click', () => input.click())
   create.addEventListener('click', () => formDialog(root, { title: '新建小说', action: '创建小说', fields: [nameField('作品名')] }, async (data) => {
     void navigator.storage?.persist?.().catch(() => {})
     const { book, edition } = await createNovel(id, String(data.get('name')))
     changes.dispatchEvent(new Event('update'))
     location.hash = bookPath(id, book.id, edition.id)
   }))
-  controls.append(create, choose, input)
+  if (id === 'original') controls.append(create)
+  controls.append(choose, input)
   header.append(heading, controls)
 
-  const progress = element('section', 'import-notice')
-  progress.hidden = true
-  const summary = element('p')
-  summary.setAttribute('role', 'status')
-  const failures = element('ul')
-  failures.hidden = true
-  progress.append(summary, failures)
   const listHeader = element('div', 'list-heading')
-  const listTitle = element('h2', '', '全部作品')
+  const listTitle = element('h2', '', id === 'reference' ? '按原作分组' : '全部作品')
   const count = element('span', 'list-count')
   listHeader.append(listTitle, count)
   const content = element('div', 'shelf-content')
@@ -212,7 +200,7 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   async function refresh() {
     const current = ++requestNumber
     try {
-      const books = await listBooks(id)
+      const books = (await listBooks(id)).filter((book) => !book.workId)
       if (signal.aborted || current !== requestNumber) return
       count.textContent = `${books.length} 部`
       if (books.length) {
@@ -224,7 +212,7 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
         const empty = element('div', 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('book'))
-        empty.append(emptyIcon, element('h3', '', library.empty), element('p', '', '导入 TXT、PDF、EPUB、DOCX 等小说文件。'))
+        empty.append(emptyIcon, element('h3', '', library.empty), element('p', '', id === 'reference' ? '导入原作后进入项目，就能开始续写。' : '导入 TXT、PDF、EPUB、DOCX 等小说文件。'))
         content.replaceChildren(empty)
       }
     } catch (error) {
@@ -234,39 +222,6 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
       }
     }
   }
-
-  input.addEventListener('change', async () => {
-    const files = Array.from(input.files ?? [])
-    input.value = ''
-    if (!files.length || choose.disabled) return
-    choose.disabled = true
-    progress.hidden = false
-    failures.hidden = true
-    failures.replaceChildren()
-    void navigator.storage?.persist?.().catch(() => {})
-    let imported = 0
-    let duplicates = 0
-    let failed = 0
-    for (const [index, file] of files.entries()) {
-      summary.textContent = `正在导入 ${index + 1} / ${files.length}…`
-      try {
-        const result = await importBook(id, file)
-        if (result.duplicate) {
-          duplicates++
-          failures.append(element('li', '', `${file.name} 与「${result.book.title}」的原文件相同，已跳过。`))
-        } else {
-          imported++
-        }
-      } catch (error) {
-        failed++
-        failures.append(element('li', '', `${file.name} · ${storageError(error)}`))
-      }
-    }
-    if (imported) changes.dispatchEvent(new Event('update'))
-    summary.textContent = `已导入 ${imported} 部${duplicates ? `，跳过 ${duplicates} 部重复文件` : ''}${failed ? `，${failed} 个文件导入失败` : ''}。`
-    failures.hidden = !duplicates && !failed
-    choose.disabled = false
-  })
 
   changes.addEventListener('update', () => void refresh(), { signal })
   window.addEventListener('focus', () => void refresh(), { signal })
