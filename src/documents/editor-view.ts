@@ -122,12 +122,14 @@ export async function renderEdition(
   imageInput.accept = 'image/png,image/jpeg,image/gif,image/webp'
   imageInput.hidden = true
   imageInput.setAttribute('aria-label', '选择插图')
-  tool('插图', () => imageInput.click())
+  let imageTarget: Editor | undefined
+  tool('插图', () => { imageTarget = editor; imageInput.click() })
   imageInput.addEventListener('change', async () => {
+    const target = imageTarget
+    imageTarget = undefined
     const file = imageInput.files?.[0]
     imageInput.value = ''
     if (!file) return
-    const target = editor
     try {
       const src = await rasterData(file)
       if (!src) throw new Error('请选择不超过 4 MiB 的 PNG、JPEG、GIF 或 WebP 图片。')
@@ -382,12 +384,12 @@ export async function renderEdition(
     await deleteEdition(edition)
     location.hash = bookPath(book.library, book.id)
   }))
-  recover.addEventListener('click', () => formDialog(root, { title: '放弃未保存的改动？', action: '放弃改动', danger: true, description: '将重新读取此章最后保存的正文。' }, async () => {
+  recover.addEventListener('click', () => formDialog(root, { title: '放弃未保存的改动？', action: '放弃并返回书库', danger: true, description: '将舍弃当前未保存正文，保留已提交的内容。' }, async () => {
     window.clearTimeout(timer)
     if (pending) await pending
-    const stored = await readChapter(edition, chapter.id)
+    saved = change
     window.removeEventListener('beforeunload', unsaved)
-    mountChapter(stored)
+    location.hash = bookPath(book.library)
   }))
   saveCopy.addEventListener('click', () => formDialog(root, { title: '另存为独立版本', action: '保存独立版本', fields: [nameField('版本名', `${edition.name} 副本`)] }, async (data) => {
     await flush()

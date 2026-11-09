@@ -11,7 +11,7 @@
 .edition-layout { display: grid; grid-template-columns: minmax(175px, 224px) minmax(0, 1fr); gap: 14px; align-items: start; }
 .chapter-navigation, .writing-panel { border: 1px solid var(--line); border-radius: 13px; background: var(--paper); min-width: 0; }
 .chapter-navigation { padding: 12px; }
-.chapter-navigation summary { font-size: .9rem; font-weight: 700; min-height: 32px; }
+.chapter-navigation summary { font-size: .9rem; font-weight: 700; min-height: 32px; user-select: none; }
 .chapter-list, .chapter-outline ul { padding: 0; margin: 0; list-style: none; }
 .chapter-list { max-height: min(52vh, 560px); overflow: auto; display: grid; gap: 4px; }
 .chapter-jump, .outline-jump { display: block; width: 100%; padding: 7px 9px; min-height: 36px; border: 1px solid transparent; border-radius: 7px; color: #34463c; background: transparent; text-align: start; overflow-wrap: anywhere; font-size: .88rem; }

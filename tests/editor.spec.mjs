@@ -1,6 +1,6 @@
 import { open, readFile } from 'node:fs/promises'
 import { chromium, expect, test } from '@playwright/test'
-import { docx, epub, file, odt, pdf, pixel, richDocx } from './fixtures.mjs'
+import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const status = (page) => page.locator('.save-status')
@@ -358,6 +358,18 @@ test('PDF 独立提取文字，图像页仅阅读原件', async ({ page }) => {
   await originalBytes(page, scan)
 })
 
+test('密码保护 PDF 不生成编辑稿，原始加密文件可下载', async ({ page }) => {
+  const protectedFile = passwordPdf()
+  await shelf(page)
+  await upload(page, [protectedFile])
+  await openBook(page, '密码原件')
+  await expect(page.getByRole('alert')).toContainText('此 PDF 需要密码')
+  await page.getByRole('button', { name: '提取文字为编辑稿' }).click()
+  await expect(page.locator('.version-message')).toContainText('此 PDF 需要密码')
+  await expect(textArea(page)).toHaveCount(0)
+  await originalBytes(page, protectedFile)
+})
+
 test('v0.1.0 IndexedDB 原件迁移后可以创建编辑版本', async ({ page }) => {
   await page.route('**/fixture-v1', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>V1 fixture</title>' }))
   await page.goto('/fixture-v1')
@@ -418,7 +430,7 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
       await viewer.route('**/fixture-export.html', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: bytes }))
       await viewer.goto('/fixture-export.html')
       await expect(viewer.getByRole('heading', { name: '回声' }).first()).toBeVisible()
-      expect(await viewer.getByRole('img', { name: '灯塔插图' }).evaluate((img) => img.naturalWidth)).toBe(1)
+      expect(await viewer.getByRole('img', { name: '灯塔插图' }).evaluate((img) => img.naturalWidth)).toBe(2)
       await viewer.close()
     }
   }

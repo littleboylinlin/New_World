@@ -23,8 +23,8 @@ h1, h2, h3, p { margin: 0; }
 :focus-visible { outline: 3px solid #91721d; outline-offset: 4px; }
 .main-content:focus { outline: none; }
 .shell { width: min(1080px, calc(100% - 64px)); margin-inline: auto; }
-.skip-link { position: fixed; z-index: 5; top: 10px; left: 12px; transform: translateY(-150%); padding: 10px 16px; color: #fff; background: var(--accent); border-radius: 8px; }
-.skip-link:focus { transform: translateY(0); }
+.skip-link { position: fixed; z-index: 5; top: 10px; left: 12px; opacity: 0; pointer-events: none; padding: 10px 16px; color: #fff; background: var(--accent); border-radius: 8px; }
+.skip-link:focus { opacity: 1; pointer-events: auto; }
 
 .site-header { border-bottom: 1px solid var(--line); background: #fbfaf5; }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 72px; }
