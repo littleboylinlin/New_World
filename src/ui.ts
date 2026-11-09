@@ -61,8 +61,8 @@ export function link(href: string, label: string, className = '') {
   return anchor
 }
 
-export function bookPath(library: LibraryId, id?: string) {
-  return `#/${library}${id ? `/${id}` : ''}`
+export function bookPath(library: LibraryId, id?: string, editionId?: string) {
+  return `#/${library}${id ? `/${id}` : ''}${editionId ? `/${editionId}` : ''}`
 }
 
 export function breadcrumbs(library: LibraryId, inReader = false) {
@@ -79,12 +79,27 @@ export function breadcrumbs(library: LibraryId, inReader = false) {
 }
 
 export function fileDetails(book: Book) {
+  const details = element('div', 'file-details')
+  if (book.format === 'draft') {
+    details.append(element('span', 'file-format', '内建文档'), element('span', '', '在 New World 中创建'))
+    return details
+  }
   const size = book.size < 1024 ? `${book.size} B`
     : book.size < 1024 * 1024 ? `${(book.size / 1024).toFixed(1)} KiB`
     : `${(book.size / 1024 / 1024).toFixed(1)} MiB`
-  const details = element('div', 'file-details')
   details.append(element('span', 'file-format', formats[book.format].label), element('span', 'filename', book.originalName), element('span', 'file-size', size))
   return details
+}
+
+export function downloadFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(new Blob([blob], { type: 'application/octet-stream' }))
+  const anchor = element('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
 export function notice(message: string, error = false) {

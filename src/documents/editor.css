@@ -1,0 +1,80 @@
+.edition-workspace { min-width: 0; }
+.edition-header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+.edition-about { min-width: 0; overflow-wrap: anywhere; }
+.edition-about h2 { margin-top: 4px; font-family: var(--serif); font-size: 1.4rem; }
+.edition-commands { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.save-status { padding: 5px 8px; color: var(--accent); background: var(--tint); border-radius: 6px; font-size: .78rem; white-space: nowrap; }
+.edition-workspace > .notice, .edition-workspace > .button { margin-bottom: 10px; }
+.conversion-info { margin: 0 0 13px; color: var(--muted); font-size: .85rem; line-height: 1.6; }
+.conversion-info summary, .chapter-navigation summary { cursor: pointer; }
+.conversion-info ul { margin: 5px 0 0; padding-inline-start: 1.4em; }
+.edition-layout { display: grid; grid-template-columns: minmax(175px, 224px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.chapter-navigation, .writing-panel { border: 1px solid var(--line); border-radius: 13px; background: var(--paper); min-width: 0; }
+.chapter-navigation { padding: 12px; }
+.chapter-navigation summary { font-size: .9rem; font-weight: 700; min-height: 32px; }
+.chapter-list, .chapter-outline ul { padding: 0; margin: 0; list-style: none; }
+.chapter-list { max-height: min(52vh, 560px); overflow: auto; display: grid; gap: 4px; }
+.chapter-jump, .outline-jump { display: block; width: 100%; padding: 7px 9px; min-height: 36px; border: 1px solid transparent; border-radius: 7px; color: #34463c; background: transparent; text-align: start; overflow-wrap: anywhere; font-size: .88rem; }
+.chapter-jump:hover, .outline-jump:hover, .chapter-jump[aria-current] { color: var(--accent); background: var(--tint); }
+.chapter-jump[aria-current] { font-weight: 730; }
+.chapter-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+.chapter-actions .button { padding-inline: 8px; }
+.chapter-outline:not(:empty) { border-top: 1px solid var(--line); margin-top: 13px; padding-top: 11px; color: var(--muted); font-size: .8rem; }
+.chapter-outline ul { max-height: 250px; overflow: auto; }
+.outline-jump { font-size: .8rem; }
+.writing-header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 7px 14px; padding: 14px 16px 11px; border-bottom: 1px solid var(--line); }
+.writing-header h3 { font-family: var(--serif); font-size: 1.12rem; overflow-wrap: anywhere; }
+.word-count, .match-count { color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.editor-tools-row { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; background: #fcfbf6; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.format-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.format-button, .editor-select { padding: 6px 7px; min-height: 35px; border: 1px solid #e1e4db; border-radius: 6px; background: var(--paper); color: #354339; white-space: nowrap; font-size: .78rem; }
+.format-button:hover:not(:disabled), .format-button[aria-pressed="true"] { background: var(--tint); color: var(--accent); }
+.format-button:disabled { opacity: .55; }
+.search-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+.search-panel input { width: 9.5rem; max-width: 100%; min-height: 34px; font-size: .84rem; }
+.found-text { background: #ffe3a1; color: #41300c; }
+.editor-paper { padding: clamp(11px, 2.4vw, 25px); }
+.novel-body { max-width: 46rem; min-height: 49vh; padding: 8px 4px 45px; margin-inline: auto; font-family: var(--serif); font-size: 1.08rem; line-height: 1.85; overflow-wrap: anywhere; }
+.novel-body[contenteditable="true"]:focus { outline: none; }
+.editor-paper:focus-within { box-shadow: inset 0 2px 0 var(--tint); }
+.edition-reading .novel-body { cursor: text; }
+.novel-body p { margin-block: 0 1em; }
+.novel-body h1, .novel-body h2, .novel-body h3, .novel-body h4, .novel-body h5, .novel-body h6 { margin-block: .7em .45em; line-height: 1.4; scroll-margin-top: 16px; }
+.novel-body h1 { font-size: 1.85em; }
+.novel-body h2 { font-size: 1.42em; }
+.novel-body h3 { font-size: 1.23em; }
+.novel-body ul, .novel-body ol { padding-inline-start: 1.6em; }
+.novel-body li p { margin-block: .25em; }
+.novel-body pre, .print-edition pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f3f3eb; padding: .6em; }
+.novel-body blockquote, .print-edition blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 3px solid #aeb8a8; }
+.novel-body hr { border: 0; border-top: 1px solid #aeb8a8; margin-block: 1.25em; }
+.novel-body img, .print-edition img { max-width: 100%; height: auto; }
+.novel-body .tableWrapper { overflow-x: auto; }
+.novel-body table, .print-edition table { border-collapse: collapse; max-width: 100%; }
+.novel-body td, .novel-body th, .print-edition td, .print-edition th { border: 1px solid #ccd1c7; padding: .22em .5em; min-width: 2em; }
+.novel-body th { background: var(--tint); }
+.novel-body .selectedCell { background: #e9efe0; }
+.export-scope { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: .88rem; }
+.print-edition { display: none; }
+
+@media (max-width: 779px) {
+  .edition-layout { grid-template-columns: minmax(0, 1fr); }
+  .chapter-list { max-height: 32vh; }
+  .chapter-navigation summary { min-height: 24px; }
+  .chapter-jump, .outline-jump, .format-button, .editor-select { min-height: 42px; }
+  .format-toolbar { flex-wrap: nowrap; overflow-x: auto; padding: 2px; }
+  .format-toolbar > * { flex: none; }
+  .edition-commands { gap: 5px; }
+  .novel-body { font-size: 1.02rem; }
+}
+
+@media print {
+  @page { margin: 18mm; }
+  body.printing-edition { display: block; background: white; }
+  body.printing-edition > :not(.print-edition) { display: none !important; }
+  .print-edition { display: block; color: #171717; font-family: var(--serif); font-size: 12pt; line-height: 1.65; }
+  .print-edition h1, .print-edition h2, .print-edition h3 { break-after: avoid; margin-block: .7em .35em; font-size: 17pt; }
+  .print-edition p { margin-block: 0 .7em; }
+  .print-edition img { max-height: 215mm; object-fit: contain; }
+  .print-edition section + section { break-before: page; }
+}

@@ -237,10 +237,9 @@ test('损坏的 PDF、EPUB 保留原件，空文件和未知扩展名有明确�
   await expectOriginal(page, brokenEpub)
 })
 
-test('DOC、RTF、MOBI、AZW3 明示仅保存原件并逐字节下载', async ({ page }) => {
+test('DOC、MOBI、AZW3 明示仅保存原件并逐字节下载', async ({ page }) => {
   const files = [
     file('旧稿.doc', Buffer.from('d0cf11e0a1b11ae1000001', 'hex')),
-    file('文档.rtf', '{\\rtf1\\ansi The original file.}'),
     file('电子书.mobi', Buffer.from('00000000424f4f4b4d4f4249', 'hex')),
     file('样本.azw3', Buffer.from('00000001424f4f4b4d4f4249', 'hex')),
   ]

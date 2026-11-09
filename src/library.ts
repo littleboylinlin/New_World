@@ -3,16 +3,25 @@ import type { Format } from './formats'
 
 export type LibraryId = 'original' | 'reference'
 
-export interface Book {
+interface BookIdentity {
   library: LibraryId
   id: string
   title: string
+  importedAt: number
+}
+
+export interface ImportedBook extends BookIdentity {
   originalName: string
   format: Format
   size: number
-  importedAt: number
   digest: string
 }
+
+export interface WrittenBook extends BookIdentity {
+  format: 'draft'
+}
+
+export type Book = ImportedBook | WrittenBook
 
 interface BookFile {
   library: LibraryId
@@ -23,17 +32,27 @@ interface BookFile {
 let connection: Promise<IDBDatabase> | undefined
 export const maxTitleLength = 255
 
-function openDatabase() {
+export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 1)
+    const request = indexedDB.open('new-world-library', 2)
     let blocked = false
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result
-      const books = db.createObjectStore('books', { keyPath: ['library', 'id'] })
-      books.createIndex('byLibrary', 'library')
-      books.createIndex('byLibraryDigest', ['library', 'digest'], { unique: true })
-      db.createObjectStore('files', { keyPath: ['library', 'id'] })
+      if (event.oldVersion < 1) {
+        const books = db.createObjectStore('books', { keyPath: ['library', 'id'] })
+        books.createIndex('byLibrary', 'library')
+        books.createIndex('byLibraryDigest', ['library', 'digest'], { unique: true })
+        db.createObjectStore('files', { keyPath: ['library', 'id'] })
+      }
+      if (event.oldVersion < 2) {
+        const editions = db.createObjectStore('editions', { keyPath: ['library', 'bookId', 'id'] })
+        editions.createIndex('byBook', ['library', 'bookId'])
+        editions.createIndex('byName', ['library', 'bookId', 'name'], { unique: true })
+        const chapters = db.createObjectStore('chapters', { keyPath: ['library', 'bookId', 'editionId', 'id'] })
+        chapters.createIndex('byBook', ['library', 'bookId'])
+        chapters.createIndex('byEdition', ['library', 'bookId', 'editionId'])
+      }
     }
     request.onsuccess = () => {
       const db = request.result
@@ -59,14 +78,14 @@ function openDatabase() {
   return opening
 }
 
-function resultOf<T>(request: IDBRequest<T>): Promise<T> {
+export function resultOf<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
   })
 }
 
-function committed(transaction: IDBTransaction): Promise<void> {
+export function committed(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve()
     transaction.onabort = () => reject(transaction.error ?? new Error('书库操作已中断。'))
@@ -89,6 +108,7 @@ export async function readBook(library: LibraryId, id: string) {
     resultOf(tx.objectStore('files').get(key)),
   ])
   if (!book) return null
+  if (book.format === 'draft') return { book, blob: null } as const
   if (!file) throw new Error('此作品的原文件在本地书库中缺失。')
   return { book, blob: file.blob }
 }
@@ -102,7 +122,7 @@ export async function importBook(library: LibraryId, file: File) {
 
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
   const digest = Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')
-  const book: Book = {
+  const book: ImportedBook = {
     library, format, digest,
     id: crypto.randomUUID(),
     title: (file.name.replace(/\.[^.]+$/, '').trim() || file.name).slice(0, maxTitleLength),
@@ -149,16 +169,30 @@ export async function renameBook(library: LibraryId, id: string, value: string) 
 
 export async function deleteBook(library: LibraryId, id: string) {
   const db = await openDatabase()
-  const tx = db.transaction(['books', 'files'], 'readwrite', { durability: 'strict' })
+  const tx = db.transaction(['books', 'files', 'editions', 'chapters'], 'readwrite', { durability: 'strict' })
   const key = [library, id]
   tx.objectStore('books').delete(key)
   tx.objectStore('files').delete(key)
+  deleteIndexed(tx.objectStore('editions'), 'byBook', key)
+  deleteIndexed(tx.objectStore('chapters'), 'byBook', key)
   await committed(tx)
+}
+
+export function deleteIndexed(store: IDBObjectStore, index: string, key: IDBValidKey) {
+  const request = store.index(index).openKeyCursor(IDBKeyRange.only(key))
+  request.onsuccess = () => {
+    const cursor = request.result
+    if (cursor) {
+      store.delete(cursor.primaryKey)
+      cursor.continue()
+    }
+  }
 }
 
 export function storageError(error: unknown) {
   if (error instanceof DOMException) {
     if (error.name === 'QuotaExceededError') return '本地存储空间不足，未保存本次更改。'
+    if (error.name === 'ConstraintError') return '已有同名的编辑版本，请换一个名称。'
     if (error.name === 'SecurityError' || error.name === 'InvalidStateError') {
       return '当前浏览器环境无法访问本地书库。请检查网站存储权限后重试。'
     }

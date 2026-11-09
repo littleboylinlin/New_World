@@ -1,4 +1,7 @@
-import { TextReader, Uint8ArrayWriter, ZipWriter } from '@zip.js/zip.js'
+import { TextReader, Uint8ArrayReader, Uint8ArrayWriter, ZipWriter } from '@zip.js/zip.js'
+import { Document, HeadingLevel, ImageRun, Packer, Paragraph, TextRun } from 'docx'
+
+export const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/qkQAAAAASUVORK5CYII=', 'base64')
 
 export function file(name, content) {
   return { name, mimeType: 'application/octet-stream', buffer: Buffer.from(content) }
@@ -7,13 +10,13 @@ export function file(name, content) {
 async function archive(name, entries) {
   const zip = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
   for (const [path, contents] of Object.entries(entries)) {
-    await zip.add(path, new TextReader(contents), path === 'mimetype'
+    await zip.add(path, typeof contents === 'string' ? new TextReader(contents) : new Uint8ArrayReader(contents), path === 'mimetype'
       ? { level: 0, dataDescriptor: false, extendedTimestamp: false } : {})
   }
   return file(name, await zip.close())
 }
 
-export async function epub() {
+export async function epub({ rich = false, protectedSpine = false } = {}) {
   const xhtml = (body) => `<html xmlns="http://www.w3.org/1999/xhtml"><head><title>试读</title></head><body>${body}</body></html>`
   return archive('纸上森林.EPUB', {
     mimetype: 'application/epub+zip',
@@ -26,11 +29,14 @@ export async function epub() {
       <manifest><item id="two" href="章节/第二%20节.xhtml" media-type="application/xhtml+xml"/>
         <item id="one" href="章节/第一节.xhtml" media-type="application/xhtml+xml"/>
         <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+        ${rich ? '<item id="picture" href="pixel.png" media-type="image/png"/>' : ''}
       </manifest><spine><itemref idref="one"/><itemref idref="two"/></spine>
     </package>`,
     'OEBPS/nav.xhtml': xhtml('<nav xmlns:epub="http://www.idpf.org/2007/ops" epub:type="toc"><ol><li><a href="章节/第一节.xhtml">第一节</a></li><li><a href="章节/第二%20节.xhtml">第二节</a></li></ol></nav>'),
-    'OEBPS/章节/第一节.xhtml': xhtml('<h1>纸上森林</h1><p>第一节的树叶响了。</p>'),
+    'OEBPS/章节/第一节.xhtml': xhtml(`<h1>纸上森林</h1><p>第一节的树叶响了。</p>${rich ? '<img src="../pixel.png" alt="书中插图"/>' : ''}`),
     'OEBPS/章节/第二 节.xhtml': xhtml('<h1>夜里的灯</h1><p>第二节的窗亮了。</p>'),
+    ...(rich ? { 'OEBPS/pixel.png': pixel } : {}),
+    ...(protectedSpine ? { 'META-INF/encryption.xml': '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#"><CipherData><CipherReference URI="OEBPS/章节/第一节.xhtml"/></CipherData></EncryptedData></encryption>' } : {}),
   })
 }
 
@@ -65,19 +71,29 @@ export async function odt() {
   })
 }
 
-export function pdf() {
-  const page = (contents) => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 320] /Resources << /Font << /F1 5 0 R /F2 8 0 R >> >> /Contents ${contents} 0 R >>`
+export async function richDocx() {
+  const word = new Document({ sections: [{ children: [
+    new Paragraph({ text: '带插图的原稿', heading: HeadingLevel.HEADING_1 }),
+    new Paragraph({ children: [new TextRun({ text: '加粗中文', bold: true }), new TextRun({ text: '下划线', underline: {} }), new TextRun({ text: '斜体', italics: true })] }),
+    new Paragraph({ children: [new ImageRun({ type: 'png', data: pixel, transformation: { width: 24, height: 24 }, altText: { name: '试读插图', description: '试读插图', title: '试读插图' } })] }),
+  ] }] })
+  return file('带插图的原稿.docx', await Packer.toBuffer(word))
+}
+
+export function pdf({ imageOnly = false } = {}) {
+  const page = (contents) => `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 320] /Resources << /Font << /F1 5 0 R /F2 8 0 R >> /XObject << /Im1 11 0 R >> >> /Contents ${contents} 0 R >>`
   const stream = (data) => `<< /Length ${data.length} >>\nstream\n${data}\nendstream`
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Count 2 /Kids [3 0 R 4 0 R] >>',
     page(6), page(7),
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    stream('1 0 0 rg 40 80 160 160 re f 0 g BT /F1 18 Tf 24 275 Td (First page) Tj ET'),
-    stream('0 0 1 rg 40 80 160 160 re f 0 g BT /F2 18 Tf 24 275 Td <4E2D6587> Tj ET'),
+    stream(imageOnly ? 'q 160 0 0 160 40 80 cm /Im1 Do Q' : '1 0 0 rg 40 80 160 160 re f 0 g BT /F1 18 Tf 24 275 Td (First page) Tj ET'),
+    stream(imageOnly ? 'q 160 0 0 160 40 80 cm /Im1 Do Q' : '0 0 1 rg 40 80 160 160 re f 0 g BT /F2 18 Tf 24 275 Td <4E2D6587> Tj ET'),
     '<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [9 0 R] >>',
     '<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /DW 1000 /FontDescriptor 10 0 R >>',
     '<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /Ascent 880 /Descent -120 /CapHeight 880 /ItalicAngle 0 /StemV 93 /FontBBox [-25 -254 1000 880] >>',
+    '<< /Type /XObject /Subtype /Image /Width 1 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length 7 >>\nstream\naa55dd>\nendstream',
   ]
   let data = '%PDF-1.4\n'
   const offsets = ['0000000000 65535 f \n']
@@ -87,5 +103,5 @@ export function pdf() {
   }
   const start = data.length
   data += `xref\n0 ${offsets.length}\n${offsets.join('')}trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
-  return file('双页试读.pdf', data)
+  return file(imageOnly ? '影像原件.pdf' : '双页试读.pdf', data)
 }
