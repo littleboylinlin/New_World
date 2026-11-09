@@ -6,7 +6,7 @@ import { emptyChapter, chapterText } from './documents/model'
 import { createEdition, listEditions } from './documents/store'
 import type { RegisterLeave } from './documents/editor-view'
 import { openText } from './text-preview'
-import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, link, notice } from './ui'
+import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, link, notice, originalPath } from './ui'
 
 function readingText(text: string, source = false) {
   return element('article', source ? 'reading-text markdown-source' : 'reading-text', text)
@@ -157,25 +157,39 @@ export async function renderReader(
     }
 
     const { book, blob } = stored
+    const reference = library === 'reference'
+    const workId = book.workId ?? id
+    if (reference && !editionId && !blob) {
+      content.replaceChildren(link(bookPath(library, workId), '返回续写项目'), notice('这份原文已被移除。', true))
+      return
+    }
+    const selected = editionId ? editions.find((edition) => edition.id === editionId) : blob ? undefined : editions[0]
+    const linkedOriginal = selected?.originalId && selected.originalId !== id
+      ? await readBook(library, selected.originalId).catch(() => null) : stored
+    if (signal.aborted) return
     const heading = element('header', 'page-heading reader-heading')
     const title = element('div', 'reader-title')
-    title.append(element('p', 'eyebrow', '作品详情'), element('h1', '', book.title), fileDetails(book))
+    title.append(element('p', 'eyebrow', reference ? (editionId ? '续写稿' : '原文阅读') : '作品详情'), element('h1', '', book.title))
+    if (!reference || !editionId) title.append(fileDetails(book))
     heading.append(title)
-    if (blob) {
+    if (linkedOriginal?.blob) {
+      const original = linkedOriginal
       const download = button('下载原文件', 'button button-primary', 'download')
-      download.addEventListener('click', () => downloadFile(blob, book.originalName))
+      download.addEventListener('click', () => downloadFile(original.blob, original.book.originalName))
       heading.append(download)
     }
 
-    const selected = editionId ? editions.find((edition) => edition.id === editionId) : blob ? undefined : editions[0]
     const tabs = element('nav', 'version-navigation')
-    tabs.setAttribute('aria-label', '原文件与编辑版本')
-    if (blob) {
+    tabs.setAttribute('aria-label', reference ? '续写项目导航' : '原文件与编辑版本')
+    if (reference) {
+      tabs.append(link(bookPath(library, workId), '返回续写项目', 'version-tab'))
+      if (editionId && linkedOriginal?.blob) tabs.append(link(originalPath(linkedOriginal.book.id), '查看原文', 'version-tab'))
+    } else if (blob) {
       const original = link(bookPath(library, id), '原文件', 'version-tab')
       if (!editionId) original.setAttribute('aria-current', 'page')
       tabs.append(original)
     }
-    for (const edition of editions) {
+    for (const edition of reference ? [] : editions) {
       const anchor = link(bookPath(library, id, edition.id), edition.name, 'version-tab')
       if (selected?.id === edition.id) anchor.setAttribute('aria-current', 'page')
       tabs.append(anchor)
@@ -196,7 +210,7 @@ export async function renderReader(
     const actions = element('div', 'version-actions')
     const empty = button('新建空白编辑稿', 'button button-quiet button-small', 'plus')
     const message = element('div', 'version-message')
-    actions.append(empty)
+    if (!reference) actions.append(empty)
     let converting = false
     let encoding: TextEncoding | undefined
     async function create(fromFile: boolean) {
@@ -209,8 +223,12 @@ export async function renderReader(
           ? await (await import('./documents/import')).convertFile(book.format, blob, signal, encoding)
           : { chapters: [emptyChapter()], notes: [] }
         signal.throwIfAborted()
-        const edition = await createEdition(book, converted.chapters, { source: fromFile ? 'original' : 'blank', notes: converted.notes })
-        if (!signal.aborted) location.hash = bookPath(library, id, edition.id)
+        const project = book.workId ? (await readBook(library, workId))?.book : book
+        if (!project) throw new Error('续写项目已被移除。')
+        const edition = await createEdition(project, converted.chapters, {
+          source: fromFile ? 'original' : 'blank', notes: converted.notes, originalId: reference && fromFile ? id : undefined,
+        })
+        if (!signal.aborted) location.hash = bookPath(library, workId, edition.id)
       } catch (error) {
         if (!signal.aborted) message.replaceChildren(previewProblem(error))
       } finally {
@@ -220,10 +238,10 @@ export async function renderReader(
     }
     empty.addEventListener('click', () => { void create(false) })
     if (blob && canConvert(book.format)) {
-      const convert = button(book.format === 'pdf' ? '提取文字为编辑稿' : '转换为编辑稿', 'button button-primary button-small')
+      const convert = button(reference ? '以原文为底稿续写' : book.format === 'pdf' ? '提取文字为编辑稿' : '转换为编辑稿', 'button button-primary button-small')
       convert.addEventListener('click', () => { void create(true) })
       actions.prepend(convert)
-      actions.append(element('span', 'version-hint', book.format === 'pdf' ? '按页提取文字，原版式保存在 PDF 中。' : '编辑内容保存在独立版本中。'))
+      actions.append(element('span', 'version-hint', book.format === 'pdf' ? '按页提取文字，原版式保存在 PDF 中。' : reference ? '复制原文到一份独立续写稿。' : '编辑内容保存在独立版本中。'))
     }
     body.append(actions, message)
     if (!blob) return

@@ -27,14 +27,14 @@ function updateRecord<T, R>(tx: IDBTransaction, request: IDBRequest<T>, write: (
   return committed(tx).then(() => result, (error) => { throw failure ?? error })
 }
 
-type EditionOptions = Pick<Edition, 'source'> & Partial<Pick<Edition, 'notes' | 'copiedFrom'>>
+type EditionOptions = Pick<Edition, 'source'> & Partial<Pick<Edition, 'notes' | 'copiedFrom' | 'originalId'>>
 
 function assembleEdition(book: Book, name: string, inputs: ChapterInput[], options: EditionOptions) {
   if (!inputs.length || inputs.length > maxChapters) throw new Error(`编辑稿需要 1 至 ${maxChapters} 个章节。`)
   const id = crypto.randomUUID()
   const edition: Edition = {
     library: book.library, bookId: book.id, id, name: checkedTitle(name),
-    source: options.source, notes: options.notes ?? [], copiedFrom: options.copiedFrom,
+    source: options.source, notes: options.notes ?? [], copiedFrom: options.copiedFrom, originalId: options.originalId,
     chapters: inputs.map((chapter) => ({ id: crypto.randomUUID(), title: checkedTitle(chapter.title) })),
     createdAt: Date.now(), revision: 0,
   }

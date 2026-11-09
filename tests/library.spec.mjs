@@ -8,7 +8,9 @@ async function importFiles(page, files, count = files.length) {
 }
 
 async function openBook(page, title) {
+  const reference = new URL(page.url()).hash === '#/reference'
   await page.getByRole('link', { name: `查看 ${title}`, exact: true }).click()
+  if (reference) await page.getByRole('link', { name: `查看原文 ${title}`, exact: true }).click()
   await expect(page.getByRole('heading', { name: title, level: 1, exact: true })).toBeVisible()
 }
 
@@ -189,7 +191,7 @@ test('DOCX 和 ODT 提取正文、段落与换行', async ({ page }) => {
   await expect(page.getByRole('article')).toBeVisible()
   expect(await page.getByRole('article').textContent()).toBe('未寄的信\n\n他把信放在窗边。\n等雨停。')
   await expectOriginal(page, word)
-  await page.goBack()
+  await page.goto('/#/reference')
   await openBook(page, '傍晚的雾')
   await expect(page.getByRole('article')).toBeVisible()
   expect(await page.getByRole('article').textContent()).toBe('傍晚的雾\n\n巷子  起了雾。\n有人走来。')
@@ -212,7 +214,7 @@ test('Markdown 显示源文，HTML 提取正文且不运行脚本或加载远程
   await openBook(page, '试读')
   await expect(page.getByRole('heading', { name: 'Markdown 源文' })).toBeVisible()
   await expect(page.getByRole('article')).toContainText('纸上有**海风**。')
-  await page.goBack()
+  await page.goto('/#/reference')
   await openBook(page, '岛屿')
   await expect(page.getByRole('article')).toHaveText('岛屿 傍晚有潮声。')
   expect(await page.evaluate(() => window.importedScriptRan)).toBeUndefined()
@@ -250,7 +252,7 @@ test('DOC、MOBI、AZW3 明示仅保存原件并逐字节下载', async ({ page 
     await openBook(page, title)
     await expect(page.getByRole('status')).toContainText(`${extension.toUpperCase()} 当前仅保存原文件。`)
     await expectOriginal(page, original)
-    await page.goBack()
+    await page.goto('/#/reference')
   }
 })
 

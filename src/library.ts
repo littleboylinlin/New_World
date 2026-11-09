@@ -8,6 +8,7 @@ interface BookIdentity {
   id: string
   title: string
   importedAt: number
+  workId?: string
 }
 
 export interface ImportedBook extends BookIdentity {
@@ -113,7 +114,7 @@ export async function readBook(library: LibraryId, id: string) {
   return { book, blob: file.blob }
 }
 
-export async function importBook(library: LibraryId, file: File) {
+export async function importBook(library: LibraryId, file: File, workId?: string) {
   const format = fileFormat(file.name)
   if (!format) throw new Error('此文件扩展名不在导入列表中。')
   if (file.size === 0) throw new Error('文件为空。')
@@ -123,7 +124,7 @@ export async function importBook(library: LibraryId, file: File) {
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
   const digest = Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')
   const book: ImportedBook = {
-    library, format, digest,
+    library, format, digest, workId,
     id: crypto.randomUUID(),
     title: (file.name.replace(/\.[^.]+$/, '').trim() || file.name).slice(0, maxTitleLength),
     originalName: file.name,
@@ -135,9 +136,15 @@ export async function importBook(library: LibraryId, file: File) {
   const tx = db.transaction(['books', 'files'], 'readwrite', { durability: 'strict' })
   const books = tx.objectStore('books')
   const files = tx.objectStore('files')
+  const parent = workId ? books.get([library, workId]) : undefined
   const existing = books.index('byLibraryDigest').get([library, digest])
   let duplicate: Book | undefined
+  let invalidParent = false
   existing.onsuccess = () => {
+    if (parent && (library !== 'reference' || !parent.result || parent.result.workId)) {
+      invalidParent = true
+      return
+    }
     duplicate = existing.result
     if (!duplicate) {
       books.add(book)
@@ -145,6 +152,7 @@ export async function importBook(library: LibraryId, file: File) {
     }
   }
   await committed(tx)
+  if (invalidParent) throw new Error('续写项目已被移除。')
   return duplicate ? { book: duplicate, duplicate: true } : { book, duplicate: false }
 }
 
@@ -175,7 +183,40 @@ export async function deleteBook(library: LibraryId, id: string) {
   tx.objectStore('files').delete(key)
   deleteIndexed(tx.objectStore('editions'), 'byBook', key)
   deleteIndexed(tx.objectStore('chapters'), 'byBook', key)
+  if (library === 'reference') {
+    const books = tx.objectStore('books')
+    const files = tx.objectStore('files')
+    const cursor = books.index('byLibrary').openCursor(library)
+    cursor.onsuccess = () => {
+      const item = cursor.result
+      if (!item) return
+      if (item.value.workId === id) {
+        files.delete(item.primaryKey)
+        item.delete()
+      }
+      item.continue()
+    }
+  }
   await committed(tx)
+}
+
+export async function removeWorkOriginal(workId: string, id: string) {
+  const db = await openDatabase()
+  const tx = db.transaction(['books', 'files'], 'readwrite', { durability: 'strict' })
+  const books = tx.objectStore('books')
+  const key = ['reference', id]
+  const request = books.get(key)
+  let removed = false
+  request.onsuccess = () => {
+    const book: Book | undefined = request.result
+    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) return
+    if (book.workId) books.delete(key)
+    else books.put({ library: book.library, id, title: book.title, importedAt: book.importedAt, format: 'draft' } satisfies WrittenBook)
+    tx.objectStore('files').delete(key)
+    removed = true
+  }
+  await committed(tx)
+  if (!removed) throw new Error('该原文已被移除。')
 }
 
 export function deleteIndexed(store: IDBObjectStore, index: string, key: IDBValidKey) {

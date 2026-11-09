@@ -1,4 +1,5 @@
 import './styles.css'
+import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
 import { mountUpdateView } from './update-view'
@@ -17,11 +18,12 @@ function render(moveFocus = false) {
   view = scope
   leaveGuard = undefined
   main.replaceChildren()
-  const match = activeHash.match(/^#\/(original|reference)(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}))?)?\/?$/)
+  const match = activeHash.match(/^#\/(original|reference)(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}|original))?)?\/?$/)
   if (match) {
     const library = match[1] as LibraryId
     document.title = `${libraries[library].name} · New World`
-    if (match[2]) void renderReader(main, library, match[2], match[3], scope.signal, (guard) => {
+    if (library === 'reference' && match[2] && !match[3]) renderContinuation(main, match[2], scope.signal)
+    else if (match[2]) void renderReader(main, library, match[2], match[3] === 'original' ? undefined : match[3], scope.signal, (guard) => {
       if (view === scope) leaveGuard = guard
     })
     else renderShelf(main, library, view.signal)
