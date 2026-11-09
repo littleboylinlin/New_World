@@ -16,11 +16,15 @@
           <img src="./book.svg" width="36" height="36" alt="">
           <span>New World <small>小说管理器</small></span>
         </a>
-        <span class="local-label"><span aria-hidden="true"></span>本地保存</span>
+        <div class="header-actions">
+          <span class="local-label"><span aria-hidden="true"></span>本地保存</span>
+          <button type="button" id="update-help" class="button button-quiet button-small" aria-haspopup="dialog" aria-controls="update-help-dialog">帮助与更新</button>
+        </div>
       </div>
     </header>
+    <section id="update-banner" class="shell update-banner" aria-label="版本更新提示" hidden></section>
     <main id="main" class="shell main-content" tabindex="-1"></main>
-    <footer class="shell site-footer"><span>New World <span class="version">v0.2.0</span></span><span>小说与原件保存在当前浏览器</span></footer>
+    <footer class="shell site-footer"><span>New World <span id="app-version" class="version"></span></span><span>小说与原件保存在当前浏览器</span></footer>
     <noscript>请启用 JavaScript 以使用本地书库。</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>

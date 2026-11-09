@@ -1,5 +1,5 @@
 import { open, readFile } from 'node:fs/promises'
-import { chromium, expect, test } from '@playwright/test'
+import { chromium, expect, test, withoutRelease } from './app-test.mjs'
 import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
@@ -130,7 +130,7 @@ test('Chromium IME 组合输入、复制粘贴、格式、撤销重做和替换'
 
 test('自动保存后关闭浏览器，重新打开仍可读取各章', async ({ baseURL }, testInfo) => {
   const profile = testInfo.outputPath('profile')
-  const launch = () => chromium.launchPersistentContext(profile, { baseURL, executablePath: process.env.CHROMIUM_PATH })
+  const launch = async () => withoutRelease(await chromium.launchPersistentContext(profile, { baseURL, executablePath: process.env.CHROMIUM_PATH }))
   const first = await launch()
   let address
   try {

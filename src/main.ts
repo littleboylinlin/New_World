@@ -1,6 +1,7 @@
 import './styles.css'
 import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
+import { mountUpdateView } from './update-view'
 import { libraries } from './ui'
 import type { LibraryId } from './library'
 
@@ -52,3 +53,8 @@ window.addEventListener('hashchange', async () => {
   render(true)
 })
 render()
+mountUpdateView(async () => {
+  if (leaveGuard && !await leaveGuard()) return false
+  window.location.reload()
+  return true
+})
