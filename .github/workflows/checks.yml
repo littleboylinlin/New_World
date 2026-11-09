@@ -25,5 +25,8 @@ jobs:
         if: always()
         with:
           name: browser-checks
-          path: test-results/**/home-*.png
+          path: |
+            test-results/**/home-*.png
+            test-results/**/editor-*.png
+            test-results/**/export-*
           retention-days: 7

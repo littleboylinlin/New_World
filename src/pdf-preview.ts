@@ -33,6 +33,16 @@ export async function openPdf(blob: Blob, signal: AbortSignal) {
     if (pdf.numPages < 1) throw new Error('PDF has no pages')
     return {
       length: pdf.numPages,
+      async readText(index: number) {
+        const page = await pdf.getPage(index + 1)
+        signal.throwIfAborted()
+        try {
+          const { items } = await page.getTextContent()
+          return items.map((item) => 'str' in item ? item.str + (item.hasEOL ? '\n' : '') : '').join('')
+        } finally {
+          page.cleanup()
+        }
+      },
       async renderPage(index: number) {
         const page = await pdf.getPage(index + 1)
         signal.throwIfAborted()

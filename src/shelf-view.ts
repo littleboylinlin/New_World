@@ -1,4 +1,6 @@
 import { acceptedExtensions } from './formats'
+import { formDialog, nameField } from './dialogs'
+import { createNovel } from './documents/store'
 import { deleteBook, importBook, listBooks, maxTitleLength, renameBook, storageError } from './library'
 import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
@@ -94,10 +96,11 @@ function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
     input.maxLength = maxTitleLength
     input.value = book.title
     label.append(input)
-    form.append(label, element('p', 'dialog-help', `原文件名 · ${book.originalName}`))
+    form.append(label)
+    if (book.format !== 'draft') form.append(element('p', 'dialog-help', `原文件名 · ${book.originalName}`))
   } else {
     const message = element('p', 'dialog-help')
-    message.append('将从此书库移除「', element('strong', '', book.title), '」及其本地文件副本。')
+    message.append('将从此书库移除「', element('strong', '', book.title), '」及其全部编辑版本和本地原件。')
     form.append(message)
   }
 
@@ -171,6 +174,8 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   const heading = element('div')
   heading.append(element('p', 'eyebrow', `${library.index} / ${library.label}`), element('h1', '', library.name), element('p', 'intro-copy', library.description))
   const choose = button('导入文件', 'button button-primary', 'plus')
+  const create = button('新建小说', 'button button-quiet', 'plus')
+  const controls = element('div', 'shelf-actions')
   const input = element('input')
   input.type = 'file'
   input.multiple = true
@@ -178,7 +183,14 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   input.hidden = true
   input.setAttribute('aria-label', '选择小说文件')
   choose.addEventListener('click', () => input.click())
-  header.append(heading, choose, input)
+  create.addEventListener('click', () => formDialog(root, { title: '新建小说', action: '创建小说', fields: [nameField('作品名')] }, async (data) => {
+    void navigator.storage?.persist?.().catch(() => {})
+    const { book, edition } = await createNovel(id, String(data.get('name')))
+    changes.dispatchEvent(new Event('update'))
+    location.hash = bookPath(id, book.id, edition.id)
+  }))
+  controls.append(create, choose, input)
+  header.append(heading, controls)
 
   const progress = element('section', 'import-notice')
   progress.hidden = true

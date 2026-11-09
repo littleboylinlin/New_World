@@ -5,7 +5,7 @@ export const formats = {
   doc: { label: 'DOC', preview: null },
   docx: { label: 'DOCX', preview: 'archive' },
   md: { label: 'Markdown', preview: 'text' },
-  rtf: { label: 'RTF', preview: null },
+  rtf: { label: 'RTF', preview: 'rtf' },
   html: { label: 'HTML', preview: 'text' },
   odt: { label: 'ODT', preview: 'archive' },
   mobi: { label: 'MOBI', preview: null },
@@ -13,6 +13,10 @@ export const formats = {
 } as const
 
 export type Format = keyof typeof formats
+
+export function canConvert(format: Format) {
+  return formats[format].preview !== null
+}
 
 const extensions = {
   txt: 'txt', pdf: 'pdf', epub: 'epub', doc: 'doc', docx: 'docx',

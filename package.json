@@ -1,6 +1,6 @@
 {
   "name": "new-world",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -13,11 +13,23 @@
     "test": "npm run build && playwright test"
   },
   "dependencies": {
+    "@tiptap/core": "^3.33.0",
+    "@tiptap/extension-image": "^3.33.0",
+    "@tiptap/extension-table": "^3.33.0",
+    "@tiptap/pm": "^3.33.0",
+    "@tiptap/starter-kit": "^3.33.0",
     "@zip.js/zip.js": "^2.24.0",
-    "pdfjs-dist": "6.5.438"
+    "docx": "^9.15.3",
+    "mammoth": "^1.13.0",
+    "markdown-it": "^15.0.3",
+    "pdfjs-dist": "6.5.438",
+    "turndown": "^7.2.5",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
+    "@types/markdown-it": "^14.2.0",
+    "@types/turndown": "^5.0.6",
     "typescript": "~5.9.3",
     "vite": "^8.3.7",
     "vite-plugin-static-copy": "^4.1.1"

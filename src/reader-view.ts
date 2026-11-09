@@ -1,9 +1,12 @@
-import { formats, textEncodings } from './formats'
+import { canConvert, formats, textEncodings } from './formats'
 import type { TextEncoding } from './formats'
 import { readBook, storageError } from './library'
-import type { Book, LibraryId } from './library'
+import type { ImportedBook, LibraryId } from './library'
+import { emptyChapter, chapterText } from './documents/model'
+import { createEdition, listEditions } from './documents/store'
+import type { RegisterLeave } from './documents/editor-view'
 import { openText } from './text-preview'
-import { breadcrumbs, button, element, fileDetails, notice } from './ui'
+import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, link, notice } from './ui'
 
 function readingText(text: string, source = false) {
   return element('article', source ? 'reading-text markdown-source' : 'reading-text', text)
@@ -14,18 +17,7 @@ function previewProblem(error: unknown) {
   return notice(`${reason} 原文件仍可下载。`, true)
 }
 
-function downloadOriginal(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(new Blob([blob], { type: 'application/octet-stream' }))
-  const anchor = element('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
-}
-
-function showText(host: HTMLElement, book: Book, blob: Blob, signal: AbortSignal) {
+function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: AbortSignal, setEncoding: (encoding?: TextEncoding) => void) {
   const toolbar = element('div', 'preview-toolbar')
   const label = book.format === 'md' ? 'Markdown 源文' : book.format === 'html' ? 'HTML 正文' : '文本正文'
   const heading = element('h2', '', label)
@@ -47,9 +39,11 @@ function showText(host: HTMLElement, book: Book, blob: Blob, signal: AbortSignal
   let requestNumber = 0
   async function refresh() {
     const current = ++requestNumber
+    const encoding = (select.value || undefined) as TextEncoding | undefined
+    setEncoding(encoding)
     content.replaceChildren(notice('正在解码文本…'))
     try {
-      const result = await openText(blob, book.format === 'html', (select.value || undefined) as TextEncoding | undefined)
+      const result = await openText(blob, book.format === 'html', encoding)
       if (signal.aborted || current !== requestNumber) return
       auto.textContent = select.value ? '自动识别' : `自动 · ${textEncodings[result.encoding]}`
       content.replaceChildren(readingText(result.text, book.format === 'md'))
@@ -98,18 +92,28 @@ function showPaged(
   void goTo(0)
 }
 
-async function showPreview(host: HTMLElement, book: Book, blob: Blob, signal: AbortSignal) {
+async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, signal: AbortSignal, setEncoding: (encoding?: TextEncoding) => void) {
   const format = formats[book.format]
   if (format.preview === null) {
     host.replaceChildren(notice(`${format.label} 当前仅保存原文件。可下载后用兼容的软件阅读。`))
     return
   }
   if (format.preview === 'text') {
-    showText(host, book, blob, signal)
+    showText(host, book, blob, signal, setEncoding)
     return
   }
 
   try {
+    if (format.preview === 'rtf') {
+      const { readRtf } = await import('./documents/rtf')
+      const text = chapterText(await readRtf(blob))
+      if (!signal.aborted) {
+        const heading = element('div', 'preview-toolbar')
+        heading.append(element('h2', '', 'RTF 正文'))
+        host.replaceChildren(heading, readingText(text))
+      }
+      return
+    }
     if (format.preview === 'pdf') {
       const { openPdf } = await import('./pdf-preview')
       const pdf = await openPdf(blob, signal)
@@ -135,7 +139,9 @@ async function showPreview(host: HTMLElement, book: Book, blob: Blob, signal: Ab
   }
 }
 
-export async function renderReader(root: HTMLElement, library: LibraryId, id: string, signal: AbortSignal) {
+export async function renderReader(
+  root: HTMLElement, library: LibraryId, id: string, editionId: string | undefined, signal: AbortSignal, registerLeave: RegisterLeave,
+) {
   const panel = element('section', `reader-page mode-${library}`)
   const content = element('div')
   content.append(notice('正在读取作品…'))
@@ -143,7 +149,7 @@ export async function renderReader(root: HTMLElement, library: LibraryId, id: st
   root.append(panel)
 
   try {
-    const stored = await readBook(library, id)
+    const [stored, editions] = await Promise.all([readBook(library, id), listEditions(library, id)])
     if (signal.aborted) return
     if (!stored) {
       content.replaceChildren(notice('这个书库中没有找到该作品。', true))
@@ -154,14 +160,78 @@ export async function renderReader(root: HTMLElement, library: LibraryId, id: st
     const heading = element('header', 'page-heading reader-heading')
     const title = element('div', 'reader-title')
     title.append(element('p', 'eyebrow', '作品详情'), element('h1', '', book.title), fileDetails(book))
-    const download = button('下载原文件', 'button button-primary', 'download')
-    download.addEventListener('click', () => downloadOriginal(blob, book.originalName))
-    heading.append(title, download)
+    heading.append(title)
+    if (blob) {
+      const download = button('下载原文件', 'button button-primary', 'download')
+      download.addEventListener('click', () => downloadFile(blob, book.originalName))
+      heading.append(download)
+    }
+
+    const selected = editionId ? editions.find((edition) => edition.id === editionId) : blob ? undefined : editions[0]
+    const tabs = element('nav', 'version-navigation')
+    tabs.setAttribute('aria-label', '原文件与编辑版本')
+    if (blob) {
+      const original = link(bookPath(library, id), '原文件', 'version-tab')
+      if (!editionId) original.setAttribute('aria-current', 'page')
+      tabs.append(original)
+    }
+    for (const edition of editions) {
+      const anchor = link(bookPath(library, id, edition.id), edition.name, 'version-tab')
+      if (selected?.id === edition.id) anchor.setAttribute('aria-current', 'page')
+      tabs.append(anchor)
+    }
+    const body = element('div', 'work-body')
+    content.replaceChildren(heading, tabs, body)
+    if (selected) {
+      body.append(notice('正在打开编辑版本…'))
+      const { renderEdition } = await import('./documents/editor-view')
+      await renderEdition(body, root, book, selected, signal, registerLeave)
+      return
+    }
+    if (editionId) {
+      body.append(notice('此编辑版本已从书库移除。', true))
+      return
+    }
+
+    const actions = element('div', 'version-actions')
+    const empty = button('新建空白编辑稿', 'button button-quiet button-small', 'plus')
+    const message = element('div', 'version-message')
+    actions.append(empty)
+    let converting = false
+    let encoding: TextEncoding | undefined
+    async function create(fromFile: boolean) {
+      if (converting) return
+      converting = true
+      for (const control of actions.querySelectorAll('button')) control.disabled = true
+      message.replaceChildren(notice(fromFile ? '正在转换并保留原文件…' : '正在创建编辑稿…'))
+      try {
+        const converted = fromFile && blob
+          ? await (await import('./documents/import')).convertFile(book.format, blob, signal, encoding)
+          : { chapters: [emptyChapter()], notes: [] }
+        signal.throwIfAborted()
+        const edition = await createEdition(book, converted.chapters, { source: fromFile ? 'original' : 'blank', notes: converted.notes })
+        if (!signal.aborted) location.hash = bookPath(library, id, edition.id)
+      } catch (error) {
+        if (!signal.aborted) message.replaceChildren(previewProblem(error))
+      } finally {
+        converting = false
+        for (const control of actions.querySelectorAll('button')) control.disabled = false
+      }
+    }
+    empty.addEventListener('click', () => { void create(false) })
+    if (blob && canConvert(book.format)) {
+      const convert = button(book.format === 'pdf' ? '提取文字为编辑稿' : '转换为编辑稿', 'button button-primary button-small')
+      convert.addEventListener('click', () => { void create(true) })
+      actions.prepend(convert)
+      actions.append(element('span', 'version-hint', book.format === 'pdf' ? '按页提取文字，原版式保存在 PDF 中。' : '编辑内容保存在独立版本中。'))
+    }
+    body.append(actions, message)
+    if (!blob) return
     const preview = element('section', 'reader-panel')
     preview.setAttribute('aria-label', '文件预览')
     preview.append(notice('正在准备文件预览…'))
-    content.replaceChildren(heading, preview)
-    await showPreview(preview, book, blob, signal)
+    body.append(preview)
+    await showPreview(preview, book, blob, signal, (value) => { encoding = value })
   } catch (error) {
     if (!signal.aborted) content.replaceChildren(notice(storageError(error), true))
   }

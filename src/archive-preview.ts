@@ -6,7 +6,7 @@ import { htmlText, maxTextPreviewSize, requireText } from './text-preview'
 const maxArchiveEntries = 10_000
 const packageOrigin = 'https://book.invalid'
 
-async function readArchive(blob: Blob, signal: AbortSignal) {
+export async function openPackage(blob: Blob, signal: AbortSignal) {
   const zip = new ZipReader(new BlobReader(blob), { useWebWorkers: false })
   const entries = new Map<string, FileEntry>()
   try {
@@ -27,40 +27,48 @@ async function readArchive(blob: Blob, signal: AbortSignal) {
     await zip.close()
   }
 
-  return async (path: string) => {
+  async function binary(path: string, limit = maxTextPreviewSize) {
     signal.throwIfAborted()
     const entry = entries.get(path)
     if (!entry) throw new Error('文档缺少预览所需的文件。')
     if (entry.encrypted) throw new Error('文档内容已加密。')
-    if (entry.uncompressedSize > maxTextPreviewSize) throw new Error('此部分超过 16 MiB 的文本预览上限。')
+    if (entry.uncompressedSize > limit) throw new Error('文档的这一部分超过可处理大小。')
 
     let size = 0
     const chunks: Uint8Array<ArrayBuffer>[] = []
     const output = new WritableStream<Uint8Array>({
       write(chunk) {
         size += chunk.length
-        if (size > maxTextPreviewSize) throw new Error('内容超过预览上限。')
+        if (size > limit) throw new Error('内容超过处理上限。')
         chunks.push(chunk.slice())
       },
     })
     try {
       await entry.getData(output, { checkSignature: true, signal })
-      return decodeText(new Uint8Array(await new Blob(chunks).arrayBuffer())).text
+      return new Blob(chunks)
     } catch {
       signal.throwIfAborted()
       throw new Error('无法解包或解码文档的这一部分。')
     }
   }
+  return {
+    entries,
+    binary,
+    async text(path: string) {
+      return decodeText(new Uint8Array(await (await binary(path)).arrayBuffer())).text
+    },
+  }
 }
 
-function xml(source: string) {
+export function xml(source: string) {
   if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(source)) throw new Error('文档使用了预览器无法处理的 XML 声明。')
   const parsed = new DOMParser().parseFromString(source, 'application/xml')
   if (parsed.getElementsByTagName('parsererror').length) throw new Error('文档结构损坏，无法预览。')
   return parsed
 }
 
-function packagePath(base: string, href: string): string | undefined {
+export function packagePath(base: string, href: string): string | undefined {
+  if (!href || /^(?:[a-z][a-z0-9+.-]*:|[/\\]{2})/i.test(href.trim())) return
   try {
     const baseUrl = `${packageOrigin}/${base.split('/').map(encodeURIComponent).join('/')}`
     const url = new URL(href, baseUrl)
@@ -71,7 +79,8 @@ function packagePath(base: string, href: string): string | undefined {
 }
 
 export async function openEpub(blob: Blob, signal: AbortSignal) {
-  const read = await readArchive(blob, signal)
+  const archive = await openPackage(blob, signal)
+  const read = archive.text
   const container = xml(await read('META-INF/container.xml'))
   const root = container.getElementsByTagNameNS('*', 'rootfile')[0]?.getAttribute('full-path')
   const packageFile = root && packagePath('', root)
@@ -91,18 +100,36 @@ export async function openEpub(blob: Blob, signal: AbortSignal) {
   })
   if (!pages.some(Boolean)) throw new Error('EPUB 没有可预览的正文目录。')
 
+  const encrypted = new Set<string>()
+  if (archive.entries.has('META-INF/encryption.xml')) {
+    const descriptor = xml(await read('META-INF/encryption.xml'))
+    for (const reference of descriptor.getElementsByTagNameNS('*', 'CipherReference')) {
+      const path = packagePath('', reference.getAttribute('URI') ?? '')
+      if (path) encrypted.add(path)
+    }
+  }
+  async function readSource(index: number) {
+    const path = pages[index]
+    if (!path) throw new Error('本节的内容类型或路径无法预览。')
+    if (encrypted.has(path)) throw new Error('本节受 DRM 或其他加密保护。')
+    return { path, source: await read(path) }
+  }
   return {
     length: pages.length,
+    readSource,
+    async readAsset(base: string, href: string, limit: number) {
+      const path = packagePath(base, href)
+      if (!path || encrypted.has(path) || !archive.entries.has(path)) return null
+      return archive.binary(path, limit)
+    },
     async readSection(index: number) {
-      const path = pages[index]
-      if (!path) throw new Error('本节的内容类型或路径无法预览。')
-      return requireText(htmlText(await read(path)))
+      return requireText(htmlText((await readSource(index)).source))
     },
   }
 }
 
 export async function openDocx(blob: Blob, signal: AbortSignal) {
-  const read = await readArchive(blob, signal)
+  const { text: read } = await openPackage(blob, signal)
   const relationships = xml(await read('_rels/.rels'))
   const main = Array.from(relationships.getElementsByTagNameNS('*', 'Relationship')).find((entry) => (
     entry.getAttribute('Type')?.endsWith('/officeDocument') && entry.getAttribute('TargetMode') !== 'External'
@@ -129,7 +156,7 @@ export async function openDocx(blob: Blob, signal: AbortSignal) {
 }
 
 export async function openOdt(blob: Blob, signal: AbortSignal) {
-  const read = await readArchive(blob, signal)
+  const { text: read } = await openPackage(blob, signal)
   const doc = xml(await read('content.xml'))
   const office = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'
   const text = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'

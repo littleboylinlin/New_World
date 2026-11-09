@@ -23,8 +23,8 @@ h1, h2, h3, p { margin: 0; }
 :focus-visible { outline: 3px solid #91721d; outline-offset: 4px; }
 .main-content:focus { outline: none; }
 .shell { width: min(1080px, calc(100% - 64px)); margin-inline: auto; }
-.skip-link { position: fixed; z-index: 5; top: 10px; left: 12px; transform: translateY(-150%); padding: 10px 16px; color: #fff; background: var(--accent); border-radius: 8px; }
-.skip-link:focus { transform: translateY(0); }
+.skip-link { position: fixed; z-index: 5; top: 10px; left: 12px; opacity: 0; pointer-events: none; padding: 10px 16px; color: #fff; background: var(--accent); border-radius: 8px; }
+.skip-link:focus { opacity: 1; pointer-events: auto; }
 
 .site-header { border-bottom: 1px solid var(--line); background: #fbfaf5; }
 .header-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 72px; }
@@ -131,6 +131,14 @@ h1 { font-family: var(--serif); font-size: clamp(2rem, 4.6vw, 3.45rem); line-hei
 .dialog-controls { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 
 .reader-title { min-width: 0; }
+.shelf-actions, .version-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.version-navigation { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 4px 4px 9px; margin: 0 0 12px; border-bottom: 1px solid var(--line); }
+.version-navigation:empty { display: none; }
+.version-tab { flex: none; max-width: 18rem; padding: 8px 12px; border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .88rem; font-weight: 650; text-decoration: none; color: var(--muted); }
+.version-tab:hover, .version-tab[aria-current] { color: var(--accent); background: var(--tint); }
+.version-actions { margin-bottom: 12px; }
+.version-hint { color: var(--muted); font-size: .85rem; }
+.version-message:not(:empty) { margin-bottom: 12px; }
 .reader-panel { padding: clamp(14px, 2.7vw, 26px); border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-bottom: 13px; margin-bottom: 13px; border-bottom: 1px solid var(--line); }
 .encoding-field, .pagination { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .84rem; }
