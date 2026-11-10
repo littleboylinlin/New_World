@@ -400,23 +400,25 @@ export async function renderEdition(
     location.hash = bookPath(book.library, book.id, copy.id)
   }))
   exportButton.addEventListener('click', () => {
-    const field = element('label', 'field-label', '导出格式')
-    const select = element('select', 'title-input')
-    select.name = 'format'
-    for (const [value, info] of Object.entries(outputFormats)) {
-      const option = element('option', '', info.title)
-      option.value = value
-      select.append(option)
+    const formats = element('div', 'export-formats')
+    formats.setAttribute('role', 'radiogroup')
+    formats.setAttribute('aria-label', '导出格式')
+    for (const [value, label] of Object.entries(outputFormats)) {
+      const item = element('label', 'export-format')
+      const radio = element('input')
+      radio.type = 'radio'
+      radio.name = 'format'
+      radio.value = value
+      radio.checked = value === 'txt'
+      item.append(radio, element('span', '', label))
+      formats.append(item)
     }
-    field.append(select)
-    const help = element('p', 'dialog-help', outputFormats.txt.note)
-    select.addEventListener('change', () => { help.textContent = outputFormats[select.value as OutputFormat].note })
     const only = element('label', 'export-scope')
     const checkbox = element('input')
     checkbox.type = 'checkbox'
     checkbox.name = 'current'
     only.append(checkbox, '仅导出当前章节')
-    formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [field, help, only] }, async (data) => {
+    formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [formats, only] }, async (data) => {
       const chapters = await currentChapters(data.has('current'))
       await exportEdition(String(data.get('format')) as OutputFormat, `${book.title} - ${edition.name}`, chapters)
     })

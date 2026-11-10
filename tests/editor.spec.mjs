@@ -421,11 +421,11 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   await upload(page, [source])
   await openBook(page, '灯塔手稿')
   await convert(page)
+  const formatLabels = { txt: 'TXT', md: 'Markdown', html: 'HTML', docx: 'DOCX', pdf: 'PDF' }
   for (const format of ['txt', 'md', 'html', 'docx']) {
     await page.getByRole('button', { name: '导出', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
-    await dialog.getByRole('combobox', { name: '导出格式' }).selectOption(format)
-    await expect(dialog.locator('.dialog-help')).toBeVisible()
+    await dialog.getByRole('radio', { name: formatLabels[format] }).check()
     const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: '开始导出' }).click()])
     const path = testInfo.outputPath(`export-edition.${format}`)
     await download.saveAs(path)
@@ -448,7 +448,7 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   }
   await page.getByRole('button', { name: '导出', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
-  await dialog.getByRole('combobox', { name: '导出格式' }).selectOption('pdf')
+  await dialog.getByRole('radio', { name: 'PDF' }).check()
   await dialog.getByRole('button', { name: '开始导出' }).click()
   await expect(page.locator('body')).toHaveAttribute('data-print-requested', 'yes')
   const printed = await page.pdf({ path: testInfo.outputPath('export-edition.pdf'), format: 'A4', printBackground: true })
