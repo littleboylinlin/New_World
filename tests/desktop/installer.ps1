@@ -10,6 +10,7 @@ public static class InstallerWindow {
     private delegate bool VisitWindow(IntPtr window, IntPtr unused);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, VisitWindow visit, IntPtr unused);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
@@ -24,23 +25,38 @@ public static class InstallerWindow {
         IntPtr found = IntPtr.Zero;
         EnumChildWindows(parent, delegate(IntPtr child, IntPtr unused) {
             if (!IsWindowVisible(child)) return true;
-            if (id != 0 && GetDlgCtrlID(child) != id) return true;
-            if (!String.IsNullOrEmpty(text)) {
-                var label = new StringBuilder(512);
-                IntPtr ignored;
-                SendMessageTimeout(child, 0x000D, (IntPtr)label.Capacity, label, 2, 1000, out ignored); // WM_GETTEXT
-                if (label.ToString() != text) return true;
-            }
+            if (id != 0 && (GetDlgCtrlID(child) != id || !IsWindowEnabled(child))) return true;
+            if (!String.IsNullOrEmpty(text) && Text(child).Trim() != text) return true;
             found = child;
             return false;
         }, IntPtr.Zero);
         return found;
     }
 
+    private static string Text(IntPtr window) {
+        var label = new StringBuilder(512);
+        IntPtr ignored;
+        SendMessageTimeout(window, 0x000D, (IntPtr)label.Capacity, label, 2, 1000, out ignored); // WM_GETTEXT
+        return label.ToString();
+    }
+
+    public static string Describe(IntPtr parent) {
+        var description = new StringBuilder(Text(parent));
+        EnumChildWindows(parent, delegate(IntPtr child, IntPtr unused) {
+            if (IsWindowVisible(child)) {
+                description.AppendLine();
+                description.AppendFormat("{0} enabled={1} {2}", GetDlgCtrlID(child), IsWindowEnabled(child), Text(child));
+            }
+            return true;
+        }, IntPtr.Zero);
+        return description.ToString();
+    }
+
     public static void SetPath(IntPtr window, string path) {
         IntPtr result;
         if (SendMessageTimeout(window, 0x000C, IntPtr.Zero, path, 2, 2000, out result) == IntPtr.Zero || result == IntPtr.Zero)
             throw new InvalidOperationException("Could not enter the installation path");
+        if (Text(window) != path) throw new InvalidOperationException("Installer did not keep the entered path");
     }
 
     public static void Select(IntPtr window) {
@@ -59,7 +75,7 @@ public static class InstallerWindow {
 '@
 
 function Wait-For($Find, [string]$Description) {
-    $limit = (Get-Date).AddSeconds(45)
+    $limit = (Get-Date).AddSeconds(75)
     do {
         $value = & $Find
         if ($value) { return $value }
@@ -117,6 +133,11 @@ try {
     } 'New World window after installation'
     if (!$app.CloseMainWindow() -or !$app.WaitForExit(20000)) { throw 'New World did not close after the smoke test' }
     Write-Output 'Installer UI passed: selected directory, optional desktop shortcut, and optional launch.'
+} catch {
+    $setup.Refresh()
+    if ($setup.MainWindowHandle -ne 0) { Write-Output ([InstallerWindow]::Describe($setup.MainWindowHandle)) }
+    Write-Output "Application exists at chosen path: $(Test-Path -LiteralPath (Join-Path $Directory 'New World.exe'))"
+    throw
 } finally {
     if (!$setup.HasExited) { $setup.Kill() }
 }

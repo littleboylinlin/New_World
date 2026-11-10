@@ -50,6 +50,9 @@ Function CheckNewWorldDirectory
 FunctionEnd
 
   Function LeaveNewWorldDirectory
+    FindWindow $R0 "#32770" "" $HWNDPARENT
+    GetDlgItem $R0 $R0 1019
+    ${NSD_GetText} $R0 $INSTDIR
     Call CheckNewWorldDirectory
     ${If} $R9 == "0"
       MessageBox MB_OK|MB_ICONEXCLAMATION "请选择新建或空的安装文件夹，或保留当前安装位置。请勿选择书库数据目录。"
