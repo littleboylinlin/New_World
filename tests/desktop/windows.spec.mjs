@@ -3,7 +3,7 @@ import { mkdir, readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
-import { file, pdf } from '../fixtures.mjs'
+import { file } from '../fixtures.mjs'
 
 const { version } = JSON.parse(await readFile('package.json', 'utf-8'))
 const versionTag = `v${version}`
@@ -92,7 +92,8 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     }, pdfPath)
     await editor(page).fill(savedText)
     await exportTo(page, 'pdf')
-    expect((await readFile(pdfPath)).subarray(0, 5).toString()).toBe('%PDF-')
+    const exportedPdf = await readFile(pdfPath)
+    expect(exportedPdf.subarray(0, 5).toString()).toBe('%PDF-')
     await expect(page.locator('.print-edition')).toHaveCount(0)
 
     if (installer) {
@@ -126,7 +127,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await page.getByRole('link', { name: 'New World 书库首页' }).click()
     await page.getByRole('link', { name: '进入原创库' }).click()
     await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
-    await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', pdf()))
+    await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', exportedPdf))
     await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
     await expect(page.getByRole('img', { name: 'PDF 第 1 页' })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('windows-reader.png') })
