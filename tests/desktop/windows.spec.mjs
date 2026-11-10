@@ -41,12 +41,14 @@ async function install() {
 }
 
 async function stop(app) {
+  const exited = app.waitForEvent('close', { timeout: 10_000 }).catch(() => {})
   await app.evaluate(({ app }) => { setTimeout(() => app.exit(), 0) }).catch(() => {})
   await app.close().catch(() => {})
+  await exited
 }
 
 async function exportTo(page, format) {
-  await page.getByRole('button', { name: '导出编辑稿' }).click()
+  await page.getByRole('button', { name: '导出', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
   await dialog.getByRole('combobox', { name: '导出格式' }).selectOption(format)
   await dialog.getByRole('button', { name: '开始导出' }).click()
@@ -121,7 +123,8 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await page.getByRole('button', { name: '下载原文件' }).click()
     await expect.poll(async () => readFile(originalPath).catch(() => null)).toEqual(original.buffer)
 
-    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('link', { name: 'New World 书库首页' }).click()
+    await page.getByRole('link', { name: '进入原创库' }).click()
     await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
     await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', pdf()))
     await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
