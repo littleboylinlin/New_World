@@ -455,6 +455,56 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   expect(printed.subarray(0, 4).toString()).toBe('%PDF')
 })
 
+test('按范围导出编辑稿', async ({ page }, testInfo) => {
+  await shelf(page)
+  await newNovel(page, '雾中书简')
+  await textArea(page).fill('第一封信从雾里来。')
+  await manualSave(page)
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await textArea(page).fill('第二封信落在窗台。')
+  await manualSave(page)
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第三章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(page.locator('.writing-header h3')).toHaveText('第三章')
+  await textArea(page).fill('第三封信没有署名。')
+  await manualSave(page)
+
+  const dialog = () => page.getByRole('dialog', { name: '导出编辑稿' })
+  const exportTxt = async (name) => {
+    const [download] = await Promise.all([page.waitForEvent('download'), dialog().getByRole('button', { name: '开始导出' }).click()])
+    const path = testInfo.outputPath(`export-${name}.txt`)
+    await download.saveAs(path)
+    return (await readFile(path)).toString('utf8')
+  }
+
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await dialog().getByRole('radio', { name: 'TXT' }).check()
+  const all = await exportTxt('all')
+  expect(all).toContain('第一封信从雾里来。')
+  expect(all).toContain('第二封信落在窗台。')
+  expect(all).toContain('第三封信没有署名。')
+
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await dialog().getByRole('radio', { name: '当前章' }).check()
+  const current = await exportTxt('current')
+  expect(current).toContain('第三封信没有署名。')
+  expect(current).not.toContain('第一封信从雾里来。')
+
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await dialog().getByRole('radio', { name: '多选' }).check()
+  await dialog().getByRole('checkbox', { name: '全选' }).uncheck()
+  await dialog().getByRole('checkbox', { name: '第一章' }).check()
+  await dialog().getByRole('checkbox', { name: '第三章' }).check()
+  const picked = await exportTxt('picked')
+  expect(picked).toContain('第一封信从雾里来。')
+  expect(picked).toContain('第三封信没有署名。')
+  expect(picked).not.toContain('第二封信落在窗台。')
+})
+
 test.describe('移动编辑', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
   test('在手机视口操作正文、保存和展开章节目录', async ({ page }, testInfo) => {
