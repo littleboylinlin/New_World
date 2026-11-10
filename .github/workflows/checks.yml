@@ -53,6 +53,9 @@ jobs:
           $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
           $installer = "New-World-Setup-$version-x64.exe"
           $env:NEW_WORLD_INSTALLER = (Resolve-Path "dist-windows/$installer").Path
+          $env:NEW_WORLD_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'New World Custom Install'
+          powershell.exe -NoProfile -File tests/desktop/installer.ps1 -Installer $env:NEW_WORLD_INSTALLER -Directory $env:NEW_WORLD_INSTALL_DIR
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:desktop
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hash = (Get-FileHash $env:NEW_WORLD_INSTALLER -Algorithm SHA256).Hash.ToLowerInvariant()
