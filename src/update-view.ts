@@ -2,7 +2,8 @@ import { button, element } from './ui'
 import { checkForUpdate, runningVersion } from './updates'
 import type { UpdateResult } from './updates'
 
-export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
+export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
+  const desktop = window.newWorldDesktop
   const help = document.querySelector<HTMLButtonElement>('#update-help')!
   const banner = document.querySelector<HTMLElement>('#update-banner')!
   document.querySelector('#app-version')!.textContent = runningVersion
@@ -13,8 +14,8 @@ export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
   dialog.id = 'update-help-dialog'
   dialog.setAttribute('aria-labelledby', title.id)
   const content = element('div', 'manage-form')
-  const currentVersion = element('p', 'update-version', `当前运行版本 ${runningVersion}`)
-  const state = element('p', 'update-state', '可查询 GitHub 上的正式发行版。')
+  const currentVersion = element('p', 'update-version', `当前运行版本 ${runningVersion}${desktop ? ' · Windows x64' : ''}`)
+  const state = element('p', 'update-state', desktop ? '可查询 GitHub 上的 Windows 正式发行版。' : '可查询 GitHub 上的正式发行版。')
   state.setAttribute('role', 'status')
   const check = button('检查更新', 'button button-primary')
   const close = button('关闭', 'button button-quiet')
@@ -27,14 +28,16 @@ export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
   const releaseLink = element('a', 'button button-quiet', '查看 GitHub 发布页')
   releaseLink.target = '_blank'
   releaseLink.rel = 'noopener noreferrer'
-  const reload = button('重新加载当前网页', 'button button-quiet')
+  const update = button(desktop ? '下载 Windows x64 安装包' : '重新加载当前网页', 'button button-quiet')
   const releaseActions = element('div', 'update-actions')
-  releaseActions.append(releaseLink, reload)
-  const reloadHint = element('p', 'update-hint', '刷新会加载当前站点已部署的版本。本地运行时，请先更新代码并重新启动服务。')
-  const reloadError = element('p', 'field-error')
-  reloadError.setAttribute('role', 'alert')
-  reloadError.hidden = true
-  release.append(element('h3', '', '更新说明'), notes, releaseActions, reloadHint, reloadError)
+  releaseActions.append(releaseLink, update)
+  const updateHint = element('p', 'update-hint', desktop
+    ? '安装包会在默认浏览器中下载。运行安装包前，请保存稿件并关闭 New World。'
+    : '刷新会加载当前站点已部署的版本。本地运行时，请先更新代码并重新启动服务。')
+  const updateError = element('p', 'field-error')
+  updateError.setAttribute('role', 'alert')
+  updateError.hidden = true
+  release.append(element('h3', '', '更新说明'), notes, releaseActions, updateHint, updateError)
   content.append(title, currentVersion, controls, state, release)
   dialog.append(content)
   document.body.append(dialog)
@@ -50,6 +53,7 @@ export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
   let started = false
   let checking = false
   let offeredTag: string | undefined
+  let installerTag: string | undefined
   let ignoredTag: string | undefined
 
   function openHelp() {
@@ -59,8 +63,9 @@ export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
   function present(result: UpdateResult) {
     state.classList.toggle('update-state-error', result.kind === 'failed')
     release.hidden = result.kind !== 'available'
-    reloadError.hidden = true
+    updateError.hidden = true
     offeredTag = result.kind === 'available' ? result.tag : undefined
+    installerTag = result.kind === 'available' && result.windows ? result.tag : undefined
     banner.hidden = !offeredTag || offeredTag === ignoredTag
     switch (result.kind) {
       case 'available':
@@ -70,8 +75,8 @@ export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
         releaseLink.href = result.url
         break
       case 'current': state.textContent = '当前已是最新版本。'; break
-      case 'ahead': state.textContent = `当前版本高于 GitHub 最新正式发行版 ${result.tag}。`; break
-      case 'unpublished': state.textContent = 'GitHub 暂未提供可比较的正式发行版。'; break
+      case 'ahead': state.textContent = `当前版本高于 GitHub 最新${desktop ? ' Windows ' : ''}正式发行版 ${result.tag}。`; break
+      case 'unpublished': state.textContent = desktop ? 'GitHub 暂未提供 Windows x64 正式安装包。' : 'GitHub 暂未提供可比较的正式发行版。'; break
       case 'failed': state.textContent = result.message; break
     }
   }
@@ -99,17 +104,25 @@ export function mountUpdateView(reloadAfterSave: () => Promise<boolean>) {
     banner.hidden = true
     help.focus()
   })
-  reload.addEventListener('click', async () => {
-    reload.disabled = true
-    reloadError.hidden = true
+  update.addEventListener('click', async () => {
+    const tag = installerTag
+    update.disabled = true
+    updateError.hidden = true
     try {
-      if (await reloadAfterSave()) return
-      reloadError.textContent = '当前正文尚未保存。请先保存或另存，再重新加载网页。'
+      if (!await saveBeforeLeaving()) {
+        updateError.textContent = desktop ? '当前正文尚未保存。请先保存或另存，再下载安装包。' : '当前正文尚未保存。请先保存或另存，再重新加载网页。'
+        updateError.hidden = false
+      } else if (desktop && tag) {
+        await desktop.openInstaller(tag)
+      } else if (!desktop) {
+        window.location.reload()
+      }
     } catch {
-      reloadError.textContent = '未能确认保存状态。请先检查正文，再重新加载网页。'
+      updateError.textContent = desktop ? '未能打开安装包下载入口。请检查正文或打开 GitHub 发布页重试。' : '未能确认保存状态。请先检查正文，再重新加载网页。'
+      updateError.hidden = false
+    } finally {
+      update.disabled = false
     }
-    reloadError.hidden = false
-    reload.disabled = false
   })
 
   window.setTimeout(() => { if (!started) void runCheck() }, 0)
