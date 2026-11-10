@@ -40,6 +40,11 @@ async function install() {
   expect((await stat(installedApp)).isFile()).toBe(true)
 }
 
+async function stop(app) {
+  await app.evaluate(({ app }) => { setTimeout(() => app.exit(), 0) }).catch(() => {})
+  await app.close().catch(() => {})
+}
+
 async function exportTo(page, format) {
   await page.getByRole('button', { name: '导出编辑稿' }).click()
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
@@ -67,6 +72,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     let page = await app.firstWindow()
     await expect(page.locator('#app-version')).toHaveText(versionTag)
     await expect(page).toHaveURL('new-world://app/')
+    await expect(page.locator('#update-banner')).toBeHidden()
     expect(await page.evaluate(() => ({ secure: isSecureContext, node: typeof require }))).toEqual({ secure: true, node: 'undefined' })
     await page.locator('a[href="#/reference"]').first().click()
     await page.locator('input[type=file]').setInputFiles(original)
@@ -96,7 +102,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     const lastText = `${savedText} 保存后再关窗。`
     await editor(page).fill(lastText)
     const exited = app.waitForEvent('close')
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
+    await app.evaluate(({ BrowserWindow }) => { setTimeout(() => BrowserWindow.getAllWindows()[0].close(), 30) })
     await exited
     if (installer) await install()
 
@@ -122,7 +128,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await expect(page.getByRole('img', { name: 'PDF 第 1 页' })).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('windows-reader.png') })
   } finally {
-    await app.close().catch(() => {})
+    await stop(app)
   }
 })
 
@@ -225,6 +231,6 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     await expect(page.evaluate(() => window.newWorldDesktop.openInstaller('https://example.invalid/'))).rejects.toThrow('无效的 Windows 安装包地址')
     await page.screenshot({ path: testInfo.outputPath('windows-updates.png') })
   } finally {
-    await app.close().catch(() => {})
+    await stop(app)
   }
 })

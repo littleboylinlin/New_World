@@ -24,7 +24,9 @@ await build({
     productName: 'New World',
     electronVersion: devDependencies.electron,
     directories: { app: appDir, output, buildResources: 'desktop' },
-    npmRebuild: false,
+    // The renderer is already bundled and the desktop shell uses only Electron and Node APIs.
+    beforeBuild: () => false,
+    publish: null,
     win: {
       icon: 'desktop/icon.ico',
       artifactName: 'New-World-Setup-${version}-${arch}.${ext}',
