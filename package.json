@@ -1,8 +1,11 @@
 {
   "name": "new-world",
-  "version": "0.3.1",
+  "version": "0.4.0",
+  "description": "本地小说管理器与写作工作台",
+  "author": "小男孩",
   "private": true,
   "type": "module",
+  "main": "desktop/main.cjs",
   "engines": {
     "node": ">=22.16.0"
   },
@@ -10,7 +13,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "npm run build && playwright test"
+    "desktop": "npm run build && electron .",
+    "build:windows": "npm run build && node desktop/build-windows.mjs",
+    "test": "npm run build && playwright test",
+    "test:desktop": "playwright test --config desktop/playwright.config.mjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.33.0",
@@ -30,6 +36,8 @@
     "@playwright/test": "^1.65.0",
     "@types/markdown-it": "^14.2.0",
     "@types/turndown": "^5.0.6",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
     "typescript": "~5.9.3",
     "vite": "^8.3.7",
     "vite-plugin-static-copy": "^4.1.1"

@@ -4,6 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Windows 正式发行版标签，例如 v0.4.0'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -30,3 +36,90 @@ jobs:
             test-results/**/editor-*.png
             test-results/**/export-*
           retention-days: 7
+
+  windows-tests:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:windows
+      - name: Test the installed Windows app
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $installer = "New-World-Setup-$version-x64.exe"
+          $env:NEW_WORLD_INSTALLER = (Resolve-Path "dist-windows/$installer").Path
+          npm run test:desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hash = (Get-FileHash $env:NEW_WORLD_INSTALLER -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sums = Join-Path $PWD 'dist-windows/SHA256SUMS.txt'
+          [IO.File]::WriteAllText($sums, "$hash  $installer`n", [Text.Encoding]::ASCII)
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: windows-checks
+          path: |
+            test-results/desktop/**/windows-*.png
+            test-results/desktop/**/error-context.md
+          retention-days: 7
+      - uses: actions/upload-artifact@v6
+        if: github.event_name != 'pull_request'
+        with:
+          name: windows-x64
+          path: |
+            dist-windows/New-World-Setup-*-x64.exe
+            dist-windows/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  windows-release:
+    if: github.repository == 'littleboylinlin/New_World' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [browser-tests, windows-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency: windows-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Select an explicitly requested stable version
+        id: release
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Only stable versions can be released.'
+            exit 1
+          fi
+          tag="v$version"
+          notes="docs/releases/$tag.md"
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            if [[ "$REQUESTED_TAG" != "$tag" || ! -f "$notes" ]]; then
+              echo 'The requested tag must match package.json and have release notes.'
+              exit 1
+            fi
+          elif ! git diff --diff-filter=A --name-only "$BEFORE_SHA" "$GITHUB_SHA" -- "$notes" | grep -Fxq "$notes"; then
+            echo 'No new Windows release notes for this version.'
+            exit 0
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v7
+        if: steps.release.outputs.tag != ''
+        with:
+          name: windows-x64
+          path: ${{ runner.temp }}/windows-x64
+      - name: Publish the verified installer to GitHub Releases
+        if: steps.release.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: bash desktop/publish-windows.sh "$RELEASE_TAG" "$RUNNER_TEMP/windows-x64"

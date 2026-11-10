@@ -8,7 +8,9 @@ export const outputFormats = {
   md: { title: 'Markdown', note: '保留常用 Markdown 结构。下划线转为普通文字，图片转为文字说明，复杂表格会简化。' },
   html: { title: 'HTML 网页', note: '导出独立网页，包含章节、常见样式和编辑稿内嵌图片。页面布局由浏览器重新计算。' },
   docx: { title: 'DOCX 文档', note: '保留常用文字样式、列表、表格和可解码图片。分页和版式由打开文档的软件重新计算。' },
-  pdf: { title: '打印／保存为 PDF', note: '使用浏览器打印窗口的 PDF 选项。页码和分页按编辑稿重新排版。' },
+  pdf: window.newWorldDesktop
+    ? { title: '保存为 PDF', note: '选择本机保存位置。页码和分页按编辑稿重新排版。' }
+    : { title: '打印／保存为 PDF', note: '使用浏览器打印窗口的 PDF 选项。页码和分页按编辑稿重新排版。' },
 } as const
 
 export type OutputFormat = keyof typeof outputFormats
@@ -40,10 +42,15 @@ async function printEdition(title: string, chapters: ChapterInput[]) {
   }
   try {
     await Promise.all(Array.from(printable.querySelectorAll('img'), (img) => img.decode().catch(() => {})))
-    window.addEventListener('afterprint', cleanup, { once: true })
     document.title = title
     document.body.classList.add('printing-edition')
-    window.print()
+    if (window.newWorldDesktop) {
+      await window.newWorldDesktop.savePdf(title)
+      cleanup()
+    } else {
+      window.addEventListener('afterprint', cleanup, { once: true })
+      window.print()
+    }
   } catch (error) {
     cleanup()
     throw error

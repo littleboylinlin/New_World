@@ -1,8 +1,8 @@
 import { version } from '../package.json'
 
 const repository = 'littleboylinlin/New_World'
-const releaseEndpoint = `https://api.github.com/repos/${repository}/releases/latest`
-const releasePages = `https://github.com/${repository}/releases/tag/`
+const releaseEndpoint = `https://api.github.com/repos/${repository}/releases`
+const releasePages = `https://github.com/${repository}/releases/`
 const timeoutMs = 8000
 const notesLimit = 12000
 
@@ -34,7 +34,7 @@ function compareToStable(current: Version, stable: Version) {
 }
 
 export type UpdateResult =
-  | { kind: 'available'; tag: string; notes: string; url: string }
+  | { kind: 'available'; tag: string; notes: string; url: string; windows?: true }
   | { kind: 'current' }
   | { kind: 'ahead'; tag: string }
   | { kind: 'unpublished' }
@@ -44,25 +44,59 @@ function failed(message: string): UpdateResult {
   return { kind: 'failed', message }
 }
 
-function releaseResult(payload: unknown, current: Version): UpdateResult {
-  const invalid = 'GitHub 返回的版本信息不完整或格式异常。请稍后重试。'
-  if (!payload || typeof payload !== 'object') return failed(invalid)
-  const { tag_name: tag, draft, prerelease, body } = payload as Record<string, unknown>
-  if (typeof tag !== 'string' || typeof draft !== 'boolean' || typeof prerelease !== 'boolean') return failed(invalid)
-  if (draft || prerelease) return { kind: 'unpublished' }
-  const stable = parseVersion(tag)
-  if (!stable) return failed(invalid)
-  if (stable.prerelease) return { kind: 'unpublished' }
+const invalidRelease = 'GitHub 返回的版本信息不完整或格式异常。请稍后重试。'
 
-  const comparison = compareToStable(current, stable)
+function readRelease(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return
+  const { tag_name: tag, draft, prerelease, body, assets } = payload as Record<string, unknown>
+  if (typeof tag !== 'string' || typeof draft !== 'boolean' || typeof prerelease !== 'boolean') return
+  const version = parseVersion(tag)
+  if (!version) return
+  return { tag, version, stable: !draft && !prerelease && !version.prerelease, body, assets }
+}
+
+type Release = NonNullable<ReturnType<typeof readRelease>>
+
+function describeRelease(release: Release, current: Version, windows?: true): UpdateResult {
+  const { tag, version, body } = release
+  const comparison = compareToStable(current, version)
   if (comparison === 0) return { kind: 'current' }
   if (comparison > 0) return { kind: 'ahead', tag }
 
   const notes = typeof body === 'string' ? body.trim() : ''
   return {
-    kind: 'available', tag, url: `${releasePages}${encodeURIComponent(tag)}`,
+    kind: 'available', tag, url: `${releasePages}tag/${encodeURIComponent(tag)}`, windows,
     notes: notes.length > notesLimit ? `${notes.slice(0, notesLimit)}\n\n完整说明见 GitHub 发布页。` : notes,
   }
+}
+
+function webReleaseResult(payload: unknown, current: Version): UpdateResult {
+  const release = readRelease(payload)
+  if (!release) return failed(invalidRelease)
+  return release.stable ? describeRelease(release, current) : { kind: 'unpublished' }
+}
+
+function hasWindowsInstaller({ tag, assets }: Release) {
+  if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(tag) || tag.length > 40 || !Array.isArray(assets)) return false
+  const filename = `New-World-Setup-${tag.slice(1)}-x64.exe`
+  const url = `${releasePages}download/${tag}/${filename}`
+  return assets.some((asset: unknown) => {
+    if (!asset || typeof asset !== 'object') return false
+    const { name, state, size, browser_download_url: download } = asset as Record<string, unknown>
+    return name === filename && state === 'uploaded' && typeof size === 'number' && Number.isSafeInteger(size) && size > 0 && download === url
+  })
+}
+
+function windowsReleaseResult(payload: unknown, current: Version): UpdateResult {
+  if (!Array.isArray(payload)) return failed(invalidRelease)
+  const releases = payload.map(readRelease).filter((release) => release !== undefined)
+  if (payload.length && !releases.length) return failed(invalidRelease)
+  let best: Release | undefined
+  for (const release of releases) {
+    if (!release.stable || !hasWindowsInstaller(release)) continue
+    if (!best || compareToStable(best.version, release.version) < 0) best = release
+  }
+  return best ? describeRelease(best, current, true) : { kind: 'unpublished' }
 }
 
 export async function checkForUpdate(): Promise<UpdateResult> {
@@ -72,8 +106,9 @@ export async function checkForUpdate(): Promise<UpdateResult> {
 
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  const desktop = !!window.newWorldDesktop
   try {
-    const response = await fetch(releaseEndpoint, {
+    const response = await fetch(desktop ? `${releaseEndpoint}?per_page=100` : `${releaseEndpoint}/latest`, {
       headers: { Accept: 'application/vnd.github+json' },
       credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
       cache: 'no-store', signal: controller.signal,
@@ -88,7 +123,7 @@ export async function checkForUpdate(): Promise<UpdateResult> {
 
     const payload: unknown = await response.json().catch(() => undefined)
     if (controller.signal.aborted) return failed('检查更新超时。请稍后重试。')
-    return releaseResult(payload, current)
+    return desktop ? windowsReleaseResult(payload, current) : webReleaseResult(payload, current)
   } catch {
     return failed(controller.signal.aborted ? '检查更新超时。请稍后重试。' : '无法连接 GitHub 检查更新。请检查网络后重试。')
   } finally {

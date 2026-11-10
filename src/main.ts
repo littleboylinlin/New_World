@@ -55,8 +55,9 @@ window.addEventListener('hashchange', async () => {
   render(true)
 })
 render()
-mountUpdateView(async () => {
-  if (leaveGuard && !await leaveGuard()) return false
-  window.location.reload()
-  return true
-})
+const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
+if (window.newWorldDesktop) {
+  window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
+  document.querySelector('#storage-location')!.textContent = '小说与原件保存在当前 Windows 用户的本机书库'
+}
+mountUpdateView(saveBeforeLeaving)

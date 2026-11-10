@@ -60,7 +60,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const localIcon = element('div', 'local-icon')
   localIcon.append(icon('device'))
   const localCopy = element('div')
-  localCopy.append(element('strong', '', '原文件始终可下载'), element('p', '', '导入和阅读都在当前浏览器完成。'))
+  localCopy.append(element('strong', '', '原文件始终可下载'), element('p', '', window.newWorldDesktop ? '导入和阅读都在本机完成。' : '导入和阅读都在当前浏览器完成。'))
   local.append(localIcon, localCopy)
   root.append(intro, cards, local)
 
