@@ -1,7 +1,62 @@
 ﻿param([string]$Installer, [string]$Directory)
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class InstallerWindow {
+    private delegate bool VisitWindow(IntPtr window, IntPtr unused);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, VisitWindow visit, IntPtr unused);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, string lParam, uint flags, uint timeout, out IntPtr result);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, StringBuilder lParam, uint flags, uint timeout, out IntPtr result);
+
+    public static IntPtr Find(IntPtr parent, int id, string text) {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, delegate(IntPtr child, IntPtr unused) {
+            if (!IsWindowVisible(child)) return true;
+            if (id != 0 && GetDlgCtrlID(child) != id) return true;
+            if (!String.IsNullOrEmpty(text)) {
+                var label = new StringBuilder(512);
+                IntPtr ignored;
+                SendMessageTimeout(child, 0x000D, (IntPtr)label.Capacity, label, 2, 1000, out ignored); // WM_GETTEXT
+                if (label.ToString() != text) return true;
+            }
+            found = child;
+            return false;
+        }, IntPtr.Zero);
+        return found;
+    }
+
+    public static void SetPath(IntPtr window, string path) {
+        IntPtr result;
+        if (SendMessageTimeout(window, 0x000C, IntPtr.Zero, path, 2, 2000, out result) == IntPtr.Zero || result == IntPtr.Zero)
+            throw new InvalidOperationException("Could not enter the installation path");
+    }
+
+    public static void Select(IntPtr window) {
+        IntPtr result;
+        if (SendMessageTimeout(window, 0x00F0, IntPtr.Zero, IntPtr.Zero, 2, 2000, out result) == IntPtr.Zero || result != IntPtr.Zero)
+            throw new InvalidOperationException("Expected an unchecked installer checkbox");
+        if (SendMessageTimeout(window, 0x00F1, (IntPtr)1, IntPtr.Zero, 2, 2000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("Could not check the installer option");
+    }
+
+    public static void Next(IntPtr parent, IntPtr button) {
+        if (!PostMessage(parent, 0x0111, (IntPtr)1, button)) // WM_COMMAND / IDOK
+            throw new InvalidOperationException("Could not advance the installer");
+    }
+}
+'@
 
 function Wait-For($Find, [string]$Description) {
     $limit = (Get-Date).AddSeconds(45)
@@ -13,13 +68,12 @@ function Wait-For($Find, [string]$Description) {
     throw "Timed out waiting for $Description"
 }
 
-function Find-Control($Property, [string]$Value) {
+function Find-Control([int]$Id, [string]$Text = '') {
     $setup.Refresh()
     if ($setup.HasExited) { throw "Installer exited early with code $($setup.ExitCode)" }
     if ($setup.MainWindowHandle -eq 0) { return }
-    $window = [Windows.Automation.AutomationElement]::FromHandle($setup.MainWindowHandle)
-    $condition = [Windows.Automation.PropertyCondition]::new($Property, $Value)
-    $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+    $control = [InstallerWindow]::Find($setup.MainWindowHandle, $Id, $Text)
+    if ($control -ne [IntPtr]::Zero) { $control }
 }
 
 $occupied = "$Directory Existing Files"
@@ -33,25 +87,18 @@ if (!$invalid.WaitForExit(45000) -or $invalid.ExitCode -ne 3 -or (Get-Content -L
 
 $setup = Start-Process -FilePath $Installer -PassThru
 try {
-    $id = [Windows.Automation.AutomationElement]::AutomationIdProperty
-    $name = [Windows.Automation.AutomationElement]::NameProperty
-    $directoryField = Wait-For { Find-Control $id '1019' } 'installation directory field'
-    $directoryField.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($Directory)
-    $next = Wait-For { Find-Control $id '1' } 'install button'
-    $next.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $directoryField = Wait-For { Find-Control 1019 } 'installation directory field'
+    [InstallerWindow]::SetPath($directoryField, $Directory)
+    $next = Wait-For { Find-Control 1 } 'install button'
+    [InstallerWindow]::Next($setup.MainWindowHandle, $next)
 
-    $launch = Wait-For { Find-Control $name '启动 New World' } 'launch checkbox'
-    $shortcut = Wait-For { Find-Control $name '创建桌面快捷方式' } 'desktop shortcut checkbox'
-    foreach ($checkbox in @($launch, $shortcut)) {
-        $toggle = $checkbox.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern)
-        if ($toggle.Current.ToggleState -ne [Windows.Automation.ToggleState]::Off) {
-            throw "Expected $($checkbox.Current.Name) to be unchecked"
-        }
-        $toggle.Toggle()
-    }
+    $launch = Wait-For { Find-Control 0 '启动 New World' } 'launch checkbox'
+    $shortcut = Wait-For { Find-Control 0 '创建桌面快捷方式' } 'desktop shortcut checkbox'
+    [InstallerWindow]::Select($launch)
+    [InstallerWindow]::Select($shortcut)
 
-    $finish = Wait-For { Find-Control $id '1' } 'finish button'
-    $finish.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $finish = Wait-For { Find-Control 1 } 'finish button'
+    [InstallerWindow]::Next($setup.MainWindowHandle, $finish)
     if (!$setup.WaitForExit(45000) -or $setup.ExitCode -ne 0) { throw 'Installer did not finish successfully' }
 
     $exe = Join-Path $Directory 'New World.exe'
