@@ -10,7 +10,7 @@ const versionTag = `v${version}`
 const releaseBase = 'https://github.com/littleboylinlin/New_World/releases'
 const releaseList = 'https://api.github.com/repos/littleboylinlin/New_World/releases?per_page=100'
 const installer = process.env.NEW_WORLD_INSTALLER
-const installDir = installer && join(process.env.LOCALAPPDATA, 'Programs', 'new-world')
+const installDir = installer && (process.env.NEW_WORLD_INSTALL_DIR || join(process.env.LOCALAPPDATA, 'Programs', 'New World'))
 const installedApp = installDir && join(installDir, 'New World.exe')
 const uninstaller = installDir && join(installDir, 'Uninstall New World.exe')
 const setup = promisify(execFile)

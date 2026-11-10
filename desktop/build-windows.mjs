@@ -32,9 +32,11 @@ await build({
       artifactName: 'New-World-Setup-${version}-${arch}.${ext}',
     },
     nsis: {
-      oneClick: true,
+      oneClick: false,
       perMachine: false,
-      runAfterFinish: false,
+      allowElevation: false,
+      createDesktopShortcut: false,
+      installerLanguages: ['zh_CN'],
       deleteAppDataOnUninstall: false,
       differentialPackage: false,
       include: 'desktop/installer.nsh',

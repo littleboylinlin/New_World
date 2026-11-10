@@ -1,10 +1,12 @@
 # New World
 
-New World v0.4.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.4.1 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
 ## Windows 桌面版
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
+
+安装向导可选择新建或空的安装目录。升级时默认沿用已有安装位置。完成页显示实际路径，可勾选「创建桌面快捷方式」和「启动 New World」。开始菜单始终提供入口。
 
 两个书库、编辑和导出均可离线使用。桌面数据保存在 `%APPDATA%\NewWorld`，覆盖安装与正常卸载保留该目录。桌面书库与浏览器书库分开保存，现有浏览器数据仍可在原浏览器和地址中访问。
 
