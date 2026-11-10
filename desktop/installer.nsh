@@ -14,9 +14,15 @@
 
 !macro customPageAfterChangeDir
 Function CheckNewWorldDirectory
-  GetFullPathName $INSTDIR "$INSTDIR"
   StrCmp $INSTDIR "" invalid
-  GetFullPathName $R0 "$APPDATA\NewWorld"
+  # The Win32 API also resolves new directories that have not been created yet.
+  System::Call 'kernel32::GetFullPathNameW(w "$INSTDIR", i ${NSIS_MAX_STRLEN}, w .r0, p 0) i.r1'
+  ${If} $1 == 0
+  ${OrIf} $1 >= ${NSIS_MAX_STRLEN}
+    Goto invalid
+  ${EndIf}
+  StrCpy $INSTDIR $0
+  StrCpy $R0 "$APPDATA\NewWorld"
   StrCpy $R1 "$INSTDIR"
   checkProfile:
     StrCmp $R1 $R0 invalid
