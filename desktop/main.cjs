@@ -135,11 +135,16 @@ function openWindow() {
   mainWindow = new BrowserWindow({
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
     backgroundColor: '#f4eee2',
+    // The app header is the title bar. Windows draws only the window buttons over its right end.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#16130f', symbolColor: '#f4eee2', height: 46 },
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false,
     },
   })
+  // The menu stays registered for its shortcuts but is never shown.
+  mainWindow.setMenuBarVisibility(false)
   const contents = mainWindow.webContents
   contents.on('will-navigate', (event) => event.preventDefault())
   contents.setWindowOpenHandler(({ url }) => {

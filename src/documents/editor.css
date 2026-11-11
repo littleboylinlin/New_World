@@ -118,6 +118,7 @@
 
 @media (min-width: 780px) {
   .chapter-navigation { position: sticky; top: 14px; max-height: calc(100svh - 28px); overflow: auto; }
+  .desktop .chapter-navigation { max-height: calc(100svh - 80px); }
 }
 
 @media (max-width: 779px) {

@@ -11,6 +11,9 @@ import { libraryChanges } from './library'
 import type { LibraryId } from './library'
 
 const main = document.querySelector<HTMLElement>('#main')!
+const page = document.querySelector<HTMLElement>('#page')!
+// The desktop window has no system title bar. The app header takes its place and the page scrolls below it.
+if (window.newWorldDesktop) document.documentElement.classList.add('desktop')
 let view: AbortController | undefined
 let leaveGuard: (() => Promise<boolean>) | undefined
 let activeHash = location.hash
@@ -42,6 +45,7 @@ function render(moveFocus = false) {
   }
   if (moveFocus) {
     window.scrollTo(0, 0)
+    page.scrollTo(0, 0)
     main.focus({ preventScroll: true })
   }
 }

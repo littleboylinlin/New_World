@@ -103,6 +103,17 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await expect(page).toHaveURL('new-world://app/')
     await expect(page.locator('#update-banner')).toBeHidden()
     expect(await page.evaluate(() => ({ secure: isSecureContext, node: typeof require }))).toEqual({ secure: true, node: 'undefined' })
+    // The app header replaces the system title bar and leaves room for the window buttons.
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMenuBarVisible())).toBe(false)
+    const header = await page.evaluate(() => {
+      const inner = document.querySelector('.header-inner')
+      const help = document.querySelector('#update-help').getBoundingClientRect()
+      return { top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight), gap: innerWidth - help.right }
+    })
+    expect(header.top).toBe(0)
+    expect(header.reserved).toBeGreaterThan(90)
+    expect(header.gap).toBeGreaterThan(90)
+    await page.screenshot({ path: testInfo.outputPath('windows-home.png') })
     await page.locator('a[href="#/reference"]').first().click()
     await page.locator('input[type=file]').setInputFiles(original)
     await page.getByRole('link', { name: '查看 桌面续写原文', exact: true }).click()
