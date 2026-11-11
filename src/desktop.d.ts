@@ -10,9 +10,19 @@ interface StorageResult {
   restart: boolean
 }
 
+type DesktopUpdateResult = { ok: true } | { ok: false; message: string }
+
+interface DesktopUpdateProgress {
+  tag: string
+  received: number
+  total: number
+}
+
 interface Window {
   newWorldDesktop?: {
-    openInstaller: (tag: string) => Promise<void>
+    downloadUpdate: (tag: string) => Promise<DesktopUpdateResult>
+    installUpdate: (tag: string) => Promise<DesktopUpdateResult>
+    onUpdateProgress: (listener: (progress: DesktopUpdateProgress) => void) => void
     savePdf: (name: string) => Promise<void>
     onCloseRequested: (save: () => Promise<boolean>) => void
     getStorageLocation: () => Promise<StorageState>

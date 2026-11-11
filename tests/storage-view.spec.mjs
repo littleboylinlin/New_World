@@ -5,7 +5,9 @@ const desktopState = () => {
   const defaultPath = 'C:\\Users\\lin\\AppData\\Roaming\\NewWorld'
   const chosen = 'D:\\我的书库\\New World'
   window.newWorldDesktop = {
-    openInstaller: async () => {},
+    downloadUpdate: async () => ({ ok: true }),
+    installUpdate: async () => ({ ok: true }),
+    onUpdateProgress: () => {},
     savePdf: async () => {},
     onCloseRequested: () => {},
     getStorageLocation: async () => ({ path: custom ? chosen : defaultPath, defaultPath, custom }),

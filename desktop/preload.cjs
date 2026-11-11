@@ -1,7 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('newWorldDesktop', {
-  openInstaller: (tag) => ipcRenderer.invoke('new-world:open-installer', tag),
+  downloadUpdate: (tag) => ipcRenderer.invoke('new-world:download-update', tag),
+  installUpdate: (tag) => ipcRenderer.invoke('new-world:install-update', tag),
+  onUpdateProgress: (listener) => {
+    ipcRenderer.on('new-world:update-progress', (_event, progress) => listener(progress))
+  },
   savePdf: (name) => ipcRenderer.invoke('new-world:save-pdf', name),
   getStorageLocation: () => ipcRenderer.invoke('new-world:get-storage-location'),
   setStorageLocation: () => ipcRenderer.invoke('new-world:set-storage-location'),

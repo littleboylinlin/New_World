@@ -1,6 +1,6 @@
 # New World
 
-New World v0.6.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.7.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
 ## Windows 桌面版
 
@@ -27,7 +27,8 @@ npm run dev
 
 在「帮助与更新」中可手动检查、查看版本号和更新说明。发现新版时显示非弹窗提示，可在本次运行期间忽略同一版本。
 
-- Windows 版从最近 100 条 GitHub Releases 中选取含官方 Windows x64 安装包的最高正式版。点击下载前应用会保存当前正文，确认保存后在默认浏览器打开安装包地址。请在运行安装包前关闭 New World。安装程序遇到仍在运行的 New World 会退出，等保存关窗后可重新运行。
+- Windows 版从最近 100 条 GitHub Releases 中选取带 SHA-256 校验值的 Windows x64 正式安装包。点「更新并重启」后，应用内会显示下载进度。下载时可继续写作。安装包校验通过后，应用保存正文、关闭窗口并覆盖原安装目录，安装完成后自动启动。
+- 如果正文保存失败，窗口会保留，保存或另存后可继续更新。v0.6.0 及更早版本需先手动覆盖安装一次 v0.7.0 或更新版本。
 - Web 版查询 [GitHub Releases 最新正式发行版接口](https://api.github.com/repos/littleboylinlin/New_World/releases/latest)。站点已部署新版时，可选择「重新加载当前网页」，应用会先确认正文保存成功。本地运行时，请先更新代码并重启服务。
 
 检查只匿名获取公开版本元数据。小说、原文件和编辑稿均留在本机。
@@ -94,6 +95,6 @@ Playwright 使用生产构建，覆盖旧库迁移、格式转换与原件校验
 
 更新检查测试通过拦截 GitHub 接口注入可控的正式版、预发布版和故障响应。运行时读取实际 GitHub Releases 接口。
 
-桌面版使用 Electron 打开相同的生产构建。在 Windows 运行 `npm run desktop` 可启动开发构建，`npm run build:windows` 生成 `dist-windows/` 内的 x64 NSIS 安装包。CI 在 Windows 运行实际安装包，验证离线读写、PDF 导出、更新提示、安装前关闭保护、重新安装与卸载后的数据保留。
+桌面版使用 Electron 打开相同的生产构建。在 Windows 运行 `npm run desktop` 可启动开发构建，`npm run build:windows` 生成 `dist-windows/` 内的 x64 NSIS 安装包。CI 在 Windows 运行实际安装包，验证离线读写、PDF 导出、应用内更新、原目录覆盖及重启后数据保留。
 
 发布 Windows 新版时，在同一 PR 更新 `package.json` 与锁文件的版本，新增 `docs/releases/v<版本>.md`。合并到 `main` 后，CI 在 Web 与 Windows 检查均通过时生成正式 Release，上传安装包和 SHA-256 校验文件。也可以在 `main` 上手动运行 Checks，填写匹配的正式版本标签重试发布。
