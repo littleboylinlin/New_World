@@ -9,37 +9,13 @@ import { offerUndo } from './undo'
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
 
-function shelfArtwork(library: LibraryId) {
-  const container = element('span', 'shelf-artwork')
-  container.setAttribute('aria-hidden', 'true')
-  container.innerHTML = library === 'original'
-    ? `<svg viewBox="0 0 225 192" fill="none">
-      <path d="M50 166c0-65 49-119 108-119 21 0 39 7 53 16M79 168c0-47 35-86 78-86 22 0 42 10 56 26" stroke="currentColor" opacity=".36"/>
-      <path d="m52 132 41-15 89 13-42 20-88-12c-6-1-5-4 0-6Zm0 6v15l88 14 42-21v-16m-42 20v17M68 112l32-15 76 9-31 17-77-9m0 0v12m77-3v10m31-27v19" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-      <path d="M124 104c-5-25 12-45 45-57-1 24-15 41-42 55m-9 9 35-47m-15 20 13-1M187 75v12m-6-6h12M88 75v8m-4-4h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-      <circle cx="108" cy="55" r="2" fill="currentColor"/><circle cx="202" cy="125" r="2" fill="currentColor"/>
-    </svg>`
-    : `<svg viewBox="0 0 225 192" fill="none">
-      <path d="M48 167c0-68 53-121 113-121 20 0 39 6 54 17m-139 106c0-50 38-89 84-89 21 0 40 8 56 24" stroke="currentColor" opacity=".36"/>
-      <path d="M55 107c28-11 49-8 72 8 19-17 42-20 70-10v54c-25-9-50-5-70 9-22-15-46-17-72-7Zm72 8v53M66 118c18-5 35-2 49 6m-49 5c18-5 35-2 49 6m-49 5c18-5 35-2 49 6m24-22c13-8 30-11 47-6m-47 17c13-8 30-11 47-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M166 101v40l7-6 7 5v-39m-48-38v17m-9-8.5h18m37 4v10m-5-5h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-      <circle cx="90" cy="85" r="2" fill="currentColor"/><circle cx="201" cy="79" r="2" fill="currentColor"/>
-    </svg>`
-  return container
-}
-
 export function renderHome(root: HTMLElement, signal: AbortSignal) {
-  const intro = element('section', 'home-intro')
-  const introCopy = element('div', 'home-copy')
-  introCopy.append(
-    element('p', 'eyebrow', 'NOVEL LIBRARY'),
+  const home = element('section', 'home')
+  const intro = element('header', 'home-intro')
+  intro.append(
     element('h1', '', '我的小说书库'),
     element('p', 'intro-copy', '在原创库写自己的故事，也可以围绕原作展开续写。'),
   )
-  const art = element('div', 'home-art')
-  art.setAttribute('aria-hidden', 'true')
-  art.append(element('span'), element('span'), element('span'))
-  intro.append(introCopy, art)
 
   const cards = element('div', 'shelf-grid')
   const counts = new Map<LibraryId, HTMLElement>()
@@ -48,8 +24,6 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     const card = element('a', `shelf-card shelf-${id}`)
     card.href = bookPath(id)
     card.setAttribute('aria-label', `进入${library.name}`)
-    const top = element('div', 'card-top')
-    top.append(element('span', 'card-index', library.index), element('span', '', library.label))
     const copy = element('div', 'card-copy')
     copy.append(element('h2', '', library.name), element('p', '', library.description))
     const bottom = element('div', 'card-bottom')
@@ -58,17 +32,14 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     enter.append('进入书库', icon('arrow'))
     counts.set(id, count)
     bottom.append(count, enter)
-    card.append(shelfArtwork(id), top, copy, bottom)
+    card.append(element('span', 'card-index', library.index), copy, bottom)
     cards.append(card)
   }
 
-  const local = element('aside', 'local-note')
-  const localIcon = element('div', 'local-icon')
-  localIcon.append(icon('device'))
-  const localCopy = element('div')
-  localCopy.append(element('strong', '', '原文件始终可下载'), element('p', '', window.newWorldDesktop ? '导入和阅读都在本机完成。' : '导入和阅读都在当前浏览器完成。'))
-  local.append(localIcon, localCopy)
-  root.append(intro, cards, local)
+  const local = element('p', 'local-note')
+  local.append(icon('device'), element('strong', '', '原文件始终可下载'), window.newWorldDesktop ? '导入和阅读都在本机完成。' : '导入和阅读都在当前浏览器完成。')
+  home.append(intro, cards, local)
+  root.append(home)
 
   async function refreshCounts() {
     await Promise.all(libraryIds.map(async (id) => {
