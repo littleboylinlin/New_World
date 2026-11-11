@@ -11,6 +11,7 @@ await Promise.all([
   cp('dist', join(appDir, 'dist'), { recursive: true }),
   cp('desktop/main.cjs', join(appDir, 'desktop/main.cjs')),
   cp('desktop/preload.cjs', join(appDir, 'desktop/preload.cjs')),
+  cp('desktop/storage-location.cjs', join(appDir, 'desktop/storage-location.cjs')),
   writeFile(join(appDir, 'package.json'), JSON.stringify({
     name, version, description, author, main: 'desktop/main.cjs',
   })),

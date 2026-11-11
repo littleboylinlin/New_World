@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } = 
 const { mkdirSync } = require('node:fs')
 const { readFile, writeFile } = require('node:fs/promises')
 const { extname, isAbsolute, join, relative, resolve } = require('node:path')
+const storageLocation = require('./storage-location.cjs')
 
 const appId = 'com.littleboylinlin.newworld'
 const appUrl = 'new-world://app/'
@@ -20,8 +21,11 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'new-world', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ])
 
-// Keep both the profile path and the IndexedDB origin stable across releases.
-const profile = join(app.getPath('appData'), 'NewWorld')
+// Keep the IndexedDB origin stable across releases; the profile directory is configurable.
+const appData = app.getPath('appData')
+const defaultProfile = join(appData, 'NewWorld')
+const location = storageLocation.applyPending(appData)
+const profile = location.current
 mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId(appId)
@@ -70,6 +74,43 @@ ipcMain.handle('new-world:save-pdf', async (event, name) => {
   if (canceled || !filePath) return
   const data = await event.sender.printToPDF({ printBackground: true, preferCSSPageSize: true })
   await writeFile(filePath, data)
+})
+
+function scheduleRestart() {
+  app.relaunch()
+  setTimeout(async () => {
+    try { await session.defaultSession.flushStorageData() } catch { /* storage may already be closed */ }
+    app.exit(0)
+  }, 400)
+}
+
+ipcMain.handle('new-world:get-storage-location', (event) => {
+  if (!trustedFrame(event)) throw new Error('无效的存储位置请求。')
+  return { path: profile, defaultPath: defaultProfile, custom: profile !== defaultProfile }
+})
+
+ipcMain.handle('new-world:set-storage-location', async (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (!trustedFrame(event) || !window) throw new Error('无效的存储位置请求。')
+  const { canceled, filePaths } = await dialog.showOpenDialog(window, {
+    title: '选择书库存储位置',
+    defaultPath: app.getPath('documents'),
+    properties: ['openDirectory', 'createDirectory'],
+  })
+  if (canceled || !filePaths[0]) return null
+  const result = storageLocation.setLocation(appData, filePaths[0], { programDir: resolve(app.getPath('exe'), '..') })
+  if (result.error) throw new Error(result.error)
+  scheduleRestart()
+  return { path: result.to, custom: result.to !== defaultProfile, restart: true }
+})
+
+ipcMain.handle('new-world:reset-storage-location', (event) => {
+  if (!trustedFrame(event)) throw new Error('无效的存储位置请求。')
+  const result = storageLocation.resetLocation(appData)
+  if (result.error) throw new Error(result.error)
+  if (result.unchanged) return null
+  scheduleRestart()
+  return { path: result.to, custom: false, restart: true }
 })
 
 let mainWindow

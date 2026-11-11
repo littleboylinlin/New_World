@@ -36,6 +36,8 @@ h1, h2, h3, p { margin: 0; }
 .main-content { flex: 1; padding-block: 44px 60px; }
 .site-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding-block: 20px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; }
 .version { margin-inline-start: 5px; font-variant-numeric: tabular-nums; }
+.storage-location { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: #adb5a8; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.storage-location:hover { color: var(--accent); text-decoration-color: var(--accent); }
 .update-banner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 15px; margin-top: 14px; padding: 9px 12px; border: 1px solid #dbe4d8; border-radius: 11px; background: var(--tint); }
 .update-banner-message { color: var(--accent); font-size: .9rem; font-weight: 700; overflow-wrap: anywhere; }
 .update-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
@@ -153,6 +155,12 @@ h1 { font-family: var(--serif); font-size: clamp(2rem, 4.6vw, 3.45rem); line-hei
 .dialog-help, .field-error { margin-top: 10px; color: var(--muted); font-size: .88rem; line-height: 1.65; overflow-wrap: anywhere; }
 .field-error { color: #823a32; }
 .dialog-controls { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.storage-dialog { width: min(480px, calc(100% - 32px)); }
+.storage-location-box { display: grid; gap: 9px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 11px; background: #fbfaf4; }
+.storage-badge { justify-self: start; padding: 2px 9px; border-radius: 20px; background: var(--tint); color: var(--accent); font-size: .74rem; font-weight: 700; }
+.storage-path { font-size: .9rem; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
+.storage-state { margin-top: 11px; color: var(--muted); font-size: .86rem; line-height: 1.55; }
+.storage-state:empty { display: none; }
 
 .reader-title { min-width: 0; }
 .shelf-actions, .version-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

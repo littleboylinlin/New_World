@@ -2,6 +2,7 @@ import './styles.css'
 import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
+import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { libraries } from './ui'
 import type { LibraryId } from './library'
@@ -58,6 +59,6 @@ render()
 const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
 if (window.newWorldDesktop) {
   window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
-  document.querySelector('#storage-location')!.textContent = '小说与原件保存在当前 Windows 用户的本机书库'
 }
+mountStorageView(saveBeforeLeaving)
 mountUpdateView(saveBeforeLeaving)
