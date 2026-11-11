@@ -29,11 +29,16 @@ function shelfArtwork(library: LibraryId) {
 
 export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const intro = element('section', 'home-intro')
-  intro.append(
+  const introCopy = element('div', 'home-copy')
+  introCopy.append(
     element('p', 'eyebrow', 'NOVEL LIBRARY'),
     element('h1', '', '我的小说书库'),
     element('p', 'intro-copy', '在原创库写自己的故事，也可以围绕原作展开续写。'),
   )
+  const art = element('div', 'home-art')
+  art.setAttribute('aria-hidden', 'true')
+  art.append(element('span'), element('span'), element('span'))
+  intro.append(introCopy, art)
 
   const cards = element('div', 'shelf-grid')
   const counts = new Map<LibraryId, HTMLElement>()
@@ -147,20 +152,27 @@ function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
   }
 }
 
-function bookRow(root: HTMLElement, book: Book) {
-  const row = element('li', 'book-row')
+// Covers stay the same for a book across visits because the variant comes from its id.
+function coverVariant(id: string) {
+  let sum = 0
+  for (const char of id) sum = (sum * 31 + char.charCodeAt(0)) >>> 0
+  return sum % 4
+}
+
+function bookCard(root: HTMLElement, book: Book) {
+  const row = element('li', 'book-card')
   const open = element('a', 'book-link')
   open.href = bookPath(book.library, book.id)
   open.setAttribute('aria-label', `查看 ${book.title}`)
-  const fileIcon = element('span', 'book-icon')
-  fileIcon.append(icon('file'))
-  const copy = element('div', 'book-copy')
-  copy.append(element('strong', 'book-title', book.title), book.library === 'reference'
+  open.title = book.title
+  const cover = element('span', `book-cover cover-${coverVariant(book.id)}`)
+  const length = Array.from(book.title).length
+  cover.append(element('strong', length > 14 ? 'book-title book-title-long' : length > 6 ? 'book-title book-title-medium' : 'book-title', book.title))
+  open.append(cover, book.library === 'reference'
     ? element('span', 'file-details', '续写项目 · 查看续写和原文') : fileDetails(book))
-  open.append(fileIcon, copy)
   const controls = element('div', 'book-controls')
-  const rename = button('重命名', 'button button-quiet button-small')
-  const remove = button('删除', 'button button-quiet button-small remove-button')
+  const rename = button('重命名', 'button button-quiet button-small', 'edit')
+  const remove = button('删除', 'button button-quiet button-small remove-button', 'trash')
   rename.addEventListener('click', () => manageBook(root, book, 'rename'))
   remove.addEventListener('click', () => manageBook(root, book, 'delete'))
   controls.append(rename, remove)
@@ -204,9 +216,9 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
       if (signal.aborted || current !== requestNumber) return
       count.textContent = `${books.length} 部`
       if (books.length) {
-        const list = element('ul', 'book-list')
+        const list = element('ul', 'book-list book-grid')
         list.setAttribute('aria-label', '全部作品')
-        list.append(...books.map((book) => bookRow(root, book)))
+        list.append(...books.map((book) => bookCard(root, book)))
         content.replaceChildren(list)
       } else {
         const empty = element('div', 'empty-shelf')

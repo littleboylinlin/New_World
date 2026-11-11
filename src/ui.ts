@@ -22,7 +22,24 @@ const paths = {
   file: 'M13 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9Zm0 0v6h6M8 13h8m-8 4h6',
   download: 'M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4',
   device: 'M4 5h16v11H4zM2 20h20m-13-8 2 2 4-4',
+  up: 'M12 19V5m-6 6 6-6 6 6',
+  down: 'M12 5v14m-6-6 6 6 6-6',
+  edit: 'M4 20h4L19 9l-4-4L4 16v4Zm10-14 4 4',
+  trash: 'M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13m-7 4v6m4-6v6',
+  check: 'm5 12 5 5 9-10',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
+  close: 'M6 6l12 12M18 6 6 18',
+  list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01m-.01 6h.01m-.01 6h.01',
+  ordered: 'M10 6h10m-10 6h10m-10 6h10M4 5h1v4m-1 0h2m-2 6h2l-2 3h2',
+  quote: 'M5 17c2-1 3-3 3-6H5V6h5v5c0 4-2 6-5 6Zm9 0c2-1 3-3 3-6h-3V6h5v5c0 4-2 6-5 6Z',
+  rule: 'M3 12h18M8 6h8M8 18h8',
+  undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
+  redo: 'm15 14 5-5-5-5m5 5H10a6 6 0 0 0 0 12h3',
+  image: 'M4 5h16v14H4zm0 11 5-5 4 4 3-3 4 4M15 9.5h.01',
 } as const
+
+export type IconName = keyof typeof paths
 
 export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', label?: string) {
   const node = document.createElement(tag)
@@ -31,14 +48,14 @@ export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className
   return node
 }
 
-export function icon(name: keyof typeof paths) {
+export function icon(name: IconName) {
   const namespace = 'http://www.w3.org/2000/svg'
   const svg = document.createElementNS(namespace, 'svg')
   svg.setAttribute('viewBox', '0 0 24 24')
   svg.setAttribute('aria-hidden', 'true')
   svg.setAttribute('fill', 'none')
   svg.setAttribute('stroke', 'currentColor')
-  svg.setAttribute('stroke-width', '1.65')
+  svg.setAttribute('stroke-width', '2')
   svg.setAttribute('stroke-linecap', 'round')
   svg.setAttribute('stroke-linejoin', 'round')
   const path = document.createElementNS(namespace, 'path')
@@ -47,7 +64,7 @@ export function icon(name: keyof typeof paths) {
   return svg
 }
 
-export function button(label: string, className = 'button', symbol?: keyof typeof paths) {
+export function button(label: string, className = 'button', symbol?: IconName) {
   const control = element('button', className)
   control.type = 'button'
   if (symbol) control.append(icon(symbol))
