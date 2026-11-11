@@ -131,7 +131,18 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
     await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', exportedPdf))
     await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
-    await expect(page.getByRole('img', { name: 'PDF 第 1 页' })).toBeVisible()
+    const canvas = page.getByRole('img', { name: 'PDF 第 1 页' })
+    await expect(canvas).toBeVisible()
+    await expect.poll(() => canvas.evaluate((page) => {
+      const { data } = page.getContext('2d').getImageData(0, 0, page.width, page.height)
+      let hasInk = false
+      let monochrome = true
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] !== data[i + 1] || data[i] !== data[i + 2] || data[i + 3] !== 255) monochrome = false
+        if (data[i] < 64) hasInk = true
+      }
+      return { monochrome, hasInk, corner: Array.from(data.slice(0, 4)) }
+    })).toEqual({ monochrome: true, hasInk: true, corner: [255, 255, 255, 255] })
     await page.screenshot({ path: testInfo.outputPath('windows-reader.png') })
   } finally {
     await stop(app)

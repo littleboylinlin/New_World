@@ -195,7 +195,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .manage-dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; border: 3px solid var(--ink); border-radius: 14px; color: var(--ink); background: var(--sheet); box-shadow: 9px 9px 0 var(--ink); }
 .manage-dialog::backdrop { background: #16130f9e; }
 .manage-form { padding: 24px; }
-.manage-form h2 { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid var(--ink); font-size: 1.32rem; font-weight: 900; }
+.manage-form > h2 { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid var(--ink); font-size: 1.32rem; font-weight: 900; }
 .field-label { display: grid; gap: 8px; font-size: .9rem; font-weight: 750; }
 .title-input, .encoding-field select, .editor-select { min-height: 44px; min-width: 0; width: 100%; padding: 8px 11px; border: 2px solid var(--ink); border-radius: 8px; color: var(--ink); background: #fff; }
 .title-input:focus-visible, .encoding-field select:focus-visible, .editor-select:focus-visible { outline-offset: 1px; background: #fffbe3; }

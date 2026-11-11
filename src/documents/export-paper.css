@@ -1,0 +1,67 @@
+.export-paper {
+  box-sizing: border-box;
+  color: #000;
+  background: #fff;
+  font-family: "Times New Roman", "Songti SC", SimSun, "Noto Serif CJK SC", "Source Han Serif SC", serif;
+  font-size: var(--export-font-size);
+  font-weight: 400;
+  line-height: var(--export-line-height);
+  overflow-wrap: anywhere;
+}
+
+.export-paper p { margin: 0 0 var(--export-paragraph-gap); }
+.export-paper p:empty { min-height: 1lh; }
+.export-paper :is(h1, h2, h3, h4, h5, h6) {
+  margin: var(--export-heading-before) 0 var(--export-heading-after);
+  padding: 0;
+  border: 0;
+  font-family: Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  font-weight: 700;
+  line-height: var(--export-heading-line-height);
+  letter-spacing: normal;
+  break-after: avoid;
+}
+.export-paper h1 { font-size: var(--export-h1); }
+.export-paper h2 { font-size: var(--export-h2); }
+.export-paper h3 { font-size: var(--export-h3); }
+.export-paper h4 { font-size: var(--export-h4); }
+.export-paper h5 { font-size: var(--export-h5); }
+.export-paper h6 { font-size: var(--export-h6); }
+.export-paper :is(ul, ol) { padding-inline-start: 1.6em; }
+.export-paper li p { margin-block: .25em; }
+.export-paper pre { white-space: pre-wrap; }
+.export-paper :is(pre, code) { font-family: Consolas, "SFMono-Regular", monospace; }
+.export-paper blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 2px solid; }
+.export-paper hr { margin-block: 1.4em; border: 0; border-top: 1px solid; }
+.export-paper img { max-width: 100%; height: auto; }
+.export-paper table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.export-paper :is(td, th) { border: 1px solid; padding: .22em .5em; text-align: start; }
+.export-paper :is(td, th) p:last-child { margin-bottom: 0; }
+.export-paper section + section { margin-block-start: 2em; }
+
+html.export-document, .export-document body { margin: 0; color-scheme: light; background: #fff; }
+.export-document .export-paper {
+  max-width: 210mm;
+  margin-inline: auto;
+  padding: clamp(14px, 7vw, var(--export-margin));
+}
+.print-edition { display: none; }
+
+@media print {
+  html.printing-edition, .printing-edition body {
+    display: block;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    color-scheme: light;
+    background: #fff;
+  }
+  .printing-edition body > :not(.print-edition), .printing-edition dialog, .printing-edition dialog::backdrop {
+    display: none !important;
+  }
+  .printing-edition .print-edition { display: block; }
+  .export-document .export-paper { max-width: none; padding: 0; }
+  .export-paper img { max-height: var(--export-image-height); object-fit: contain; break-inside: avoid; }
+  .export-paper section + section { margin-block-start: 0; break-before: page; }
+}
