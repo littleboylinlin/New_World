@@ -90,6 +90,7 @@ h1, h2, h3, p { margin: 0; }
 .update-release h3 { font-size: .98rem; font-weight: 800; }
 .update-notes { max-height: min(34vh, 17rem); overflow: auto; margin-block: 9px 14px; padding: 10px 12px; border: 2px solid var(--hair); border-radius: 8px; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; font-size: .88rem; }
 .update-hint { margin-top: 12px; }
+.update-progress { display: block; width: 100%; height: 12px; margin-top: 12px; accent-color: var(--accent); }
 
 .eyebrow { display: inline-block; padding: 3px 9px; border-radius: 4px; color: var(--paper); background: var(--ink); font-size: .72rem; line-height: 1.5; font-weight: 800; letter-spacing: .13em; }
 h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; letter-spacing: -.01em; overflow-wrap: anywhere; }

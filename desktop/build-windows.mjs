@@ -12,6 +12,8 @@ await Promise.all([
   cp('desktop/main.cjs', join(appDir, 'desktop/main.cjs')),
   cp('desktop/preload.cjs', join(appDir, 'desktop/preload.cjs')),
   cp('desktop/storage-location.cjs', join(appDir, 'desktop/storage-location.cjs')),
+  cp('desktop/windows-update.cjs', join(appDir, 'desktop/windows-update.cjs')),
+  cp('desktop/windows-release.mjs', join(appDir, 'desktop/windows-release.mjs')),
   writeFile(join(appDir, 'package.json'), JSON.stringify({
     name, version, description, author, main: 'desktop/main.cjs',
   })),

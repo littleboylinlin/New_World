@@ -1,8 +1,6 @@
 import { version } from '../package.json'
+import { readWindowsInstaller, releaseEndpoint, releasePages, windowsReleaseList } from '../desktop/windows-release.mjs'
 
-const repository = 'littleboylinlin/New_World'
-const releaseEndpoint = `https://api.github.com/repos/${repository}/releases`
-const releasePages = `https://github.com/${repository}/releases/`
 const timeoutMs = 8000
 const notesLimit = 12000
 
@@ -76,24 +74,13 @@ function webReleaseResult(payload: unknown, current: Version): UpdateResult {
   return release.stable ? describeRelease(release, current) : { kind: 'unpublished' }
 }
 
-function hasWindowsInstaller({ tag, assets }: Release) {
-  if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(tag) || tag.length > 40 || !Array.isArray(assets)) return false
-  const filename = `New-World-Setup-${tag.slice(1)}-x64.exe`
-  const url = `${releasePages}download/${tag}/${filename}`
-  return assets.some((asset: unknown) => {
-    if (!asset || typeof asset !== 'object') return false
-    const { name, state, size, browser_download_url: download } = asset as Record<string, unknown>
-    return name === filename && state === 'uploaded' && typeof size === 'number' && Number.isSafeInteger(size) && size > 0 && download === url
-  })
-}
-
 function windowsReleaseResult(payload: unknown, current: Version): UpdateResult {
   if (!Array.isArray(payload)) return failed(invalidRelease)
   const releases = payload.map(readRelease).filter((release) => release !== undefined)
   if (payload.length && !releases.length) return failed(invalidRelease)
   let best: Release | undefined
   for (const release of releases) {
-    if (!release.stable || !hasWindowsInstaller(release)) continue
+    if (!release.stable || !readWindowsInstaller(release.tag, release.assets)) continue
     if (!best || compareToStable(best.version, release.version) < 0) best = release
   }
   return best ? describeRelease(best, current, true) : { kind: 'unpublished' }
@@ -108,7 +95,7 @@ export async function checkForUpdate(): Promise<UpdateResult> {
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   const desktop = !!window.newWorldDesktop
   try {
-    const response = await fetch(desktop ? `${releaseEndpoint}?per_page=100` : `${releaseEndpoint}/latest`, {
+    const response = await fetch(desktop ? windowsReleaseList : `${releaseEndpoint}/latest`, {
       headers: { Accept: 'application/vnd.github+json' },
       credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
       cache: 'no-store', signal: controller.signal,

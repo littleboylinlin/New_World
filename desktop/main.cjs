@@ -1,15 +1,13 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } = require('electron')
 const { mkdirSync } = require('node:fs')
 const { readFile, writeFile } = require('node:fs/promises')
-const { extname, isAbsolute, join, relative, resolve } = require('node:path')
+const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
 const storageLocation = require('./storage-location.cjs')
+const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
+const { releasePages, windowsReleaseList } = require('./windows-release.mjs')
 
 const appId = 'com.littleboylinlin.newworld'
 const appUrl = 'new-world://app/'
-const repository = 'littleboylinlin/New_World'
-const windowsReleases = `https://api.github.com/repos/${repository}/releases?per_page=100`
-const releaseBase = `https://github.com/${repository}/releases/`
-const windowsTag = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 const policy = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 const types = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -55,13 +53,30 @@ function trustedFrame(event) {
   return frame === event.sender.mainFrame && frame?.url.startsWith(appUrl)
 }
 
-ipcMain.handle('new-world:open-installer', (event, tag) => {
-  if (!trustedFrame(event) || typeof tag !== 'string' || tag.length > 40 || !windowsTag.test(tag) || /\s/.test(tag)) {
-    throw new Error('无效的 Windows 安装包地址。')
+let windowsUpdater
+
+async function performUpdate(event, action) {
+  if (!trustedFrame(event)) throw new Error('无效的更新请求。')
+  if (!windowsUpdater) return { ok: false, message: '应用内更新适用于已安装的 Windows x64 正式版。' }
+  try {
+    await action()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: error instanceof UpdateError ? error.message : '更新失败，请稍后重试。' }
   }
-  const version = tag.slice(1)
-  return shell.openExternal(`${releaseBase}download/${tag}/New-World-Setup-${version}-x64.exe`)
-})
+}
+
+ipcMain.handle('new-world:download-update', (event, tag) => performUpdate(event, () => (
+  windowsUpdater.download(tag, (received, total) => {
+    if (!event.sender.isDestroyed()) event.sender.send('new-world:update-progress', { tag, received, total })
+  })
+)))
+
+ipcMain.handle('new-world:install-update', (event, tag) => performUpdate(event, async () => {
+  await session.defaultSession.flushStorageData()
+  await windowsUpdater.install(tag)
+  setImmediate(() => app.quit())
+}))
 
 ipcMain.handle('new-world:save-pdf', async (event, name) => {
   const window = BrowserWindow.fromWebContents(event.sender)
@@ -129,7 +144,7 @@ function openWindow() {
   contents.on('will-navigate', (event) => event.preventDefault())
   contents.setWindowOpenHandler(({ url }) => {
     // Only the app's own release pages may leave this window.
-    if (url.startsWith(`${releaseBase}tag/`) && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice(`${releaseBase}tag/`.length))) {
+    if (url.startsWith(releasePages + 'tag/') && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice((releasePages + 'tag/').length))) {
       void shell.openExternal(url).catch(() => {})
     }
     return { action: 'deny' }
@@ -162,8 +177,16 @@ if (!app.requestSingleInstanceLock()) {
     local.setPermissionRequestHandler((_contents, _permission, allow) => allow(false))
     local.setPermissionCheckHandler(() => false)
     local.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (request, done) => {
-      done({ cancel: request.url !== windowsReleases || request.method !== 'GET' })
+      done({ cancel: request.url !== windowsReleaseList || request.method !== 'GET' })
     })
+    if (app.isPackaged && process.platform === 'win32' && process.arch === 'x64') {
+      windowsUpdater = createWindowsUpdater({
+        network: session.fromPartition('new-world-update'),
+        cache: join(app.getPath('temp'), 'New World Updates'),
+        installDir: dirname(app.getPath('exe')),
+        version: app.getVersion(),
+      })
+    }
     protocol.handle('new-world', serveApp)
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: '编辑', submenu: [
