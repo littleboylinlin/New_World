@@ -63,6 +63,18 @@ export function chapterText(content: DocumentContent) {
   return text(content)
 }
 
+// Count the same way as the editor: every non-blank character of the text.
+export function wordCount(content: JSONContent) {
+  let total = 0
+  const pending = [content]
+  while (pending.length) {
+    const node = pending.pop()!
+    if (node.text) total += Array.from(node.text.replace(/\s/gu, '')).length
+    if (node.content) pending.push(...node.content)
+  }
+  return total
+}
+
 export function hasChapterHeading(chapter: ChapterInput) {
   const first = chapter.content.content?.[0]
   const heading = first?.content?.map((node) => node.text ?? '').join('').replace(/\s+/g, ' ').trim()

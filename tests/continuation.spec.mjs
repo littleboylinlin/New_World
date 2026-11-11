@@ -56,7 +56,7 @@ test('旧版独立稿件沿用原链接，可添加原文且保留章节', async
   await expect(page.getByText('还没有参考原作')).toBeVisible()
   const { id, editionId } = await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('new-world-library', 2)
+      const request = indexedDB.open('new-world-library')
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })

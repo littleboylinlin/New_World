@@ -2,9 +2,12 @@ import './styles.css'
 import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
+import { clearExpiredTrash, countTrash } from './trash'
+import { renderTrash } from './trash-view'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { libraries } from './ui'
+import { libraryChanges } from './library'
 import type { LibraryId } from './library'
 
 const main = document.querySelector<HTMLElement>('#main')!
@@ -30,6 +33,9 @@ function render(moveFocus = false) {
       if (view === scope) leaveGuard = guard
     })
     else renderShelf(main, library, view.signal)
+  } else if (/^#\/trash\/?$/.test(activeHash)) {
+    document.title = '回收站 · New World'
+    renderTrash(main, view.signal)
   } else {
     document.title = 'New World · 小说管理器'
     renderHome(main, view.signal)
@@ -58,6 +64,17 @@ window.addEventListener('hashchange', async () => {
   render(true)
 })
 render()
+const trashCount = document.querySelector<HTMLElement>('#trash-count')!
+async function refreshTrashCount() {
+  try {
+    const count = await countTrash()
+    trashCount.textContent = count ? String(count) : ''
+  } catch {
+    trashCount.textContent = ''
+  }
+}
+libraryChanges.addEventListener('update', () => { void refreshTrashCount() })
+void clearExpiredTrash().catch(() => {}).then(refreshTrashCount)
 const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
 if (window.newWorldDesktop) {
   window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)

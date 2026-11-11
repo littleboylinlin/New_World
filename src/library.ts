@@ -1,5 +1,6 @@
 import { fileFormat, maxImportSize } from './formats'
 import type { Format } from './formats'
+import type { ChapterRecord, Edition } from './documents/model'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -24,11 +25,29 @@ export interface WrittenBook extends BookIdentity {
 
 export type Book = ImportedBook | WrittenBook
 
-interface BookFile {
+export interface BookFile {
   library: LibraryId
   id: string
   blob: Blob
 }
+
+// A deleted item keeps every record it owned, so restoring puts the same rows back.
+export interface TrashEntry {
+  id: string
+  kind: 'book' | 'original' | 'edition' | 'chapter'
+  library: LibraryId
+  bookId: string
+  title: string
+  deletedAt: number
+  books: Book[]
+  files: BookFile[]
+  editions: Edition[]
+  chapters: ChapterRecord[]
+  position?: { editionId: string; index: number }
+}
+
+export const libraryChanges = new EventTarget()
+export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash']
 
 let connection: Promise<IDBDatabase> | undefined
 export const maxTitleLength = 255
@@ -36,7 +55,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 2)
+    const request = indexedDB.open('new-world-library', 3)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -54,6 +73,7 @@ export function openDatabase() {
         chapters.createIndex('byBook', ['library', 'bookId'])
         chapters.createIndex('byEdition', ['library', 'bookId', 'editionId'])
       }
+      if (event.oldVersion < 3) db.createObjectStore('trash', { keyPath: 'id' })
     }
     request.onsuccess = () => {
       const db = request.result
@@ -91,6 +111,32 @@ export function committed(transaction: IDBTransaction): Promise<void> {
     transaction.oncomplete = () => resolve()
     transaction.onabort = () => reject(transaction.error ?? new Error('书库操作已中断。'))
   })
+}
+
+// Run a write step inside an IndexedDB callback. A thrown error aborts the transaction and is reported as is.
+export function writing<R>(tx: IDBTransaction) {
+  let result: R
+  let failure: unknown
+  const step = (action: () => R) => () => {
+    try {
+      result = action()
+    } catch (error) {
+      failure = error
+      tx.abort()
+    }
+  }
+  const done = () => committed(tx).then(() => result, (error) => { throw failure ?? error })
+  return { step, done }
+}
+
+export async function announced<T>(change: Promise<T>) {
+  const result = await change
+  libraryChanges.dispatchEvent(new Event('update'))
+  return result
+}
+
+export function trashEntry(kind: TrashEntry['kind'], library: LibraryId, bookId: string, title: string): TrashEntry {
+  return { id: crypto.randomUUID(), kind, library, bookId, title, deletedAt: Date.now(), books: [], files: [], editions: [], chapters: [] }
 }
 
 export async function listBooks(library: LibraryId): Promise<Book[]> {
@@ -175,59 +221,67 @@ export async function renameBook(library: LibraryId, id: string, value: string) 
   if (!found) throw new Error('此作品已从书库移除。')
 }
 
+// Deleting moves a work with its originals, editions and chapters to the trash in one transaction.
 export async function deleteBook(library: LibraryId, id: string) {
   const db = await openDatabase()
-  const tx = db.transaction(['books', 'files', 'editions', 'chapters'], 'readwrite', { durability: 'strict' })
+  const tx = db.transaction(libraryStores, 'readwrite', { durability: 'strict' })
+  const books = tx.objectStore('books')
+  const files = tx.objectStore('files')
+  const editions = tx.objectStore('editions')
+  const chapters = tx.objectStore('chapters')
   const key = [library, id]
-  tx.objectStore('books').delete(key)
-  tx.objectStore('files').delete(key)
-  deleteIndexed(tx.objectStore('editions'), 'byBook', key)
-  deleteIndexed(tx.objectStore('chapters'), 'byBook', key)
-  if (library === 'reference') {
-    const books = tx.objectStore('books')
-    const files = tx.objectStore('files')
-    const cursor = books.index('byLibrary').openCursor(library)
-    cursor.onsuccess = () => {
-      const item = cursor.result
-      if (!item) return
-      if (item.value.workId === id) {
-        files.delete(item.primaryKey)
-        item.delete()
+  const { step, done } = writing<TrashEntry>(tx)
+  const members = books.index('byLibrary').getAll(library)
+  members.onsuccess = step(() => {
+    const owned: Book[] = members.result.filter((book: Book) => book.id === id || book.workId === id)
+    const root = owned.find((book) => book.id === id)
+    if (!root) throw new Error('此作品已从书库移除。')
+    const entry = trashEntry('book', library, id, root.title)
+    entry.books = owned
+    // Requests on one transaction finish in order, so the last read sees every earlier result.
+    const storedFiles = owned.map((book) => files.get([library, book.id]))
+    const storedEditions = editions.index('byBook').getAll(key)
+    const storedChapters = chapters.index('byBook').getAll(key)
+    storedChapters.onsuccess = step(() => {
+      entry.files = storedFiles.map((request) => request.result).filter(Boolean)
+      entry.editions = storedEditions.result
+      entry.chapters = storedChapters.result
+      for (const book of owned) {
+        books.delete([library, book.id])
+        files.delete([library, book.id])
       }
-      item.continue()
-    }
-  }
-  await committed(tx)
+      for (const edition of entry.editions) editions.delete([library, id, edition.id])
+      for (const chapter of entry.chapters) chapters.delete([library, id, chapter.editionId, chapter.id])
+      tx.objectStore('trash').add(entry)
+      return entry
+    })
+    return entry
+  })
+  return announced(done())
 }
 
 export async function removeWorkOriginal(workId: string, id: string) {
   const db = await openDatabase()
-  const tx = db.transaction(['books', 'files'], 'readwrite', { durability: 'strict' })
+  const tx = db.transaction(['books', 'files', 'trash'], 'readwrite', { durability: 'strict' })
   const books = tx.objectStore('books')
+  const files = tx.objectStore('files')
   const key = ['reference', id]
+  const { step, done } = writing<TrashEntry>(tx)
   const request = books.get(key)
-  let removed = false
-  request.onsuccess = () => {
+  const stored = files.get(key)
+  stored.onsuccess = step(() => {
     const book: Book | undefined = request.result
-    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) return
+    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) throw new Error('该原文已被移除。')
+    const entry = trashEntry('original', 'reference', workId, book.originalName)
+    entry.books = [book]
+    if (stored.result) entry.files = [stored.result]
     if (book.workId) books.delete(key)
     else books.put({ library: book.library, id, title: book.title, importedAt: book.importedAt, format: 'draft' } satisfies WrittenBook)
-    tx.objectStore('files').delete(key)
-    removed = true
-  }
-  await committed(tx)
-  if (!removed) throw new Error('该原文已被移除。')
-}
-
-export function deleteIndexed(store: IDBObjectStore, index: string, key: IDBValidKey) {
-  const request = store.index(index).openKeyCursor(IDBKeyRange.only(key))
-  request.onsuccess = () => {
-    const cursor = request.result
-    if (cursor) {
-      store.delete(cursor.primaryKey)
-      cursor.continue()
-    }
-  }
+    files.delete(key)
+    tx.objectStore('trash').add(entry)
+    return entry
+  })
+  return announced(done())
 }
 
 export function storageError(error: unknown) {

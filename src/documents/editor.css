@@ -18,7 +18,11 @@
 .chapter-navigation[open] summary { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
 .chapter-list, .chapter-outline ul { padding: 0; margin: 0; list-style: none; }
 .chapter-list { display: grid; gap: 4px; max-height: min(52vh, 560px); overflow: auto; counter-reset: chapter; }
-.chapter-list li { counter-increment: chapter; }
+.chapter-list li { position: relative; counter-increment: chapter; }
+.chapter-words { position: absolute; inset-inline-end: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.chapter-words:empty { display: none; }
+.chapter-list li:has(.chapter-words:not(:empty)) .chapter-jump { padding-inline-end: 4.4em; }
+.chapter-list li:has([aria-current]) .chapter-words { color: #fff; }
 .chapter-jump, .outline-jump { display: block; width: 100%; min-height: 38px; padding: 7px 9px; border: 2px solid transparent; border-radius: 7px; color: var(--ink); background: transparent; text-align: start; overflow-wrap: anywhere; font-size: .88rem; }
 .chapter-jump { display: flex; align-items: baseline; gap: 9px; }
 .chapter-jump::before { content: counter(chapter, decimal-leading-zero); flex: none; color: var(--muted); font-size: .72rem; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -34,8 +38,10 @@
 .outline-jump { min-height: 32px; color: var(--muted); font-size: .8rem; }
 .writing-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px 14px; padding: 14px 18px 12px; border-bottom: 2px solid var(--ink); }
 .writing-header h3 { font-size: 1.16rem; font-weight: 900; overflow-wrap: anywhere; }
-.word-count, .match-count { color: var(--muted); font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.word-count { padding: 1px 9px; border-radius: 20px; color: var(--ink); background: var(--tint); }
+.word-count, .word-total, .match-count { color: var(--muted); font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.word-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.word-count, .word-total { padding: 1px 9px; border-radius: 20px; color: var(--ink); background: var(--tint); }
+.word-total { background: var(--yellow); }
 .editor-tools-row { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; padding: 8px 12px; border-bottom: 2px solid var(--ink); background: var(--paper); }
 .format-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; }
 .format-button, .editor-select { min-height: 36px; border: 2px solid transparent; border-radius: 7px; color: var(--ink); background: transparent; white-space: nowrap; font-size: .82rem; font-weight: 700; }

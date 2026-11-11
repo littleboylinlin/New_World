@@ -2,9 +2,10 @@ import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { emptyChapter } from './documents/model'
 import { createEdition, listEditions } from './documents/store'
-import { listBooks, removeWorkOriginal, storageError } from './library'
+import { libraryChanges, listBooks, removeWorkOriginal, storageError } from './library'
 import type { Book } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, link, notice, originalPath } from './ui'
+import { offerUndo } from './undo'
 
 export function renderContinuation(root: HTMLElement, id: string, signal: AbortSignal) {
   const panel = element('section', 'reader-page mode-reference')
@@ -79,10 +80,9 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         const remove = button('移除原文', 'button button-quiet button-small remove-button')
         remove.addEventListener('click', () => formDialog(root, {
           title: '移除这份原文？', action: '确认移除原文', danger: true,
-          description: `将移除「${book.originalName}」的本地副本。项目内的续写稿会保留。`,
+          description: `将把「${book.originalName}」移入回收站。项目内的续写稿会保留。`,
         }, async () => {
-          await removeWorkOriginal(id, book.id)
-          await refresh()
+          offerUndo(await removeWorkOriginal(id, book.id))
         }))
         row.append(entry, remove)
         sourceList.append(row)
@@ -94,6 +94,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
     }
   }
 
+  libraryChanges.addEventListener('update', () => { void refresh() }, { signal })
   window.addEventListener('focus', () => { void refresh() }, { signal })
   void refresh()
 }
