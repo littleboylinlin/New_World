@@ -119,7 +119,7 @@ let closing = false
 function openWindow() {
   mainWindow = new BrowserWindow({
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
-    backgroundColor: '#f7f6ef',
+    backgroundColor: '#f4eee2',
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false,

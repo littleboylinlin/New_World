@@ -19,9 +19,11 @@ function render(moveFocus = false) {
   view = scope
   leaveGuard = undefined
   main.replaceChildren()
+  main.classList.remove('mode-original', 'mode-reference')
   const match = activeHash.match(/^#\/(original|reference)(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}|original))?)?\/?$/)
   if (match) {
     const library = match[1] as LibraryId
+    main.classList.add(`mode-${library}`)
     document.title = `${libraries[library].name} · New World`
     if (library === 'reference' && match[2] && !match[3]) renderContinuation(main, match[2], scope.signal)
     else if (match[2]) void renderReader(main, library, match[2], match[3] === 'original' ? undefined : match[3], scope.signal, (guard) => {
