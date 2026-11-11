@@ -21,10 +21,10 @@ const setup = promisify(execFile)
 const editor = (page) => page.getByRole('textbox', { name: '章节正文' })
 const status = (page) => page.locator('.save-status')
 
-async function runSetup(path) {
+async function runSetup(path, directory = '') {
   const { stdout } = await setup('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    "$process = Start-Process -FilePath $env:NEW_WORLD_SETUP_FILE -ArgumentList '/S' -PassThru -Wait; Write-Output $process.ExitCode"], {
-    env: { ...process.env, NEW_WORLD_SETUP_FILE: resolve(path) }, timeout: 90_000,
+    "$params = '/S'; if ($env:NEW_WORLD_SETUP_DIR) { $params += ' /D=' + $env:NEW_WORLD_SETUP_DIR }; $process = Start-Process -FilePath $env:NEW_WORLD_SETUP_FILE -ArgumentList $params -PassThru -Wait; Write-Output $process.ExitCode"], {
+    env: { ...process.env, NEW_WORLD_SETUP_FILE: resolve(path), NEW_WORLD_SETUP_DIR: directory }, timeout: 90_000,
   })
   return Number(stdout.trim())
 }
@@ -40,7 +40,7 @@ async function launch(testInfo) {
 }
 
 async function install() {
-  expect(await runSetup(installer)).toBe(0)
+  expect(await runSetup(installer, installDir)).toBe(0)
   expect((await stat(installedApp)).isFile()).toBe(true)
 }
 
@@ -186,8 +186,6 @@ function stable(tag, fields = {}) {
   }
 }
 
-const mockCdn = 'https://release-assets.githubusercontent.com/github-production-release-asset/new-world-test'
-
 async function mockUpdateDownload(app, release, { filePath, body }) {
   const metadata = releaseTags + release.tag_name
   const download = release.assets[0].browser_download_url
@@ -198,11 +196,10 @@ async function mockUpdateDownload(app, release, { filePath, body }) {
     globalThis.testUpdateRequests = []
     const gate = Promise.withResolvers()
     globalThis.testContinueUpdate = gate.resolve
-    network.protocol.handle('https', ({ url }) => {
+    network.fetch = async (url) => {
       globalThis.testUpdateRequests.push(url)
       if (url === fixture.metadata) return Response.json(fixture.release)
-      if (url === fixture.download) return Response.redirect(fixture.cdn)
-      if (url !== fixture.cdn) return new Response(null, { status: 404 })
+      if (url !== fixture.download) return new Response(null, { status: 404 })
       if (!fixture.filePath) return new Response(fixture.body)
       const reader = Readable.toWeb(createReadStream(fixture.filePath)).getReader()
       let sent = false
@@ -218,9 +215,9 @@ async function mockUpdateDownload(app, release, { filePath, body }) {
         },
         cancel: () => reader.cancel(),
       }))
-    })
-  }, { metadata, download, cdn: mockCdn, release, filePath, body })
-  return [metadata, download, mockCdn]
+    }
+  }, { metadata, download, release, filePath, body })
+  return [metadata, download]
 }
 
 test('启动检查 Windows 正式安装包，支持失败重试并保护未保存的稿件', async ({}, testInfo) => {
