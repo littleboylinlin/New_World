@@ -1,14 +1,19 @@
 import {
-  BorderStyle, Document, HeadingLevel, ImageRun, LevelFormat, Packer, Paragraph,
-  Table, TableCell, TableRow, TextRun, WidthType,
+  BorderStyle, Document, HeadingLevel, ImageRun, LevelFormat, LineRuleType, Packer, Paragraph,
+  Table, TableCell, TableRow, TextRun, WidthType, convertMillimetersToTwip,
 } from 'docx'
-import type { ILevelsOptions } from 'docx'
+import type { ILevelsOptions, IStylesOptions } from 'docx'
 import type { JSONContent } from '@tiptap/core'
+import { a4, headingLayout, headingScales } from './export-style'
+import type { ExportPreset } from './export-style'
 import { imageInfo } from './markup'
 import { hasChapterHeading } from './model'
 import type { ChapterInput } from './model'
 
 const headings = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6]
+const bodyFont = { ascii: 'Times New Roman', hAnsi: 'Times New Roman', eastAsia: 'SimSun' }
+const headingFont = { ascii: 'Arial', hAnsi: 'Arial', eastAsia: 'Microsoft YaHei' }
+const codeFont = { ...bodyFont, ascii: 'Consolas', hAnsi: 'Consolas' }
 
 async function imageRun(node: JSONContent): Promise<ImageRun | TextRun> {
   const source = node.attrs?.src
@@ -55,9 +60,9 @@ async function inline(content: JSONContent[], code = false) {
       const parts = (node.text ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').split('\n')
       for (const [index, text] of parts.entries()) {
         runs.push(new TextRun({
-          text, break: index ? 1 : undefined, bold: marks.has('bold'), italics: marks.has('italic'),
-          underline: marks.has('underline') ? {} : undefined, strike: marks.has('strike'),
-          font: code || marks.has('code') ? 'Consolas' : undefined,
+          text, break: index ? 1 : undefined, bold: marks.has('bold') || undefined, italics: marks.has('italic') || undefined,
+          underline: marks.has('underline') ? {} : undefined, strike: marks.has('strike') || undefined,
+          font: code || marks.has('code') ? codeFont : undefined,
         }))
       }
     }
@@ -65,9 +70,38 @@ async function inline(content: JSONContent[], code = false) {
   return runs
 }
 
-export async function wordExport(title: string, chapters: ChapterInput[]) {
+export async function wordExport(title: string, chapters: ChapterInput[], preset: ExportPreset) {
   const numbering: { reference: string; levels: ILevelsOptions[] }[] = []
   const children: (Paragraph | Table)[] = []
+  const spacing = {
+    after: Math.round(preset.fontPt * preset.paragraphGap * 20),
+    line: Math.round(preset.lineHeight * 240),
+    lineRule: LineRuleType.AUTO,
+  }
+  const listGap = Math.round(preset.fontPt * 5)
+  const styles: IStylesOptions = {
+    default: {
+      document: {
+        run: { font: bodyFont, size: preset.fontPt * 2, color: '000000', language: { eastAsia: 'zh-CN' } },
+        paragraph: { spacing },
+      },
+    },
+    paragraphStyles: headings.map((id, index) => {
+      const size = preset.fontPt * headingScales[index]
+      return {
+        id, name: 'Heading ' + (index + 1), basedOn: 'Normal', next: 'Normal', quickFormat: true,
+        run: { font: headingFont, size: Math.round(size * 2), bold: true, color: '000000' },
+        paragraph: {
+          outlineLevel: index, keepNext: true, keepLines: true,
+          spacing: {
+            before: Math.round(size * headingLayout.before * 20),
+            after: Math.round(size * headingLayout.after * 20),
+            line: Math.round(headingLayout.lineHeight * 240), lineRule: LineRuleType.AUTO,
+          },
+        },
+      }
+    }),
+  }
 
   async function blocks(nodes: JSONContent[], depth = 0, quote = false): Promise<(Paragraph | Table)[]> {
     const items: (Paragraph | Table)[] = []
@@ -83,7 +117,10 @@ export async function wordExport(title: string, chapters: ChapterInput[]) {
         }] })
         for (const item of node.content ?? []) {
           const [first, ...rest] = item.content ?? []
-          items.push(new Paragraph({ children: await inline(first?.content ?? []), numbering: { reference, level: 0 } }))
+          items.push(new Paragraph({
+            children: await inline(first?.content ?? []), numbering: { reference, level: 0 },
+            spacing: { ...spacing, before: listGap, after: listGap },
+          }))
           items.push(...await blocks(rest, depth + 1, quote))
         }
       } else if (node.type === 'table') {
@@ -99,7 +136,7 @@ export async function wordExport(title: string, chapters: ChapterInput[]) {
         }
         if (rows.length) items.push(new Table({ rows, width: { size: 100, type: WidthType.PERCENTAGE } }))
       } else if (node.type === 'horizontalRule') {
-        items.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, color: 'A0A69E', size: 6, space: 4 } } }))
+        items.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, color: '000000', size: 6, space: 4 } } }))
       } else if (node.type === 'image') {
         items.push(new Paragraph({ children: [await imageRun(node)] }))
       } else {
@@ -107,8 +144,7 @@ export async function wordExport(title: string, chapters: ChapterInput[]) {
         items.push(new Paragraph({
           heading, children: await inline(node.content ?? [], node.type === 'codeBlock'),
           indent: quote || depth ? { left: depth * 420 + (quote ? 320 : 0) } : undefined,
-          border: quote ? { left: { style: BorderStyle.SINGLE, color: 'A0A69E', size: 8, space: 8 } } : undefined,
-          spacing: { after: 140 },
+          border: quote ? { left: { style: BorderStyle.SINGLE, color: '000000', size: 8, space: 8 } } : undefined,
         }))
       }
     }
@@ -119,6 +155,18 @@ export async function wordExport(title: string, chapters: ChapterInput[]) {
     if (!hasChapterHeading(chapter)) children.push(new Paragraph({ text: chapter.title, heading: HeadingLevel.HEADING_1 }))
     children.push(...await blocks(chapter.content.content ?? []))
   }
-  const document = new Document({ title, numbering: { config: numbering }, sections: [{ children }] })
+  const margin = convertMillimetersToTwip(preset.marginMm)
+  const document = new Document({
+    title, styles, numbering: { config: numbering },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: convertMillimetersToTwip(a4.width), height: convertMillimetersToTwip(a4.height) },
+          margin: { top: margin, bottom: margin, left: margin, right: margin },
+        },
+      },
+      children,
+    }],
+  })
   return Packer.toBlob(document)
 }

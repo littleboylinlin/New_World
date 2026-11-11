@@ -3,6 +3,7 @@ import { mkdir, readFile, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
+import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { file } from '../fixtures.mjs'
 
 const { version } = JSON.parse(await readFile('package.json', 'utf-8'))
@@ -57,6 +58,27 @@ async function exportTo(page, format) {
   await expect(dialog).toBeHidden()
 }
 
+async function expectCleanPdf(bytes, expectedText) {
+  const loading = getDocument({ data: Uint8Array.from(bytes) })
+  try {
+    const pdf = await loading.promise
+    expect(pdf.numPages).toBe(1)
+    const page = await pdf.getPage(1)
+    const { fnArray, argsArray } = await page.getOperatorList()
+    // Read the PDF's paint colors before the display renderer antialiases the text.
+    const colors = new Set(fnArray.flatMap((op, index) => (
+      op === OPS.setFillRGBColor || op === OPS.setStrokeRGBColor ? [argsArray[index][0]] : []
+    )))
+    expect(colors.has('#000000')).toBe(true)
+    expect([...colors].filter((color) => color !== '#000000' && color !== '#ffffff')).toEqual([])
+    const text = (await page.getTextContent()).items.map((item) => item.str ?? '').join('')
+    const normalized = (value) => value.normalize('NFKC').replace(/\s+/g, '')
+    expect(normalized(text)).toContain(normalized(expectedText))
+  } finally {
+    await loading.destroy()
+  }
+}
+
 test.beforeAll(async () => {
   if (installer) await install()
 })
@@ -96,6 +118,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await exportTo(page, 'pdf')
     const exportedPdf = await readFile(pdfPath)
     expect(exportedPdf.subarray(0, 5).toString()).toBe('%PDF-')
+    await expectCleanPdf(exportedPdf, savedText)
     await expect(page.locator('.print-edition')).toHaveCount(0)
 
     if (installer) {
@@ -131,7 +154,17 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
     await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', exportedPdf))
     await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
-    await expect(page.getByRole('img', { name: 'PDF 第 1 页' })).toBeVisible()
+    const canvas = page.getByRole('img', { name: 'PDF 第 1 页' })
+    await expect(canvas).toBeVisible()
+    const marginsAreWhite = await canvas.evaluate((page) => {
+      const context = page.getContext('2d')
+      const x = Math.floor(page.width / 2)
+      const y = Math.floor(page.height / 2)
+      return [[x, 6], [6, y], [page.width - 7, y], [x, page.height - 7]].every(([x, y]) => (
+        context.getImageData(x, y, 1, 1).data.every((channel) => channel === 255)
+      ))
+    })
+    expect(marginsAreWhite).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('windows-reader.png') })
   } finally {
     await stop(app)

@@ -1,4 +1,5 @@
 import { open, readFile } from 'node:fs/promises'
+import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
 import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
 
@@ -426,13 +427,41 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
     await page.getByRole('button', { name: '导出', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
     await dialog.getByRole('radio', { name: formatLabels[format] }).check()
+    const style = dialog.getByLabel('导出样式')
+    const preview = dialog.getByRole('region', { name: '导出预览' })
+    const paper = preview.locator('.export-paper')
+    if (format === 'txt' || format === 'md') {
+      await expect(style).toBeDisabled()
+      await expect(preview).toContainText('纸船与灯塔')
+    } else {
+      await expect(style).toHaveValue('standard')
+      await expect(paper).toHaveAttribute('style', /--export-font-size: 13pt/)
+      await style.selectOption(format === 'html' ? 'spacious' : 'compact')
+      await expect(paper).toHaveAttribute('style', format === 'html' ? /--export-font-size: 14pt/ : /--export-font-size: 11pt/)
+      await expect(paper).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+      await expect(preview.getByRole('heading', { name: '一封来信' })).toBeVisible()
+      if (format === 'html') await dialog.screenshot({ path: testInfo.outputPath('export-style-preview.png') })
+    }
     const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: '开始导出' }).click()])
     const path = testInfo.outputPath(`export-edition.${format}`)
     await download.saveAs(path)
     expect(download.suggestedFilename()).toContain(`.${format}`)
     const bytes = await readFile(path)
-    if (format === 'docx') expect(bytes.subarray(0, 2).toString()).toBe('PK')
-    else {
+    if (format === 'docx') {
+      const zip = new ZipReader(new Uint8ArrayReader(bytes))
+      try {
+        const entries = await zip.getEntries()
+        const styles = await entries.find((entry) => entry.filename === 'word/styles.xml').getData(new TextWriter())
+        const document = await entries.find((entry) => entry.filename === 'word/document.xml').getData(new TextWriter())
+        expect(styles).toContain('w:eastAsia="SimSun"')
+        expect(styles).toContain('<w:sz w:val="22"/>')
+        expect(styles).toContain('w:line="384"')
+        expect(document).toContain('w:top="850"')
+        expect(document).toContain('纸船与灯塔')
+      } finally {
+        await zip.close()
+      }
+    } else {
       expect(bytes.toString('utf8')).toContain('纸船与灯塔')
       expect(bytes.toString('utf8')).toContain('故事还有下一页。')
     }
@@ -442,6 +471,10 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
       await viewer.route('**/fixture-export.html', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: bytes }))
       await viewer.goto('/fixture-export.html')
       await expect(viewer.getByRole('heading', { name: '回声' }).first()).toBeVisible()
+      const exported = viewer.locator('.export-paper')
+      await expect(exported).toHaveAttribute('style', /--export-line-height: 2.15/)
+      await expect(exported).toHaveCSS('color', 'rgb(0, 0, 0)')
+      await expect(viewer.locator('html')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
       expect(await viewer.getByRole('img', { name: '灯塔插图' }).evaluate((img) => img.naturalWidth)).toBe(2)
       await viewer.close()
     }
@@ -449,8 +482,13 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   await page.getByRole('button', { name: '导出', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
   await dialog.getByRole('radio', { name: 'PDF' }).check()
+  await expect(dialog.getByLabel('导出样式')).toHaveValue('standard')
   await dialog.getByRole('button', { name: '开始导出' }).click()
   await expect(page.locator('body')).toHaveAttribute('data-print-requested', 'yes')
+  await page.emulateMedia({ media: 'print' })
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  await expect(page.locator('.site-header')).toBeHidden()
+  await expect(page.locator('.print-edition .export-paper')).toHaveCSS('color', 'rgb(0, 0, 0)')
   const printed = await page.pdf({ path: testInfo.outputPath('export-edition.pdf'), format: 'A4', printBackground: true })
   expect(printed.subarray(0, 4).toString()).toBe('%PDF')
 })
@@ -528,6 +566,11 @@ test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
   await dialog().getByRole('checkbox', { name: '第一章' }).check()
   await dialog().getByRole('checkbox', { name: '第三章' }).check()
   expect(await dialog().getByRole('checkbox', { name: '全选' }).evaluate((el) => el.indeterminate)).toBe(true)
+  const preview = dialog().getByRole('region', { name: '导出预览' })
+  await expect(preview).toContainText('第一封信从雾里来。')
+  await dialog().getByRole('checkbox', { name: '第一章' }).uncheck()
+  await expect(preview).toContainText('第三封信没有署名。')
+  await dialog().getByRole('checkbox', { name: '第一章' }).check()
   const picked = await exportTxt('picked')
   expect(picked).toContain('第一封信从雾里来。')
   expect(picked).toContain('第三封信没有署名。')

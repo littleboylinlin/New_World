@@ -72,7 +72,7 @@ ipcMain.handle('new-world:save-pdf', async (event, name) => {
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   })
   if (canceled || !filePath) return
-  const data = await event.sender.printToPDF({ printBackground: true, preferCSSPageSize: true })
+  const data = await event.sender.printToPDF({ printBackground: false, preferCSSPageSize: true })
   await writeFile(filePath, data)
 })
 

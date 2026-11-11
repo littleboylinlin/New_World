@@ -52,12 +52,14 @@ export function emptyChapter(title = '第一章'): ChapterInput {
   return { title, content: { type: 'doc', content: [{ type: 'paragraph' }] } }
 }
 
-export function chapterText(content: DocumentContent) {
+export function chapterText(content: DocumentContent, paragraphSeparator = '\n') {
   function text(node: JSONContent): string {
     if (node.type === 'image') return node.attrs?.alt ? `[图片：${node.attrs.alt}]` : '[图片]'
     if (node.type === 'hardBreak') return '\n'
     if (node.type === 'horizontalRule') return '\n——\n'
-    const separator = node.type === 'tableRow' ? '\t' : /^(doc|blockquote|table|tableCell|tableHeader|listItem|bulletList|orderedList)$/.test(node.type ?? '') ? '\n' : ''
+    const separator = node.type === 'doc' ? paragraphSeparator
+      : node.type === 'tableRow' ? '\t'
+        : /^(blockquote|table|tableCell|tableHeader|listItem|bulletList|orderedList)$/.test(node.type ?? '') ? '\n' : ''
     return node.text ?? node.content?.map(text).join(separator) ?? ''
   }
   return text(content)
