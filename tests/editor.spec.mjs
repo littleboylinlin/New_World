@@ -455,7 +455,7 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   expect(printed.subarray(0, 4).toString()).toBe('%PDF')
 })
 
-test('按范围导出编辑稿', async ({ page }, testInfo) => {
+test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
   await shelf(page)
   await newNovel(page, '雾中书简')
   await textArea(page).fill('第一封信从雾里来。')
@@ -483,22 +483,24 @@ test('按范围导出编辑稿', async ({ page }, testInfo) => {
 
   await page.getByRole('button', { name: '导出', exact: true }).click()
   await dialog().getByRole('radio', { name: 'TXT' }).check()
+  await expect(dialog().getByRole('checkbox', { name: '全选' })).toBeChecked()
+  await expect(dialog().getByRole('checkbox', { name: '第一章' })).toBeVisible()
+  await expect(dialog().getByRole('checkbox', { name: '第二章' })).toBeVisible()
+  await expect(dialog().getByRole('checkbox', { name: '第三章' })).toBeVisible()
   const all = await exportTxt('all')
   expect(all).toContain('第一封信从雾里来。')
   expect(all).toContain('第二封信落在窗台。')
   expect(all).toContain('第三封信没有署名。')
 
   await page.getByRole('button', { name: '导出', exact: true }).click()
-  await dialog().getByRole('radio', { name: '当前章' }).check()
-  const current = await exportTxt('current')
-  expect(current).toContain('第三封信没有署名。')
-  expect(current).not.toContain('第一封信从雾里来。')
-
-  await page.getByRole('button', { name: '导出', exact: true }).click()
-  await dialog().getByRole('radio', { name: '多选' }).check()
   await dialog().getByRole('checkbox', { name: '全选' }).uncheck()
+  await expect(dialog().getByRole('checkbox', { name: '第一章' })).not.toBeChecked()
+  await dialog().getByRole('button', { name: '开始导出' }).click()
+  await expect(dialog().getByRole('alert')).toHaveText('请至少选择一章。')
+
   await dialog().getByRole('checkbox', { name: '第一章' }).check()
   await dialog().getByRole('checkbox', { name: '第三章' }).check()
+  expect(await dialog().getByRole('checkbox', { name: '全选' }).evaluate((el) => el.indeterminate)).toBe(true)
   const picked = await exportTxt('picked')
   expect(picked).toContain('第一封信从雾里来。')
   expect(picked).toContain('第三封信没有署名。')

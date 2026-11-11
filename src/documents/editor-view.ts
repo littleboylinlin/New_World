@@ -333,10 +333,9 @@ export async function renderEdition(
     else refreshChapters()
   }
 
-  async function currentChapters(onlyCurrent: boolean, selectedIds?: Set<string>): Promise<ChapterInput[]> {
+  async function currentChapters(selectedIds?: Set<string>): Promise<ChapterInput[]> {
     if (editor.view.composing) throw new Error('请先完成当前输入。')
     const visible = { title: chapterInfo().title, content: editor.getJSON() as DocumentContent }
-    if (onlyCurrent) return [visible]
     const bundle = await readBundle(edition)
     const infos = bundle.edition.chapters
     const index = infos.findIndex((entry) => entry.id === chapter.id)
@@ -395,7 +394,7 @@ export async function renderEdition(
   }))
   saveCopy.addEventListener('click', () => formDialog(root, { title: '另存为独立版本', action: '保存独立版本', fields: [nameField('版本名', `${edition.name} 副本`)] }, async (data) => {
     await flush()
-    const copy = await createEdition(book, await currentChapters(false), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
+    const copy = await createEdition(book, await currentChapters(), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
     window.clearTimeout(timer)
     saved = change
     window.removeEventListener('beforeunload', unsaved)
@@ -415,25 +414,9 @@ export async function renderEdition(
       item.append(radio, element('span', '', label))
       formats.append(item)
     }
-    const scopes = element('div', 'export-scopes')
-    scopes.setAttribute('role', 'radiogroup')
-    scopes.setAttribute('aria-label', '导出范围')
-    const scopeChoices = [['all', '全部'], ['current', '当前章'], ['select', '多选']] as const
-    for (const [value, label] of scopeChoices) {
-      const item = element('label', 'export-scope-option')
-      const radio = element('input')
-      radio.type = 'radio'
-      radio.name = 'scope'
-      radio.value = value
-      radio.checked = value === 'all'
-      item.append(radio, element('span', '', label))
-      scopes.append(item)
-    }
-
     const chapterBox = element('div', 'export-chapters')
     chapterBox.setAttribute('role', 'group')
     chapterBox.setAttribute('aria-label', '选择章节')
-    chapterBox.hidden = true
     const allRow = element('label', 'export-chapter export-chapter-all')
     const allInput = element('input')
     allInput.type = 'checkbox'
@@ -460,20 +443,11 @@ export async function renderEdition(
       allInput.checked = boxes.length > 0 && boxes.every((box) => box.checked)
       allInput.indeterminate = !allInput.checked && boxes.some((box) => box.checked)
     })
-    scopes.addEventListener('change', () => {
-      const chosen = scopes.querySelector<HTMLInputElement>('input[name="scope"]:checked')
-      chapterBox.hidden = chosen?.value !== 'select'
-    })
 
-    formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [formats, scopes, chapterBox] }, async (data) => {
-      const scope = String(data.get('scope'))
-      let chapters: ChapterInput[]
-      if (scope === 'current') chapters = await currentChapters(true)
-      else if (scope === 'select') {
-        const ids = new Set(data.getAll('chapter').map(String))
-        if (!ids.size) throw new Error('请至少选择一章。')
-        chapters = await currentChapters(false, ids)
-      } else chapters = await currentChapters(false)
+    formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [formats, chapterBox] }, async (data) => {
+      const ids = new Set(data.getAll('chapter').map(String))
+      if (!ids.size) throw new Error('请至少选择一章。')
+      const chapters = ids.size === edition.chapters.length ? await currentChapters() : await currentChapters(ids)
       await exportEdition(String(data.get('format')) as OutputFormat, `${book.title} - ${edition.name}`, chapters)
     })
   })
