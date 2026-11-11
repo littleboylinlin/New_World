@@ -1,6 +1,7 @@
 import { storageError } from './library'
 import type { TrashEntry } from './library'
 import { restoreTrash } from './trash'
+import { leave } from './motion'
 import { button, element } from './ui'
 
 export const trashKinds = { book: '作品', original: '原文', edition: '编辑版本', chapter: '章节' } as const
@@ -9,9 +10,13 @@ type Restored = Awaited<ReturnType<typeof restoreTrash>>
 let shown: HTMLElement | undefined
 let timer: number | undefined
 
-function dismiss() {
+// A notice that gives way to a newer one goes at once. Otherwise it slides out.
+function dismiss(replaced = false) {
   window.clearTimeout(timer)
-  shown?.remove()
+  if (shown) {
+    if (replaced) shown.remove()
+    else leave(shown)
+  }
   shown = undefined
 }
 
@@ -22,7 +27,7 @@ function shortTitle(title: string) {
 
 // Offer one undo at a time. The item stays in the trash after the notice goes away.
 export function offerUndo(entry: TrashEntry, restored?: (result: Restored) => void) {
-  dismiss()
+  dismiss(true)
   const toast = element('div', 'undo-toast')
   toast.setAttribute('role', 'status')
   const message = element('p', '', `已将${trashKinds[entry.kind]}「${shortTitle(entry.title)}」移入回收站`)
@@ -30,7 +35,7 @@ export function offerUndo(entry: TrashEntry, restored?: (result: Restored) => vo
   const close = button('', 'undo-close', 'close')
   close.setAttribute('aria-label', '关闭提示')
   toast.append(message, undo, close)
-  close.addEventListener('click', dismiss)
+  close.addEventListener('click', () => dismiss())
   undo.addEventListener('click', async () => {
     undo.disabled = true
     window.clearTimeout(timer)

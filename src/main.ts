@@ -6,6 +6,7 @@ import { clearExpiredTrash, countTrash } from './trash'
 import { renderTrash } from './trash-view'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
+import { changeView, pop } from './motion'
 import { libraries } from './ui'
 import { libraryChanges } from './library'
 import type { LibraryId } from './library'
@@ -64,15 +65,18 @@ window.addEventListener('hashchange', async () => {
     history.replaceState(null, '', activeHash || '#/')
     return
   }
+  const previous = activeHash
   activeHash = target
-  render(true)
+  changeView(main, previous, target, () => render(true))
 })
 render()
 const trashCount = document.querySelector<HTMLElement>('#trash-count')!
 async function refreshTrashCount() {
   try {
     const count = await countTrash()
-    trashCount.textContent = count ? String(count) : ''
+    const label = count ? String(count) : ''
+    if (label && label !== trashCount.textContent) pop(trashCount)
+    trashCount.textContent = label
   } catch {
     trashCount.textContent = ''
   }

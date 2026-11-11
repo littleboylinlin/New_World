@@ -5,6 +5,7 @@ import { createEdition, listEditions } from './documents/store'
 import { libraryChanges, listBooks, removeWorkOriginal, storageError } from './library'
 import type { Book } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, link, notice, originalPath } from './ui'
+import { stagger } from './motion'
 import { offerUndo } from './undo'
 
 export function renderContinuation(root: HTMLElement, id: string, signal: AbortSignal) {
@@ -46,6 +47,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
   lists.append(drafts, originals)
 
   let request = 0
+  let arriving = true
   async function refresh() {
     const current = ++request
     try {
@@ -65,7 +67,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         row.append(entry, element('span', 'file-size', `${edition.chapters.length} 章`))
         chapterList.append(row)
       }
-      draftList.replaceChildren(editions.length ? chapterList : element('p', 'continuation-empty', '还没有续写。新建一篇续写，从第一章开始。'))
+      draftList.replaceChildren(editions.length ? (arriving ? stagger(chapterList) : chapterList) : element('p', 'continuation-empty', '还没有续写。新建一篇续写，从第一章开始。'))
 
       const sourceList = element('ul', 'book-list')
       sourceList.setAttribute('aria-label', '原文列表')
@@ -87,11 +89,12 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         row.append(entry, remove)
         sourceList.append(row)
       }
-      originalList.replaceChildren(sourceList.childElementCount ? sourceList : element('p', 'continuation-empty', '当前没有原文。可以为这个项目添加原文。'))
+      originalList.replaceChildren(sourceList.childElementCount ? (arriving ? stagger(sourceList) : sourceList) : element('p', 'continuation-empty', '当前没有原文。可以为这个项目添加原文。'))
       if (heading.parentElement !== body) body.replaceChildren(heading, lists)
     } catch (error) {
       if (!signal.aborted && current === request) body.replaceChildren(notice(storageError(error), true))
     }
+    if (!signal.aborted && current === request) arriving = false
   }
 
   libraryChanges.addEventListener('update', () => { void refresh() }, { signal })

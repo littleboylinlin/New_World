@@ -4,6 +4,7 @@ import { createNovel } from './documents/store'
 import { deleteBook, libraryChanges, listBooks, maxTitleLength, renameBook, storageError } from './library'
 import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
+import { stagger } from './motion'
 import { offerUndo } from './undo'
 
 const changes = libraryChanges
@@ -38,7 +39,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
 
   const local = element('p', 'local-note')
   local.append(icon('device'), element('strong', '', '原文件始终可下载'), window.newWorldDesktop ? '导入和阅读都在本机完成。' : '导入和阅读都在当前浏览器完成。')
-  home.append(intro, cards, local)
+  home.append(intro, stagger(cards), local)
   root.append(home)
 
   async function refreshCounts() {
@@ -184,6 +185,8 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   root.append(panel)
 
   let requestNumber = 0
+  // Only the first render animates in. Later refreshes swap the list quietly.
+  let arriving = true
   async function refresh() {
     const current = ++requestNumber
     try {
@@ -194,9 +197,9 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
         const list = element('ul', 'book-list book-grid')
         list.setAttribute('aria-label', '全部作品')
         list.append(...books.map((book) => bookCard(root, book)))
-        content.replaceChildren(list)
+        content.replaceChildren(arriving ? stagger(list) : list)
       } else {
-        const empty = element('div', 'empty-shelf')
+        const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('book'))
         empty.append(emptyIcon, element('h3', '', library.empty), element('p', '', id === 'reference' ? '导入原作后进入项目，就能开始续写。' : '导入 TXT、PDF、EPUB、DOCX 等小说文件。'))
@@ -208,6 +211,7 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
         content.replaceChildren(notice(storageError(error), true))
       }
     }
+    if (!signal.aborted && current === requestNumber) arriving = false
   }
 
   changes.addEventListener('update', () => void refresh(), { signal })

@@ -1,0 +1,65 @@
+:root {
+  --ease-out: cubic-bezier(.2, .75, .25, 1);
+  --ease-pop: cubic-bezier(.3, 1.45, .5, 1);
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes enter-forward { from { opacity: 0; transform: translateX(26px); } }
+@keyframes enter-back { from { opacity: 0; transform: translateX(-26px); } }
+@keyframes drop-in { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 22px); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 16px); } }
+@keyframes pop { 40% { transform: scale(1.28); } }
+@keyframes chapter-next { from { opacity: 0; transform: translateY(16px); } }
+@keyframes chapter-previous { from { opacity: 0; transform: translateY(-16px); } }
+@keyframes press { 50% { transform: scale(.9); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Page changes. The new page arrives from the side it was opened from. */
+  .main-content[data-enter] > * { animation: 300ms var(--ease-out) backwards rise; }
+  .main-content[data-enter="forward"] > * { animation-name: enter-forward; }
+  .main-content[data-enter="back"] > * { animation-name: enter-back; }
+  .name-ghost { position: fixed; z-index: 3; pointer-events: none; transform-origin: left top; white-space: nowrap; }
+  .name-ghost::before { content: attr(data-text); }
+  .name-landing { visibility: hidden; }
+
+  .stagger > * { animation: 380ms var(--ease-out) backwards rise; animation-delay: calc(var(--order, 0) * 28ms + 40ms); }
+  .home-intro > * { animation: 420ms var(--ease-out) backwards rise; }
+  .home-intro > :nth-child(2) { animation-delay: 60ms; }
+  .local-note { animation: 420ms var(--ease-out) 260ms backwards fade-in; }
+
+  .notice, .import-notice:not([hidden]), .field-error:not([hidden]) { animation: 240ms var(--ease-out) backwards drop-in; }
+  .update-banner:not([hidden]) { animation: 360ms var(--ease-out) backwards drop-in; }
+  .reader-panel, .continuation-list { animation: 360ms var(--ease-out) backwards rise; }
+  .continuation-list + .continuation-list { animation-delay: 70ms; }
+  .arrive { animation: 380ms var(--ease-out) backwards rise; }
+
+  .manage-dialog[open] { animation: 260ms var(--ease-pop) backwards dialog-in; }
+  .manage-dialog[open]::backdrop { animation: 220ms ease-out backwards fade-in; }
+  .undo-toast { animation: 320ms var(--ease-pop) backwards toast-in; }
+  .undo-toast.leaving { animation: 200ms ease-in both toast-out; }
+  .pop { animation: 360ms var(--ease-pop) pop; }
+
+  .search-panel:not([hidden]) { animation: 220ms var(--ease-out) backwards drop-in; }
+  .novel-body { animation: 300ms var(--ease-out) backwards fade-in; }
+  .novel-body[data-turn="next"] { animation-name: chapter-next; }
+  .novel-body[data-turn="previous"] { animation-name: chapter-previous; }
+  .chapter-jump[aria-current] { animation: 260ms var(--ease-pop) backwards fade-in; }
+  .format-button:active:not(:disabled) { animation: 180ms ease-out press; }
+  .chapter-navigation, .conversion-info { interpolate-size: allow-keywords; }
+  .chapter-navigation::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
+  .chapter-navigation[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
+
+  .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump { transition: transform 160ms var(--ease-out), background-color 140ms ease, color 140ms ease, border-color 140ms ease; }
+  .shelf-card:hover .card-enter svg { transform: translateX(5px); }
+  .version-tab:hover:not([aria-current]) { transform: translateY(-2px); }
+  .book-row:hover { transform: translateX(3px); }
+  .export-chapter input, .export-format { transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), background-color 140ms ease; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; }
+}
