@@ -55,6 +55,9 @@ h1, h2, h3, p { margin: 0; }
 .local-label span { width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); }
 .site-header .button { border-color: var(--paper); color: var(--paper); background: transparent; box-shadow: none; }
 .site-header .button:hover { color: var(--ink); background: var(--yellow); border-color: var(--yellow); transform: none; }
+.trash-count { min-width: 1.5em; padding: 0 5px; border-radius: 20px; color: var(--ink); background: var(--yellow); font-size: .74rem; font-variant-numeric: tabular-nums; text-align: center; }
+.trash-count:empty { display: none; }
+.site-header .button:hover .trash-count { color: var(--yellow); background: var(--ink); }
 .main-content { flex: 1; padding-block: 38px 64px; }
 .site-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding-block: 18px 24px; border-top: 3px solid var(--ink); color: var(--muted); font-size: .78rem; }
 .site-footer > span { color: var(--ink); font-weight: 800; letter-spacing: .04em; }
@@ -171,12 +174,23 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .book-card .book-controls .button { flex: 1 1 0; min-width: 0; padding-inline: 6px; gap: 6px; }
 .book-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 11px 14px; border: 2px solid var(--ink); border-radius: 10px; background: var(--sheet); }
 .book-row .book-title { font-weight: 800; }
+.book-row .book-controls { flex: none; margin-top: 0; }
+.trash-row .book-copy { flex: 1; }
+.trash-row .file-size { white-space: normal; }
 .book-row .book-link:hover .book-title, .book-row a.book-title:hover { color: var(--accent); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .book-row > .file-size { padding: 1px 8px; border-radius: 20px; color: var(--ink); background: var(--tint); font-size: .78rem; font-weight: 700; }
 .import-notice, .notice { padding: 11px 14px; border: 2px solid var(--ink); border-inline-start-width: 8px; border-radius: 8px; background: var(--sheet); font-size: .88rem; line-height: 1.65; overflow-wrap: anywhere; }
 .import-notice { margin-bottom: 24px; }
 .import-notice ul { margin: 6px 0 0; padding-inline-start: 20px; }
 .notice-error { border-color: var(--red); color: #a80f14; background: #fff1ee; }
+
+.undo-toast { position: fixed; z-index: 4; left: 50%; bottom: 22px; display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 32px); padding: 10px 10px 10px 16px; border: 2px solid var(--ink); border-radius: 12px; color: var(--paper); background: var(--ink); box-shadow: 5px 5px 0 var(--yellow); transform: translateX(-50%); font-size: .9rem; font-weight: 650; }
+.undo-toast p { min-width: 0; overflow-wrap: anywhere; }
+.undo-toast .button { flex: none; border-color: var(--yellow); color: var(--ink); background: var(--yellow); box-shadow: none; }
+.undo-toast .button:hover:not(:disabled) { background: #fff; border-color: #fff; transform: none; box-shadow: none; }
+.undo-toast :focus-visible { outline-color: var(--yellow); }
+.undo-close { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; color: var(--paper); background: transparent; }
+.undo-close:hover { color: var(--ink); background: var(--yellow); }
 
 .manage-dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; border: 3px solid var(--ink); border-radius: 14px; color: var(--ink); background: var(--sheet); box-shadow: 9px 9px 0 var(--ink); }
 .manage-dialog::backdrop { background: #16130f9e; }
@@ -237,7 +251,8 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .header-inner { min-height: 58px; gap: 8px; }
   .header-actions { gap: 8px; }
   .brand img { width: 32px; height: 32px; }
-  .brand small, .header-actions .local-label { display: none; }
+  .brand small, .header-actions .local-label, .trash-label { display: none; }
+  .site-header .button { padding-inline: 9px; }
   .main-content { padding-block: 24px 44px; }
   .home-intro { padding-block: 6px 26px; }
   .home-intro .intro-copy { font-size: .96rem; }

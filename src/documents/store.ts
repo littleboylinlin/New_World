@@ -1,6 +1,6 @@
-import { committed, deleteIndexed, maxTitleLength, openDatabase, resultOf } from '../library'
-import type { Book, LibraryId, WrittenBook } from '../library'
-import { emptyChapter, maxChapters } from './model'
+import { announced, committed, maxTitleLength, openDatabase, resultOf, trashEntry, writing } from '../library'
+import type { Book, LibraryId, TrashEntry, WrittenBook } from '../library'
+import { emptyChapter, maxChapters, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition, EditionBundle, EditionKey } from './model'
 
 const editionKey = (edition: EditionKey) => [edition.library, edition.bookId, edition.id]
@@ -14,17 +14,9 @@ function checkedTitle(value: string) {
 
 // Queue writes while the IndexedDB callback owns the active transaction, including in Safari.
 function updateRecord<T, R>(tx: IDBTransaction, request: IDBRequest<T>, write: (record: T) => R) {
-  let result: R
-  let failure: unknown
-  request.onsuccess = () => {
-    try {
-      result = write(request.result)
-    } catch (error) {
-      failure = error
-      tx.abort()
-    }
-  }
-  return committed(tx).then(() => result, (error) => { throw failure ?? error })
+  const { step, done } = writing<R>(tx)
+  request.onsuccess = step(() => write(request.result))
+  return done()
 }
 
 type EditionOptions = Pick<Edition, 'source'> & Partial<Pick<Edition, 'notes' | 'copiedFrom' | 'originalId'>>
@@ -127,12 +119,22 @@ export async function readBundle(key: EditionKey): Promise<EditionBundle> {
 type ChapterChange = { type: 'add'; title: string } | { type: 'rename'; id: string; title: string }
   | { type: 'move'; id: string; offset: -1 | 1 } | { type: 'delete'; id: string }
 
+export async function chapterWordCounts(key: EditionKey) {
+  const db = await openDatabase()
+  const index = db.transaction('chapters').objectStore('chapters').index('byEdition')
+  const chapters: ChapterRecord[] = await resultOf(index.getAll(editionKey(key)))
+  return new Map(chapters.map((chapter) => [chapter.id, wordCount(chapter.content)]))
+}
+
 export async function changeChapters(edition: Edition, change: ChapterChange) {
   const db = await openDatabase()
-  const tx = db.transaction(['editions', 'chapters'], 'readwrite', { durability: 'strict' })
+  const tx = db.transaction(['editions', 'chapters', 'trash'], 'readwrite', { durability: 'strict' })
   const editions = tx.objectStore('editions')
   const records = tx.objectStore('chapters')
-  return updateRecord(tx, editions.get(editionKey(edition)), (stored: Edition | undefined) => {
+  // A deleted chapter is read before the directory so its text can move to the trash.
+  const removed = change.type === 'delete' ? records.get(chapterKey(edition, change.id)) : undefined
+  let trashed: TrashEntry | undefined
+  return announced(updateRecord(tx, editions.get(editionKey(edition)), (stored: Edition | undefined) => {
     if (!stored) throw new Error('此编辑版本已被移除。')
     if (stored.revision !== edition.revision) throw new Error('章节目录已在其他页面更新。保存正文后重新打开此版本。')
     const chapters = [...stored.chapters]
@@ -160,6 +162,12 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
         chapters[target] = moved
       }
       if (change.type === 'delete') {
+        if (removed?.result) {
+          trashed = trashEntry('chapter', stored.library, stored.bookId, chapters[index].title)
+          trashed.chapters = [removed.result]
+          trashed.position = { editionId: stored.id, index }
+          tx.objectStore('trash').add(trashed)
+        }
         chapters.splice(index, 1)
         records.delete(chapterKey(stored, change.id))
         selected = chapters.length ? chapters[Math.min(index, chapters.length - 1)].id : append('第一章')
@@ -167,14 +175,28 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
     }
     const next = { ...stored, chapters, revision: stored.revision + 1 }
     editions.put(next)
-    return { edition: next, selected }
-  })
+    return { edition: next, selected, trashed }
+  }))
 }
 
 export async function deleteEdition(edition: EditionKey) {
   const db = await openDatabase()
-  const tx = db.transaction(['editions', 'chapters'], 'readwrite', { durability: 'strict' })
-  tx.objectStore('editions').delete(editionKey(edition))
-  deleteIndexed(tx.objectStore('chapters'), 'byEdition', editionKey(edition))
-  await committed(tx)
+  const tx = db.transaction(['editions', 'chapters', 'trash'], 'readwrite', { durability: 'strict' })
+  const editions = tx.objectStore('editions')
+  const chapters = tx.objectStore('chapters')
+  const { step, done } = writing<TrashEntry>(tx)
+  const stored = editions.get(editionKey(edition))
+  const records = chapters.index('byEdition').getAll(editionKey(edition))
+  records.onsuccess = step(() => {
+    const current: Edition | undefined = stored.result
+    if (!current) throw new Error('此编辑版本已被移除。')
+    const entry = trashEntry('edition', current.library, current.bookId, current.name)
+    entry.editions = [current]
+    entry.chapters = records.result
+    editions.delete(editionKey(current))
+    for (const chapter of entry.chapters) chapters.delete(chapterKey(current, chapter.id))
+    tx.objectStore('trash').add(entry)
+    return entry
+  })
+  return announced(done())
 }

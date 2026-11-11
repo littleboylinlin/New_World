@@ -1,11 +1,12 @@
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { createNovel } from './documents/store'
-import { deleteBook, listBooks, maxTitleLength, renameBook, storageError } from './library'
+import { deleteBook, libraryChanges, listBooks, maxTitleLength, renameBook, storageError } from './library'
 import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
+import { offerUndo } from './undo'
 
-const changes = new EventTarget()
+const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
 
 function shelfArtwork(library: LibraryId) {
@@ -105,7 +106,7 @@ function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
     if (book.format !== 'draft') form.append(element('p', 'dialog-help', `原文件名 · ${book.originalName}`))
   } else {
     const message = element('p', 'dialog-help')
-    message.append('将从此书库移除「', element('strong', '', book.title), book.library === 'reference' ? '」及项目内全部续写和原文。' : '」及其全部编辑版本和本地原件。')
+    message.append('将把「', element('strong', '', book.title), book.library === 'reference' ? '」及项目内全部续写和原文移入回收站。' : '」及其全部编辑版本和本地原件移入回收站。')
     form.append(message)
   }
 
@@ -132,10 +133,13 @@ function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
     cancel.disabled = true
     error.hidden = true
     try {
-      if (isRename) await renameBook(book.library, book.id, input.value)
-      else await deleteBook(book.library, book.id)
+      if (isRename) {
+        await renameBook(book.library, book.id, input.value)
+        changes.dispatchEvent(new Event('update'))
+      } else {
+        offerUndo(await deleteBook(book.library, book.id))
+      }
       dialog.close()
-      changes.dispatchEvent(new Event('update'))
     } catch (reason) {
       error.textContent = storageError(reason)
       error.hidden = false

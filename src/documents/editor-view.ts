@@ -4,13 +4,15 @@ import { storageError } from '../library'
 import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
+import { offerUndo } from '../undo'
 import { exportEdition, outputFormats } from './export'
 import type { OutputFormat } from './export'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
+import { wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './model'
 import { checkDocument, documentExtensions } from './schema'
 import { replaceMatches, revealMatch, SearchHighlight, searchState, setSearch } from './search'
-import { changeChapters, createEdition, deleteEdition, readBundle, readChapter, saveChapter } from './store'
+import { changeChapters, chapterWordCounts, createEdition, deleteEdition, readBundle, readChapter, saveChapter } from './store'
 import './editor.css'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
@@ -30,6 +32,10 @@ export async function renderEdition(
   let selectionRequest = 0
   let activeMatch = 0
   let refreshFrame = 0
+  // Word counts of the other chapters are read once. The open chapter is counted as it changes.
+  let words: Map<string, number> | undefined
+  const wordLabels = new Map<string, HTMLElement>()
+  const number = (value: number) => value.toLocaleString('zh-CN')
 
   const workspace = element('section', 'edition-workspace')
   const top = element('header', 'edition-header')
@@ -83,7 +89,11 @@ export async function renderEdition(
   const chapterHeader = element('header', 'writing-header')
   const chapterTitle = element('h3')
   const count = element('span', 'word-count')
-  chapterHeader.append(chapterTitle, count)
+  const total = element('span', 'word-total')
+  total.hidden = true
+  const counts = element('div', 'word-counts')
+  counts.append(count, total)
+  chapterHeader.append(chapterTitle, counts)
   const toolbar = element('div', 'format-toolbar')
   toolbar.setAttribute('role', 'group')
   toolbar.setAttribute('aria-label', '正文格式')
@@ -224,8 +234,24 @@ export async function renderEdition(
     return edition.chapters.find((entry) => entry.id === chapter.id) ?? { id: chapter.id, title: chapterTitle.textContent || '已移除章节' }
   }
 
+  const liveCount = () => Array.from(editor.state.doc.textContent.replace(/\s/gu, '')).length
+
+  function refreshWords(everyChapter = true) {
+    if (!words) return
+    let sum = 0
+    for (const { id } of edition.chapters) sum += words.get(id) ?? 0
+    total.textContent = `全书 ${number(sum)} 字`
+    total.hidden = false
+    for (const [id, label] of everyChapter ? wordLabels : [[chapter.id, wordLabels.get(chapter.id)] as const]) {
+      if (label) label.textContent = number(words.get(id) ?? 0)
+    }
+  }
+
   function refreshContents() {
-    count.textContent = `本章 ${Array.from(editor.state.doc.textContent.replace(/\s/gu, '')).length.toLocaleString('zh-CN')} 字`
+    const current = liveCount()
+    count.textContent = `本章 ${number(current)} 字`
+    words?.set(chapter.id, current)
+    refreshWords(false)
     outline.replaceChildren()
     const links = element('ul')
     editor.state.doc.descendants((node, position) => {
@@ -262,14 +288,19 @@ export async function renderEdition(
   function refreshChapters() {
     chapterTitle.textContent = chapterInfo().title
     navLabel.textContent = `章节目录 · ${edition.chapters.length}`
+    wordLabels.clear()
     chapterList.replaceChildren(...edition.chapters.map(({ id, title }) => {
       const item = element('li')
       const jump = button(title, 'chapter-jump')
       if (id === chapter.id) jump.setAttribute('aria-current', 'true')
       jump.addEventListener('click', () => { void switchChapter(id) })
-      item.append(jump)
+      const label = element('span', 'chapter-words')
+      label.title = '本章字数'
+      wordLabels.set(id, label)
+      item.append(jump, label)
       return item
     }))
+    refreshWords()
     const index = edition.chapters.findIndex((entry) => entry.id === chapter.id)
     up.disabled = index === 0
     down.disabled = index === edition.chapters.length - 1
@@ -343,6 +374,13 @@ export async function renderEdition(
     edition = result.edition
     if (result.selected !== chapter.id) await switchChapter(result.selected)
     else refreshChapters()
+    if (result.trashed) offerUndo(result.trashed, (restored) => {
+      if (signal.aborted || !restored.edition) return
+      const [record] = restored.entry.chapters
+      edition = restored.edition
+      words?.set(record.id, wordCount(record.content))
+      refreshChapters()
+    })
   }
 
   async function currentChapters(selectedIds?: Set<string>): Promise<ChapterInput[]> {
@@ -390,12 +428,15 @@ export async function renderEdition(
     async (data) => alter({ type: 'rename', id: chapter.id, title: String(data.get('name')) })))
   up.addEventListener('click', () => { void alter({ type: 'move', id: chapter.id, offset: -1 }).catch(report) })
   down.addEventListener('click', () => { void alter({ type: 'move', id: chapter.id, offset: 1 }).catch(report) })
-  remove.addEventListener('click', () => formDialog(root, { title: '删除章节？', action: '确认删除章节', danger: true, description: `将删除「${chapterInfo().title}」及其正文。删除最后一章后会创建空白章节。` },
+  remove.addEventListener('click', () => formDialog(root, { title: '删除章节？', action: '确认删除章节', danger: true, description: `将把「${chapterInfo().title}」及其正文移入回收站。删除最后一章后会创建空白章节。` },
     async () => alter({ type: 'delete', id: chapter.id })))
-  removeVersion.addEventListener('click', () => formDialog(root, { title: '删除编辑版本？', action: '确认删除版本', danger: true, description: `将删除「${edition.name}」及其全部章节。其他版本和原文件仍可使用。` }, async () => {
+  removeVersion.addEventListener('click', () => formDialog(root, { title: '删除编辑版本？', action: '确认删除版本', danger: true, description: `将把「${edition.name}」及其全部章节移入回收站。其他版本和原文件仍可使用。` }, async () => {
     if (!await flush()) throw new Error('请先保存或另存当前改动。')
-    await deleteEdition(edition)
+    const entry = await deleteEdition(edition)
     location.hash = bookPath(book.library, book.id)
+    offerUndo(entry, (restored) => {
+      if (restored.edition) location.hash = bookPath(book.library, book.id, restored.edition.id)
+    })
   }))
   recover.addEventListener('click', () => formDialog(root, { title: '放弃未保存的改动？', action: '放弃并返回书库', danger: true, description: '将舍弃当前未保存正文，保留已提交的内容。' }, async () => {
     window.clearTimeout(timer)
@@ -479,4 +520,10 @@ export async function renderEdition(
   }, { once: true })
   mountChapter(chapter)
   registerLeave(flush)
+  void chapterWordCounts(edition).then((stored) => {
+    if (signal.aborted) return
+    stored.set(chapter.id, liveCount())
+    words = stored
+    refreshWords()
+  }, () => {})
 }
