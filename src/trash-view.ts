@@ -3,6 +3,7 @@ import { libraryChanges, storageError } from './library'
 import { emptyTrash, listTrash, restoreTrash, trashDays } from './trash'
 import type { TrashItem } from './trash'
 import { button, element, icon, libraries, link, notice } from './ui'
+import { stagger } from './motion'
 import { trashKinds } from './undo'
 
 const day = 24 * 60 * 60 * 1000
@@ -68,6 +69,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
   }
 
   let request = 0
+  let arriving = true
   async function refresh() {
     const turn = ++request
     try {
@@ -78,9 +80,9 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
         const list = element('ul', 'book-list')
         list.setAttribute('aria-label', '回收站内容')
         list.append(...items.map((item) => trashRow(root, item, report)))
-        content.replaceChildren(list)
+        content.replaceChildren(arriving ? stagger(list) : list)
       } else {
-        const empty = element('div', 'empty-shelf')
+        const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('trash'))
         empty.append(emptyIcon, element('h3', '', '回收站是空的'), element('p', '', '删除的内容会先放到这里。'))
@@ -89,6 +91,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
     } catch (error) {
       if (!signal.aborted && turn === request) content.replaceChildren(notice(storageError(error), true))
     }
+    if (!signal.aborted && turn === request) arriving = false
   }
 
   clear.addEventListener('click', () => formDialog(root, {

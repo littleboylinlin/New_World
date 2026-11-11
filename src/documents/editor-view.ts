@@ -315,7 +315,7 @@ export async function renderEdition(
     refreshSearch()
   }
 
-  function mountChapter(next: ChapterRecord) {
+  function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous') {
     checkDocument(next.content)
     editor?.destroy()
     paper.replaceChildren()
@@ -327,7 +327,7 @@ export async function renderEdition(
     editor = new Editor({
       element: paper, extensions: [...documentExtensions, SearchHighlight], content: next.content, editable: editing,
       editorProps: {
-        attributes: { class: 'novel-body', 'aria-label': '章节正文', 'aria-multiline': 'true', spellcheck: 'false' },
+        attributes: { class: 'novel-body', 'aria-label': '章节正文', 'aria-multiline': 'true', spellcheck: 'false', ...(turn ? { 'data-turn': turn } : {}) },
         transformPastedHTML: (markup) => {
           if (markup.length <= 36 * 1024 * 1024) return cleanMarkup(inertMarkup(markup))
           report(new Error('剪贴板的富文本内容过大。可分段粘贴或使用纯文本粘贴。'))
@@ -362,7 +362,8 @@ export async function renderEdition(
       if (!await flush()) return
       const next = await readChapter(edition, id)
       if (!await flush() || signal.aborted || request !== selectionRequest) return
-      mountChapter(next)
+      const order = (target: string) => edition.chapters.findIndex((entry) => entry.id === target)
+      mountChapter(next, order(id) < order(chapter.id) ? 'previous' : 'next')
       if (matchMedia('(max-width: 779px)').matches) navigation.open = false
     } catch (cause) { report(cause) }
   }
