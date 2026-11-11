@@ -54,7 +54,19 @@
 .novel-body td, .novel-body th, .print-edition td, .print-edition th { border: 1px solid #ccd1c7; padding: .22em .5em; min-width: 2em; }
 .novel-body th { background: var(--tint); }
 .novel-body .selectedCell { background: #e9efe0; }
-.export-scope { display: flex; align-items: center; gap: 7px; margin-top: 12px; font-size: .88rem; }
+.export-formats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.export-format { grid-column: span 2; position: relative; display: grid; place-items: center; min-height: 48px; padding: 6px 4px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #334239; font-size: .9rem; font-weight: 650; cursor: pointer; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
+.export-format:nth-child(n+4) { grid-column: span 3; }
+.export-format input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.export-format:hover { border-color: #a7b7a8; background: var(--tint); }
+.export-format:has(input:checked) { border-color: var(--accent); background: var(--accent); color: #fffdf5; }
+.export-format:has(input:focus-visible) { outline: 3px solid #91721d; outline-offset: 3px; }
+.export-chapters { display: grid; gap: 2px; margin-top: 14px; padding: 5px; max-height: 200px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fbfaf4; }
+.export-chapter { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px; color: #334239; font-size: .86rem; cursor: pointer; transition: background-color 150ms ease; }
+.export-chapter:hover { background: var(--tint); }
+.export-chapter input { width: 15px; height: 15px; margin: 0; flex: none; accent-color: var(--accent); }
+.export-chapter span { min-width: 0; overflow-wrap: anywhere; }
+.export-chapter-all { margin-bottom: 4px; padding-bottom: 11px; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--tint); font-weight: 650; }
 .print-edition { display: none; }
 
 @media (max-width: 779px) {

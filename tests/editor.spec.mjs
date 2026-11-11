@@ -421,11 +421,11 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   await upload(page, [source])
   await openBook(page, '灯塔手稿')
   await convert(page)
+  const formatLabels = { txt: 'TXT', md: 'Markdown', html: 'HTML', docx: 'DOCX', pdf: 'PDF' }
   for (const format of ['txt', 'md', 'html', 'docx']) {
     await page.getByRole('button', { name: '导出', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
-    await dialog.getByRole('combobox', { name: '导出格式' }).selectOption(format)
-    await expect(dialog.locator('.dialog-help')).toBeVisible()
+    await dialog.getByRole('radio', { name: formatLabels[format] }).check()
     const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: '开始导出' }).click()])
     const path = testInfo.outputPath(`export-edition.${format}`)
     await download.saveAs(path)
@@ -448,11 +448,63 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   }
   await page.getByRole('button', { name: '导出', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
-  await dialog.getByRole('combobox', { name: '导出格式' }).selectOption('pdf')
+  await dialog.getByRole('radio', { name: 'PDF' }).check()
   await dialog.getByRole('button', { name: '开始导出' }).click()
   await expect(page.locator('body')).toHaveAttribute('data-print-requested', 'yes')
   const printed = await page.pdf({ path: testInfo.outputPath('export-edition.pdf'), format: 'A4', printBackground: true })
   expect(printed.subarray(0, 4).toString()).toBe('%PDF')
+})
+
+test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
+  await shelf(page)
+  await newNovel(page, '雾中书简')
+  await textArea(page).fill('第一封信从雾里来。')
+  await manualSave(page)
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await textArea(page).fill('第二封信落在窗台。')
+  await manualSave(page)
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第三章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(page.locator('.writing-header h3')).toHaveText('第三章')
+  await textArea(page).fill('第三封信没有署名。')
+  await manualSave(page)
+
+  const dialog = () => page.getByRole('dialog', { name: '导出编辑稿' })
+  const exportTxt = async (name) => {
+    const [download] = await Promise.all([page.waitForEvent('download'), dialog().getByRole('button', { name: '开始导出' }).click()])
+    const path = testInfo.outputPath(`export-${name}.txt`)
+    await download.saveAs(path)
+    return (await readFile(path)).toString('utf8')
+  }
+
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await dialog().getByRole('radio', { name: 'TXT' }).check()
+  await expect(dialog().getByRole('checkbox', { name: '全选' })).toBeChecked()
+  await expect(dialog().getByRole('checkbox', { name: '第一章' })).toBeVisible()
+  await expect(dialog().getByRole('checkbox', { name: '第二章' })).toBeVisible()
+  await expect(dialog().getByRole('checkbox', { name: '第三章' })).toBeVisible()
+  const all = await exportTxt('all')
+  expect(all).toContain('第一封信从雾里来。')
+  expect(all).toContain('第二封信落在窗台。')
+  expect(all).toContain('第三封信没有署名。')
+
+  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await dialog().getByRole('checkbox', { name: '全选' }).uncheck()
+  await expect(dialog().getByRole('checkbox', { name: '第一章' })).not.toBeChecked()
+  await dialog().getByRole('button', { name: '开始导出' }).click()
+  await expect(dialog().getByRole('alert')).toHaveText('请至少选择一章。')
+
+  await dialog().getByRole('checkbox', { name: '第一章' }).check()
+  await dialog().getByRole('checkbox', { name: '第三章' }).check()
+  expect(await dialog().getByRole('checkbox', { name: '全选' }).evaluate((el) => el.indeterminate)).toBe(true)
+  const picked = await exportTxt('picked')
+  expect(picked).toContain('第一封信从雾里来。')
+  expect(picked).toContain('第三封信没有署名。')
+  expect(picked).not.toContain('第二封信落在窗台。')
 })
 
 test.describe('移动编辑', () => {

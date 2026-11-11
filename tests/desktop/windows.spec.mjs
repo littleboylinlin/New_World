@@ -47,10 +47,12 @@ async function stop(app) {
   await exited
 }
 
+const exportLabels = { txt: 'TXT', md: 'Markdown', html: 'HTML', docx: 'DOCX', pdf: 'PDF' }
+
 async function exportTo(page, format) {
   await page.getByRole('button', { name: '导出', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
-  await dialog.getByRole('combobox', { name: '导出格式' }).selectOption(format)
+  await dialog.getByRole('radio', { name: exportLabels[format] }).check()
   await dialog.getByRole('button', { name: '开始导出' }).click()
   await expect(dialog).toBeHidden()
 }

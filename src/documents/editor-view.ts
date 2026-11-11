@@ -333,15 +333,16 @@ export async function renderEdition(
     else refreshChapters()
   }
 
-  async function currentChapters(onlyCurrent: boolean): Promise<ChapterInput[]> {
+  async function currentChapters(selectedIds?: Set<string>): Promise<ChapterInput[]> {
     if (editor.view.composing) throw new Error('请先完成当前输入。')
     const visible = { title: chapterInfo().title, content: editor.getJSON() as DocumentContent }
-    if (onlyCurrent) return [visible]
     const bundle = await readBundle(edition)
-    const index = bundle.edition.chapters.findIndex((entry) => entry.id === chapter.id)
+    const infos = bundle.edition.chapters
+    const index = infos.findIndex((entry) => entry.id === chapter.id)
     if (index < 0) return [...bundle.chapters, visible]
     if (change !== saved) bundle.chapters[index] = { ...bundle.chapters[index], content: visible.content }
-    return bundle.chapters
+    if (!selectedIds) return bundle.chapters
+    return bundle.chapters.filter((_, i) => selectedIds.has(infos[i]?.id))
   }
 
   function changeMatch(offset: number) {
@@ -393,31 +394,60 @@ export async function renderEdition(
   }))
   saveCopy.addEventListener('click', () => formDialog(root, { title: '另存为独立版本', action: '保存独立版本', fields: [nameField('版本名', `${edition.name} 副本`)] }, async (data) => {
     await flush()
-    const copy = await createEdition(book, await currentChapters(false), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
+    const copy = await createEdition(book, await currentChapters(), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
     window.clearTimeout(timer)
     saved = change
     window.removeEventListener('beforeunload', unsaved)
     location.hash = bookPath(book.library, book.id, copy.id)
   }))
   exportButton.addEventListener('click', () => {
-    const field = element('label', 'field-label', '导出格式')
-    const select = element('select', 'title-input')
-    select.name = 'format'
-    for (const [value, info] of Object.entries(outputFormats)) {
-      const option = element('option', '', info.title)
-      option.value = value
-      select.append(option)
+    const formats = element('div', 'export-formats')
+    formats.setAttribute('role', 'radiogroup')
+    formats.setAttribute('aria-label', '导出格式')
+    for (const [value, label] of Object.entries(outputFormats)) {
+      const item = element('label', 'export-format')
+      const radio = element('input')
+      radio.type = 'radio'
+      radio.name = 'format'
+      radio.value = value
+      radio.checked = value === 'txt'
+      item.append(radio, element('span', '', label))
+      formats.append(item)
     }
-    field.append(select)
-    const help = element('p', 'dialog-help', outputFormats.txt.note)
-    select.addEventListener('change', () => { help.textContent = outputFormats[select.value as OutputFormat].note })
-    const only = element('label', 'export-scope')
-    const checkbox = element('input')
-    checkbox.type = 'checkbox'
-    checkbox.name = 'current'
-    only.append(checkbox, '仅导出当前章节')
-    formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [field, help, only] }, async (data) => {
-      const chapters = await currentChapters(data.has('current'))
+    const chapterBox = element('div', 'export-chapters')
+    chapterBox.setAttribute('role', 'group')
+    chapterBox.setAttribute('aria-label', '选择章节')
+    const allRow = element('label', 'export-chapter export-chapter-all')
+    const allInput = element('input')
+    allInput.type = 'checkbox'
+    allInput.checked = true
+    allRow.append(allInput, element('span', '', '全选'))
+    chapterBox.append(allRow)
+    const boxes: HTMLInputElement[] = []
+    for (const info of edition.chapters) {
+      const row = element('label', 'export-chapter')
+      const box = element('input')
+      box.type = 'checkbox'
+      box.name = 'chapter'
+      box.value = info.id
+      box.checked = true
+      row.append(box, element('span', '', info.title))
+      chapterBox.append(row)
+      boxes.push(box)
+    }
+    allInput.addEventListener('change', () => {
+      for (const box of boxes) box.checked = allInput.checked
+    })
+    chapterBox.addEventListener('change', (event) => {
+      if (event.target === allInput) return
+      allInput.checked = boxes.length > 0 && boxes.every((box) => box.checked)
+      allInput.indeterminate = !allInput.checked && boxes.some((box) => box.checked)
+    })
+
+    formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [formats, chapterBox] }, async (data) => {
+      const ids = new Set(data.getAll('chapter').map(String))
+      if (!ids.size) throw new Error('请至少选择一章。')
+      const chapters = ids.size === edition.chapters.length ? await currentChapters() : await currentChapters(ids)
       await exportEdition(String(data.get('format')) as OutputFormat, `${book.title} - ${edition.name}`, chapters)
     })
   })
