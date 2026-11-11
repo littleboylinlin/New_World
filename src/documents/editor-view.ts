@@ -2,7 +2,8 @@ import { Editor } from '@tiptap/core'
 import { formDialog, nameField } from '../dialogs'
 import { storageError } from '../library'
 import type { Book } from '../library'
-import { bookPath, button, element } from '../ui'
+import { bookPath, button, element, icon } from '../ui'
+import type { IconName } from '../ui'
 import { exportEdition, outputFormats } from './export'
 import type { OutputFormat } from './export'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
@@ -38,12 +39,14 @@ export async function renderEdition(
   const commands = element('div', 'edition-commands')
   const status = element('span', 'save-status', '已保存')
   status.setAttribute('role', 'status')
-  const save = button('手动保存', 'button button-primary button-small')
+  const save = button('手动保存', 'button button-primary button-small', 'check')
   save.title = 'Ctrl / ⌘ + S'
-  const mode = button('阅读模式', 'button button-quiet button-small')
-  const saveCopy = button('另存为独立版本', 'button button-quiet button-small')
+  const mode = button('', 'button button-quiet button-small', 'book')
+  const modeLabel = element('span', '', '阅读模式')
+  mode.append(modeLabel)
+  const saveCopy = button('另存为独立版本', 'button button-quiet button-small', 'copy')
   const exportButton = button('导出', 'button button-quiet button-small', 'download')
-  const removeVersion = button('删除版本', 'button button-quiet button-small remove-button')
+  const removeVersion = button('删除版本', 'button button-quiet button-small remove-button', 'trash')
   commands.append(status, save, mode, saveCopy, exportButton, removeVersion)
   top.append(about, commands)
 
@@ -67,10 +70,10 @@ export async function renderEdition(
   chapterList.setAttribute('aria-label', '章节')
   const chapterActions = element('div', 'chapter-actions')
   const add = button('新建章节', 'button button-quiet button-small', 'plus')
-  const rename = button('重命名章节', 'button button-quiet button-small')
-  const up = button('上移', 'button button-quiet button-small')
-  const down = button('下移', 'button button-quiet button-small')
-  const remove = button('删除章节', 'button button-quiet button-small remove-button')
+  const rename = button('重命名章节', 'button button-quiet button-small', 'edit')
+  const up = button('上移', 'button button-quiet button-small', 'up')
+  const down = button('下移', 'button button-quiet button-small', 'down')
+  const remove = button('删除章节', 'button button-quiet button-small remove-button', 'trash')
   chapterActions.append(add, rename, up, down, remove)
   const outline = element('nav', 'chapter-outline')
   outline.setAttribute('aria-label', '本章小节')
@@ -99,31 +102,40 @@ export async function renderEdition(
   toolbar.append(heading)
 
   const markControls: { node: HTMLButtonElement; active: string }[] = []
-  function tool(label: string, invoke: () => void, active?: string, shortcut?: string) {
-    const node = button(label, 'format-button')
+  // Toolbar buttons show a glyph or an icon. The label stays as the accessible name and tooltip.
+  function tool(label: string, symbol: IconName | { glyph: string }, invoke: () => void, active?: string, shortcut?: string) {
+    const node = button('', 'format-button')
+    if (typeof symbol === 'string') node.append(icon(symbol))
+    else node.append(element('span', `format-glyph format-${active}`, symbol.glyph))
+    node.setAttribute('aria-label', label)
+    node.title = shortcut ? `${label}（${shortcut}）` : label
     node.addEventListener('mousedown', (event) => event.preventDefault())
     node.addEventListener('click', invoke)
     if (active) markControls.push({ node, active })
-    if (shortcut) node.title = shortcut
     toolbar.append(node)
     return node
   }
-  tool('加粗', () => editor.chain().focus().toggleBold().run(), 'bold', 'Ctrl / ⌘ + B')
-  tool('斜体', () => editor.chain().focus().toggleItalic().run(), 'italic', 'Ctrl / ⌘ + I')
-  tool('下划线', () => editor.chain().focus().toggleUnderline().run(), 'underline', 'Ctrl / ⌘ + U')
-  tool('无序列表', () => editor.chain().focus().toggleBulletList().run(), 'bulletList')
-  tool('有序列表', () => editor.chain().focus().toggleOrderedList().run(), 'orderedList')
-  tool('引用', () => editor.chain().focus().toggleBlockquote().run(), 'blockquote')
-  tool('分隔线', () => editor.chain().focus().setHorizontalRule().run())
-  const undo = tool('撤销', () => editor.chain().focus().undo().run(), undefined, 'Ctrl / ⌘ + Z')
-  const redo = tool('重做', () => editor.chain().focus().redo().run(), undefined, 'Ctrl / ⌘ + Shift + Z')
+  const divider = () => toolbar.append(element('span', 'format-divider'))
+  divider()
+  tool('加粗', { glyph: 'B' }, () => editor.chain().focus().toggleBold().run(), 'bold', 'Ctrl / ⌘ + B')
+  tool('斜体', { glyph: 'I' }, () => editor.chain().focus().toggleItalic().run(), 'italic', 'Ctrl / ⌘ + I')
+  tool('下划线', { glyph: 'U' }, () => editor.chain().focus().toggleUnderline().run(), 'underline', 'Ctrl / ⌘ + U')
+  divider()
+  tool('无序列表', 'list', () => editor.chain().focus().toggleBulletList().run(), 'bulletList')
+  tool('有序列表', 'ordered', () => editor.chain().focus().toggleOrderedList().run(), 'orderedList')
+  tool('引用', 'quote', () => editor.chain().focus().toggleBlockquote().run(), 'blockquote')
+  tool('分隔线', 'rule', () => editor.chain().focus().setHorizontalRule().run())
+  divider()
+  const undo = tool('撤销', 'undo', () => editor.chain().focus().undo().run(), undefined, 'Ctrl / ⌘ + Z')
+  const redo = tool('重做', 'redo', () => editor.chain().focus().redo().run(), undefined, 'Ctrl / ⌘ + Shift + Z')
+  divider()
   const imageInput = element('input')
   imageInput.type = 'file'
   imageInput.accept = 'image/png,image/jpeg,image/gif,image/webp'
   imageInput.hidden = true
   imageInput.setAttribute('aria-label', '选择插图')
   let imageTarget: Editor | undefined
-  tool('插图', () => { imageTarget = editor; imageInput.click() })
+  tool('插图', 'image', () => { imageTarget = editor; imageInput.click() })
   imageInput.addEventListener('change', async () => {
     const target = imageTarget
     imageTarget = undefined
@@ -137,7 +149,7 @@ export async function renderEdition(
     } catch (cause) { report(cause) }
   })
 
-  const findButton = button('查找／替换', 'format-button find-toggle')
+  const findButton = button('查找／替换', 'format-button find-toggle', 'search')
   findButton.title = 'Ctrl / ⌘ + F'
   const toolsRow = element('div', 'editor-tools-row')
   toolsRow.append(toolbar, findButton, imageInput)
@@ -266,7 +278,7 @@ export async function renderEdition(
   function applyMode() {
     editor.setEditable(editing, false)
     editor.view.dom.setAttribute('role', editing ? 'textbox' : 'document')
-    mode.textContent = editing ? '阅读模式' : '编辑正文'
+    modeLabel.textContent = editing ? '阅读模式' : '编辑正文'
     mode.setAttribute('aria-pressed', String(!editing))
     toolbar.hidden = chapterActions.hidden = save.hidden = !editing
     workspace.classList.toggle('edition-reading', !editing)
