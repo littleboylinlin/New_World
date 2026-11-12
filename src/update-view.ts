@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { button, element } from './ui'
 import { checkForUpdate, runningVersion } from './updates'
 import type { UpdateResult } from './updates'
@@ -13,39 +14,39 @@ export function mountUpdateView(
   const banner = document.querySelector<HTMLElement>('#update-banner')!
   document.querySelector('#app-version')!.textContent = runningVersion
 
-  const currentVersion = element('p', 'update-version', `当前运行版本 ${runningVersion}${desktop ? ' · Windows x64' : ''}`)
-  const state = element('p', 'update-state', desktop ? '可查询 GitHub 上的 Windows 正式发行版。' : '可查询 GitHub 上的正式发行版。')
+  const currentVersion = element('p', 'update-version', t('update.runningVersion', [runningVersion, desktop ? ' · Windows x64' : '']))
+  const state = element('p', 'update-state', desktop ? t('update.checksWindowsStableReleasesOnGithub') : t('update.checksStableReleasesOnGithub'))
   state.setAttribute('role', 'status')
-  const check = button('检查更新', 'button button-primary')
+  const check = button(t('update.checkForUpdates'), 'button button-primary')
   const controls = element('div', 'update-actions')
   controls.append(check)
 
   const release = element('section', 'update-release')
   release.hidden = true
   const notes = element('p', 'update-notes')
-  const releaseLink = element('a', 'button button-quiet', '查看 GitHub 发布页')
+  const releaseLink = element('a', 'button button-quiet', t('update.viewGithubRelease'))
   releaseLink.target = '_blank'
   releaseLink.rel = 'noopener noreferrer'
-  const update = button(desktop ? '更新并重启' : '重新加载当前网页', desktop ? 'button button-primary' : 'button button-quiet')
+  const update = button(desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
   const releaseActions = element('div', 'update-actions')
   releaseActions.append(releaseLink, update)
   const updateHint = element('p', 'update-hint', desktop
-    ? '下载时可以继续写作。下载校验完成后会保存正文、覆盖安装并自动重启。'
-    : '刷新会加载当前站点已部署的版本。本地运行时，请先更新代码并重新启动服务。')
+    ? t('update.youCanKeepWritingDuringTheDownloadAfter')
+    : t('update.reloadingLoadsTheVersionCurrentlyDeployedToThis'))
   const updateError = element('p', 'field-error')
   updateError.setAttribute('role', 'alert')
   updateError.hidden = true
   const progress = element('progress', 'update-progress')
-  progress.setAttribute('aria-label', '安装包下载进度')
+  progress.setAttribute('aria-label', t('update.installerDownloadProgress'))
   progress.hidden = true
-  release.append(element('h4', '', '更新说明'), notes, releaseActions, updateHint, progress, updateError)
+  release.append(element('h4', '', t('update.releaseNotes')), notes, releaseActions, updateHint, progress, updateError)
   content.append(currentVersion, controls, state, release)
 
   const bannerMessage = element('p', 'update-banner-message')
   bannerMessage.setAttribute('role', 'status')
   const bannerActions = element('div', 'update-actions')
-  const details = button('查看更新', 'button button-primary button-small')
-  const ignore = button('本次忽略', 'button button-quiet button-small')
+  const details = button(t('update.viewUpdate'), 'button button-primary button-small')
+  const ignore = button(t('update.ignoreForNow'), 'button button-quiet button-small')
   bannerActions.append(details, ignore)
   banner.append(bannerMessage, bannerActions)
 
@@ -66,14 +67,14 @@ export function mountUpdateView(
     banner.hidden = !offeredTag || offeredTag === ignoredTag
     switch (result.kind) {
       case 'available':
-        state.textContent = `发现新版本 ${result.tag}`
+        state.textContent = t('update.newVersionAvailable', [result.tag])
         bannerMessage.textContent = state.textContent
-        notes.textContent = result.notes || '此发行版未填写更新说明。'
+        notes.textContent = result.notes || t('update.thisReleaseHasNoReleaseNotes')
         releaseLink.href = result.url
         break
-      case 'current': state.textContent = '当前已是最新版本。'; break
-      case 'ahead': state.textContent = `当前版本高于 GitHub 最新${desktop ? ' Windows ' : ''}正式发行版 ${result.tag}。`; break
-      case 'unpublished': state.textContent = desktop ? 'GitHub 暂未提供可校验的 Windows x64 正式安装包。' : 'GitHub 暂未提供可比较的正式发行版。'; break
+      case 'current': state.textContent = t('update.youAreUsingTheLatestVersion'); break
+      case 'ahead': state.textContent = t('update.theRunningVersionIsNewerThanTheLatest', [desktop ? ' Windows ' : '', result.tag]); break
+      case 'unpublished': state.textContent = desktop ? t('update.noVerifiableWindowsX64StableInstallerIsAvailable') : t('update.noComparableStableReleaseIsAvailableOnGithub'); break
       case 'failed': state.textContent = result.message; break
     }
   }
@@ -84,7 +85,7 @@ export function mountUpdateView(
     checking = check.disabled = true
     release.hidden = true
     state.classList.remove('update-state-error')
-    state.textContent = '正在检查更新…'
+    state.textContent = t('update.checkingForUpdates')
     try {
       present(await checkForUpdate())
     } finally {
@@ -107,7 +108,7 @@ export function mountUpdateView(
     if (!updating || applying || tag !== installerTag) return
     progress.max = total
     progress.value = received
-    updateStatus(`正在下载 ${tag} · ${Math.floor(100 * received / total)}%`)
+    updateStatus(t('update.downloading', [tag, Math.floor(100 * received / total)]))
   })
 
   update.addEventListener('click', async () => {
@@ -119,7 +120,7 @@ export function mountUpdateView(
     let restarting = false
     try {
       if (!await saveBeforeLeaving()) {
-        throw new Error(desktop ? '当前正文尚未保存。请先保存或另存，再更新。' : '当前正文尚未保存。请先保存或另存，再重新加载网页。')
+        throw new Error(desktop ? t('update.theCurrentTextIsNotSavedSaveIt') : t('update.theCurrentTextIsNotSavedSaveIt396'))
       }
       if (!desktop) {
         window.location.reload()
@@ -128,7 +129,7 @@ export function mountUpdateView(
       banner.hidden = false
       progress.hidden = false
       progress.removeAttribute('value')
-      updateStatus(`正在准备下载 ${tag}…`)
+      updateStatus(t('update.preparingToDownload', [tag]))
       const downloaded = await desktop.downloadUpdate(tag!)
       if (!downloaded.ok) throw new Error(downloaded.message)
 
@@ -136,16 +137,16 @@ export function mountUpdateView(
       setBusy(true)
       openHelp()
       progress.hidden = true
-      updateStatus('安装包校验通过，正在保存正文并安装…')
-      if (!await saveBeforeLeaving()) throw new Error('当前正文尚未保存。安装包已下载，保存或另存正文后可以继续更新。')
+      updateStatus(t('update.installerVerifiedSavingTextAndInstalling'))
+      if (!await saveBeforeLeaving()) throw new Error(t('update.theCurrentTextIsNotSavedTheInstaller'))
       const installed = await desktop.installUpdate(tag!)
       if (!installed.ok) throw new Error(installed.message)
       restarting = true
-      updateStatus('正在更新并重启 New World…')
+      updateStatus(t('update.updatingAndRestartingNewWorld'))
     } catch (error) {
-      updateError.textContent = error instanceof Error ? error.message : '更新失败，请稍后重试。'
+      updateError.textContent = error instanceof Error ? error.message : t('update.theUpdateFailedTryAgainLater')
       updateError.hidden = false
-      if (desktop && tag) updateStatus(`发现新版本 ${tag}`)
+      if (desktop && tag) updateStatus(t('update.newVersionAvailable', [tag]))
     } finally {
       if (!restarting) {
         applying = updating = check.disabled = update.disabled = ignore.disabled = false

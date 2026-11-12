@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import type { JSONContent } from '@tiptap/core'
 import type { DocumentContent } from './model'
 
@@ -7,12 +8,12 @@ const markNames = { b: 'bold', i: 'italic', ul: 'underline', strike: 'strike' } 
 const punctuation: Record<string, string> = { emdash: '—', endash: '–', bullet: '•', lquote: '‘', rquote: '’', ldblquote: '“', rdblquote: '”' }
 
 export async function readRtf(blob: Blob): Promise<DocumentContent> {
-  if (blob.size > 8 * 1024 * 1024) throw new Error('RTF 超过 8 MiB 的转换上限。')
+  if (blob.size > 8 * 1024 * 1024) throw new Error(t('rtf.theRtfExceedsThe8MibConversionLimit'))
   const bytes = new Uint8Array(await blob.arrayBuffer())
   const chunks: string[] = []
   for (let offset = 0; offset < bytes.length; offset += 32_768) chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 32_768)))
   const source = chunks.join('').trim()
-  if (!/^\{\\rtf1\b/i.test(source)) throw new Error('文件没有有效的 RTF 文档头。')
+  if (!/^\{\\rtf1\b/i.test(source)) throw new Error(t('rtf.theFileDoesNotHaveAValidRtf'))
 
   const token = /\\([a-z]+)(-?\d+)? ?|\\'([0-9a-f]{2})|\\([^a-z])|[{}]|[^{}\\]+/igy
   const paragraphs: JSONContent[] = []
@@ -37,7 +38,7 @@ export async function readRtf(blob: Blob): Promise<DocumentContent> {
       if (!encoding && pending.some((byte) => byte >= 128)) throw new Error()
       append(new TextDecoder(encoding ?? 'utf-8', { fatal: true }).decode(Uint8Array.from(pending)))
     } catch {
-      throw new Error('RTF 使用了无法可靠解码的文字编码。')
+      throw new Error(t('rtf.theRtfUsesATextEncodingThatCannot'))
     }
     pending = []
   }
@@ -56,23 +57,23 @@ export async function readRtf(blob: Blob): Promise<DocumentContent> {
   while (offset < source.length) {
     token.lastIndex = offset
     const match = token.exec(source)
-    if (!match) throw new Error('RTF 控制序列损坏。')
+    if (!match) throw new Error(t('rtf.anRtfControlSequenceIsDamaged'))
     offset = token.lastIndex
     const [value, control, param, hex, symbol] = match
     if (value === '{') {
       flush()
-      if (groups.length >= 256) throw new Error('RTF 的分组嵌套过深。')
+      if (groups.length >= 256) throw new Error(t('rtf.theRtfGroupsAreNestedTooDeeply'))
       groups.push(state)
       state = { ...state }
     } else if (value === '}') {
       flush()
       const parent = groups.pop()
-      if (!parent || (!groups.length && offset < source.length)) throw new Error('RTF 分组结构损坏。')
+      if (!parent || (!groups.length && offset < source.length)) throw new Error(t('rtf.theRtfGroupStructureIsDamaged'))
       state = parent
       skip = 0
     } else if (control === 'bin') {
       const count = Number(param)
-      if (!Number.isSafeInteger(count) || count < 0 || count > source.length - offset) throw new Error('RTF 二进制部件损坏。')
+      if (!Number.isSafeInteger(count) || count < 0 || count > source.length - offset) throw new Error(t('rtf.anRtfBinaryPartIsDamaged'))
       offset += count
     } else if (!state.skip) {
       if (hex) byte(Number.parseInt(hex, 16))
@@ -99,8 +100,8 @@ export async function readRtf(blob: Blob): Promise<DocumentContent> {
     }
   }
 
-  if (groups.length) throw new Error('RTF 分组结构损坏。')
+  if (groups.length) throw new Error(t('rtf.theRtfGroupStructureIsDamaged'))
   endParagraph()
-  if (!paragraphs.some((paragraph) => paragraph.content?.some((node) => node.text?.trim()))) throw new Error('RTF 中没有可提取的正文。')
+  if (!paragraphs.some((paragraph) => paragraph.content?.some((node) => node.text?.trim()))) throw new Error(t('rtf.noReadableTextWasFoundInTheRtf'))
   return { type: 'doc', content: paragraphs }
 }

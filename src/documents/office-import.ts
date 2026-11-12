@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { BlobReader, Uint8ArrayWriter, ZipWriter } from '@zip.js/zip.js'
 import { openPackage, packagePath, xml } from '../archive-preview'
 import { decodeText } from '../formats'
@@ -17,14 +18,14 @@ export async function docxMarkup(blob: Blob, signal: AbortSignal) {
   for (const [name, entry] of archive.entries) {
     const isXml = xmlPart.test(name)
     if (!isXml && !rasterPart.test(name)) continue
-    if (name.startsWith('/') || name.includes('\\') || name.split('/').includes('..')) throw new Error('DOCX 含有无效的部件路径。')
+    if (name.startsWith('/') || name.includes('\\') || name.split('/').includes('..')) throw new Error(t('officeImport.theDocxContainsAnInvalidPartPath'))
     if (!isXml && entry.uncompressedSize > maxImageBytes) {
       skipped++
       continue
     }
     const data = await archive.binary(name, Math.min(isXml ? maxTextPreviewSize : maxImageBytes, 48 * 1024 * 1024 - total))
     total += data.size
-    if (isXml && xmlDeclaration.test(decodeText(new Uint8Array(await data.arrayBuffer())).text)) throw new Error('DOCX 含有不受支持的 XML 声明。')
+    if (isXml && xmlDeclaration.test(decodeText(new Uint8Array(await data.arrayBuffer())).text)) throw new Error(t('officeImport.theDocxContainsAnUnsupportedXmlDeclaration'))
     await zip.add(name, new BlobReader(data), { level: 0 })
   }
   const safePackage = await zip.close()
@@ -44,9 +45,9 @@ export async function docxMarkup(blob: Blob, signal: AbortSignal) {
       return { src: data ?? '' }
     }),
   })
-  const notes = ['保留常见文字样式、标题、列表、表格及可读的内嵌图片。分页、页眉页脚、修订与复杂排版以原文件为准。']
-  if (skipped) notes.push(`有 ${skipped} 个图片部件超限或无法转换。`)
-  if (result.messages.length) notes.push(`有 ${result.messages.length} 项 Word 部件兼容性提示，请对照原文件检查复杂结构。`)
+  const notes = [t('officeImport.preservesCommonTextStylesHeadingsListsTablesAnd')]
+  if (skipped) notes.push(t('officeImport.imagePartSAreOversizedOrCouldNot', [skipped]))
+  if (result.messages.length) notes.push(t('officeImport.thereAreWordCompatibilityWarningSCheckComplex', [result.messages.length]))
   return { markup: result.value, notes }
 }
 
@@ -75,13 +76,13 @@ export async function odtMarkup(blob: Blob, signal: AbortSignal) {
     }
   }
   const body = content.getElementsByTagNameNS(office, 'text')[0]
-  if (!body) throw new Error('ODT 缺少正文。')
+  if (!body) throw new Error(t('archivePreview.theOdtIsMissingItsDocumentBody'))
   let expanded = 0
   const assetCache = new Map<string, string | undefined>()
 
   async function walk(node: Node, depth = 0): Promise<string> {
     signal.throwIfAborted()
-    if (depth > 128) throw new Error('ODT 的文档结构嵌套过深。')
+    if (depth > 128) throw new Error(t('officeImport.theOdtDocumentStructureIsNestedTooDeeply'))
     if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.nodeValue ?? '')
     if (!(node instanceof Element)) return ''
     const name = node.localName
@@ -95,8 +96,8 @@ export async function odtMarkup(blob: Blob, signal: AbortSignal) {
       }
       const url = path && assetCache.get(path)
       expanded += url?.length ?? 0
-      if (expanded > 40 * 1024 * 1024) throw new Error('ODT 内嵌内容超过转换上限。')
-      return `<img src="${url ?? ''}" alt="ODT 插图">`
+      if (expanded > 40 * 1024 * 1024) throw new Error(t('officeImport.theEmbeddedOdtContentExceedsTheConversionLimit'))
+      return `<img src="${url ?? ''}" alt="${escapeHtml(t('officeImport.illustration'))}">`
     }
     if (node.namespaceURI === text) {
       if (name === 'line-break') return '<br>'
@@ -104,7 +105,7 @@ export async function odtMarkup(blob: Blob, signal: AbortSignal) {
       if (name === 's') {
         const count = Math.min(256, Math.max(1, Number.parseInt(node.getAttributeNS(text, 'c') ?? '1', 10) || 1))
         expanded += count * 6
-        if (expanded > 40 * 1024 * 1024) throw new Error('ODT 内嵌内容超过转换上限。')
+        if (expanded > 40 * 1024 * 1024) throw new Error(t('officeImport.theEmbeddedOdtContentExceedsTheConversionLimit'))
         return '&nbsp;'.repeat(count)
       }
     }
@@ -141,5 +142,5 @@ export async function odtMarkup(blob: Blob, signal: AbortSignal) {
   }
 
   const markup = await walk(body)
-  return { markup, notes: ['转换正文、常用样式、列表、基本表格和内嵌图片。页式布局、重复单元格和复杂样式以原文件为准。'] }
+  return { markup, notes: [t('officeImport.convertsTextCommonStylesListsBasicTablesAnd')] }
 }

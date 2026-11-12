@@ -24,7 +24,7 @@ function readBehavior(appData) {
 }
 
 function writeBehavior(appData, mode) {
-  if (!isMode(mode)) throw new Error('无效的关闭方式。')
+  if (!isMode(mode)) throw new Error("closeBehavior.invalidCloseBehavior")
   mkdirSync(appData, { recursive: true })
   writeFileSync(configFile(appData), `${JSON.stringify({ closeBehavior: mode })}\n`, 'utf8')
 }

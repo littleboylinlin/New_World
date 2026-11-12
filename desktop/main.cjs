@@ -1,5 +1,6 @@
+const { t, createLanguageStore } = require('./language.cjs')
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, session, shell, Tray } = require('electron')
-const { mkdirSync } = require('node:fs')
+const { mkdirSync, readFileSync } = require('node:fs')
 const { readFile, writeFile } = require('node:fs/promises')
 const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
 const storageLocation = require('./storage-location.cjs')
@@ -56,15 +57,16 @@ function trustedFrame(event) {
 }
 
 let windowsUpdater
+let languages
 
 async function performUpdate(event, action) {
-  if (!trustedFrame(event)) throw new Error('无效的更新请求。')
-  if (!windowsUpdater) return { ok: false, message: '应用内更新适用于已安装的 Windows x64 正式版。' }
+  if (!trustedFrame(event)) throw new Error(t('main.invalidUpdateRequest'))
+  if (!windowsUpdater) return { ok: false, message: t('main.inAppUpdatesRequireAnInstalledWindowsX64') }
   try {
     await action()
     return { ok: true }
   } catch (error) {
-    return { ok: false, message: error instanceof UpdateError ? error.message : '更新失败，请稍后重试。' }
+    return { ok: false, message: error instanceof UpdateError ? t(error.message) : t('update.theUpdateFailedTryAgainLater') }
   }
 }
 
@@ -82,10 +84,10 @@ ipcMain.handle('new-world:install-update', (event, tag) => performUpdate(event, 
 
 ipcMain.handle('new-world:save-pdf', async (event, name) => {
   const window = BrowserWindow.fromWebContents(event.sender)
-  if (!trustedFrame(event) || !window || typeof name !== 'string' || name.length > 130) throw new Error('无效的 PDF 文件名。')
-  const filename = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'New World 编辑稿'
+  if (!trustedFrame(event) || !window || typeof name !== 'string' || name.length > 130) throw new Error(t('main.invalidPdfFilename'))
+  const filename = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || t('export.newWorldManuscript')
   const { canceled, filePath } = await dialog.showSaveDialog(window, {
-    title: '保存 PDF', defaultPath: join(app.getPath('documents'), `${filename}.pdf`),
+    title: t('main.savePdf'), defaultPath: join(app.getPath('documents'), `${filename}.pdf`),
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   })
   if (canceled || !filePath) return
@@ -102,45 +104,62 @@ function scheduleRestart() {
 }
 
 ipcMain.handle('new-world:get-storage-location', (event) => {
-  if (!trustedFrame(event)) throw new Error('无效的存储位置请求。')
+  if (!trustedFrame(event)) throw new Error(t('main.invalidStorageLocationRequest'))
   return { path: profile, defaultPath: defaultProfile, custom: profile !== defaultProfile }
 })
 
 ipcMain.handle('new-world:set-storage-location', async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender)
-  if (!trustedFrame(event) || !window) throw new Error('无效的存储位置请求。')
+  if (!trustedFrame(event) || !window) throw new Error(t('main.invalidStorageLocationRequest'))
   const { canceled, filePaths } = await dialog.showOpenDialog(window, {
-    title: '选择书库存储位置',
+    title: t('main.chooseALibraryStorageFolder'),
     defaultPath: app.getPath('documents'),
     properties: ['openDirectory', 'createDirectory'],
   })
   if (canceled || !filePaths[0]) return null
   const result = storageLocation.setLocation(appData, filePaths[0], { programDir: resolve(app.getPath('exe'), '..') })
-  if (result.error) throw new Error(result.error)
+  if (result.error) throw new Error(t(result.error))
   scheduleRestart()
   return { path: result.to, custom: result.to !== defaultProfile, restart: true }
 })
 
 ipcMain.handle('new-world:reset-storage-location', (event) => {
-  if (!trustedFrame(event)) throw new Error('无效的存储位置请求。')
+  if (!trustedFrame(event)) throw new Error(t('main.invalidStorageLocationRequest'))
   const result = storageLocation.resetLocation(appData)
-  if (result.error) throw new Error(result.error)
+  if (result.error) throw new Error(t(result.error))
   if (result.unchanged) return null
   scheduleRestart()
   return { path: result.to, custom: false, restart: true }
 })
 
+ipcMain.handle('new-world:get-language', (event) => {
+  if (!trustedFrame(event) || !languages?.current) throw new Error('Invalid language request')
+  return languages.current
+})
+
+ipcMain.handle('new-world:set-language', async (event, locale) => {
+  if (!trustedFrame(event) || !languages) throw new Error('Invalid language request')
+  const pack = await languages.activate(locale)
+  refreshMenus()
+  return pack
+})
+
+ipcMain.handle('new-world:reload-language', (event) => {
+  if (!trustedFrame(event)) throw new Error('Invalid language request')
+  setImmediate(() => { if (!event.sender.isDestroyed()) event.sender.reload() })
+})
+
 ipcMain.handle('new-world:get-close-behavior', (event) => {
-  if (!trustedFrame(event)) throw new Error('无效的设置请求。')
+  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
   return behavior
 })
 
 ipcMain.handle('new-world:set-close-behavior', (event, mode) => {
-  if (!trustedFrame(event) || !closeBehavior.isMode(mode)) throw new Error('无效的关闭方式。')
+  if (!trustedFrame(event) || !closeBehavior.isMode(mode)) throw new Error(t('closeBehavior.invalidCloseBehavior'))
   try {
     closeBehavior.writeBehavior(appData, mode)
   } catch {
-    throw new Error('设置未能保存，请重试。')
+    throw new Error(t('settings.settingsCouldNotBeSavedTryAgain'))
   }
   behavior = mode
   return behavior
@@ -170,10 +189,27 @@ function createTray() {
   tray = new Tray(nativeImage.createFromPath(join(__dirname, 'tray.png')))
   tray.setToolTip('New World')
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '显示 New World', click: showWindow },
-    { label: '完全退出', click: quitApp },
+    { label: t('main.showNewWorld'), click: showWindow },
+    { label: t('settings.quit'), click: quitApp },
   ]))
   tray.on('click', showWindow)
+}
+
+function refreshMenus() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: t('main.edit'), submenu: [
+      { role: 'cut', label: t('main.cut') }, { role: 'copy', label: t('main.copy') },
+      { role: 'paste', label: t('main.paste') }, { role: 'selectAll', label: t('common.selectAll') },
+    ] },
+    { label: t('main.view'), submenu: [
+      { role: 'zoomIn', label: t('main.zoomIn') }, { role: 'zoomOut', label: t('main.zoomOut') },
+      { role: 'resetZoom', label: t('main.resetZoom') }, { role: 'togglefullscreen', label: t('main.fullScreen') },
+    ] },
+  ]))
+  if (tray) tray.setContextMenu(Menu.buildFromTemplate([
+    { label: t('main.showNewWorld'), click: showWindow },
+    { label: t('settings.quit'), click: quitApp },
+  ]))
 }
 
 function openWindow() {
@@ -226,7 +262,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('activate', showWindow)
   app.on('before-quit', () => { forceQuit = true })
   app.on('window-all-closed', () => app.quit())
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     const local = session.defaultSession
     local.setPermissionRequestHandler((_contents, _permission, allow) => allow(false))
     local.setPermissionCheckHandler(() => false)
@@ -241,21 +277,42 @@ if (!app.requestSingleInstanceLock()) {
         version: app.getVersion(),
       })
     }
+    const languageNetwork = session.fromPartition('new-world-language-packs')
+    const manifest = JSON.parse(readFileSync(app.isPackaged
+      ? join(__dirname, 'language-manifest.json')
+      : join(app.getAppPath(), 'public', 'locales', 'manifest.json'), 'utf8'))
+    const prefix = `https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/`
+    const allowedFiles = Object.values(manifest.packs).map((pack) => prefix + pack.file)
+    languageNetwork.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
+      const url = new URL(request.url)
+      done({ cancel: request.method !== 'GET' || url.protocol !== 'https:' || Boolean(url.username || url.password)
+        || (Boolean(url.port) && url.port !== '443')
+        || (!allowedFiles.includes(request.url) && url.hostname !== 'release-assets.githubusercontent.com') })
+    })
+    languages = await createLanguageStore({
+      root: join(appData, 'NewWorld-languages'), manifest,
+      request: (url, options) => languageNetwork.fetch(url, options),
+      developmentRoot: app.isPackaged ? undefined : join(app.getAppPath(), 'public', 'locales'),
+    })
+    while (true) {
+      try {
+        await languages.initialize(app.getSystemLocale())
+        break
+      } catch {
+        const { response } = await dialog.showMessageBox({
+          type: 'error', title: 'New World',
+          message: 'Unable to load the language pack. Check your connection and retry. / 无法加载语言包，请联网后重试。',
+          buttons: ['Retry / 重试', 'Quit / 退出'], defaultId: 0, cancelId: 1,
+        })
+        if (response === 1) { app.exit(1); return }
+      }
+    }
     protocol.handle('new-world', serveApp)
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: '编辑', submenu: [
-        { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' },
-        { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' },
-      ] },
-      { label: '视图', submenu: [
-        { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' },
-        { role: 'resetZoom', label: '还原缩放' }, { role: 'togglefullscreen', label: '全屏' },
-      ] },
-    ]))
+    refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
     return openWindow()
   }).catch(() => {
-    dialog.showErrorBox('New World', '无法打开本地应用文件。请重新安装 New World。')
+    dialog.showErrorBox('New World', t('main.theLocalApplicationFilesCouldNotBeOpened'))
     app.exit(1)
   })
 }

@@ -1,3 +1,4 @@
+import { locale, t } from '../i18n'
 import { downloadFile, element } from '../ui'
 import { applyExportStyle, exportStyles, printPageStyle } from './export-style'
 import type { ExportPreset } from './export-style'
@@ -48,7 +49,7 @@ async function textExport(format: TextFormat, chapters: ChapterInput[]) {
   convert.use(gfm)
   convert.addRule('describeImages', { filter: 'img', replacement: (_, node) => {
     const alt = node.getAttribute('alt')
-    return alt ? '［图片：' + convert.escape(alt) + '］' : '［图片］'
+    return alt ? t('editor.imageAlt', [convert.escape(alt)]) : t('export.image144')
   } })
   return convert.turndown(article(chapters)) + '\n'
 }
@@ -100,7 +101,7 @@ async function printEdition(title: string, chapters: ChapterInput[], preset: Exp
 }
 
 export async function exportEdition(format: OutputFormat, title: string, chapters: ChapterInput[], preset: ExportPreset = exportStyles.standard) {
-  const filename = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 130).trim() || 'New World 编辑稿'
+  const filename = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 130).trim() || t('export.newWorldManuscript')
   if (format === 'pdf') {
     await printEdition(filename, chapters, preset)
     return
@@ -117,7 +118,7 @@ export async function exportEdition(format: OutputFormat, title: string, chapter
     const style = paperCSS + '\n' + printPageStyle(preset)
     const html = article(chapters, preset).outerHTML
     output = new Blob([
-      '<!doctype html>\n<html lang="zh-CN" class="export-document"><head><meta charset="utf-8">',
+      `<!doctype html>\n<html lang="${locale}" class="export-document"><head><meta charset="utf-8">`,
       '<meta name="viewport" content="width=device-width,initial-scale=1">',
       titleNode.outerHTML, '<style>', style, '</style></head><body>', html, '</body></html>',
     ], { type: 'text/html;charset=utf-8' })

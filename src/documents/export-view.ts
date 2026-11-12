@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { formDialog } from '../dialogs'
 import { element } from '../ui'
 import { exportStyles } from './export-style'
@@ -13,7 +14,7 @@ export function showExportDialog(
 ) {
   const formats = element('div', 'export-formats')
   formats.setAttribute('role', 'radiogroup')
-  formats.setAttribute('aria-label', '导出格式')
+  formats.setAttribute('aria-label', t('export.exportFormat'))
   for (const [value, label] of Object.entries(outputFormats)) {
     const item = element('label', 'export-format')
     const radio = element('input')
@@ -26,7 +27,7 @@ export function showExportDialog(
   }
   const selectedFormat = () => formats.querySelector<HTMLInputElement>('input:checked')!.value as OutputFormat
 
-  const styleLabel = element('label', 'field-label export-style', '导出样式')
+  const styleLabel = element('label', 'field-label export-style', t('export.exportStyle'))
   const style = element('select', 'title-input')
   for (const [value, preset] of Object.entries(exportStyles)) {
     const option = element('option', '', preset.label)
@@ -34,17 +35,17 @@ export function showExportDialog(
     style.append(option)
   }
   styleLabel.append(style)
-  const styleHint = element('p', 'export-style-hint', '字体和颜色由阅读器决定。')
+  const styleHint = element('p', 'export-style-hint', t('export.fontsAndColorsAreControlledByTheReader'))
   const selectedStyle = () => exportStyles[style.value as ExportStyle]
 
   const chapterBox = element('div', 'export-chapters')
   chapterBox.setAttribute('role', 'group')
-  chapterBox.setAttribute('aria-label', '选择章节')
+  chapterBox.setAttribute('aria-label', t('export.chooseChapters'))
   const allRow = element('label', 'export-chapter export-chapter-all')
   const allInput = element('input')
   allInput.type = 'checkbox'
   allInput.checked = true
-  allRow.append(allInput, element('span', '', '全选'))
+  allRow.append(allInput, element('span', '', t('common.selectAll')))
   chapterBox.append(allRow)
   const boxes = chapters.map((info) => {
     const row = element('label', 'export-chapter')
@@ -59,10 +60,10 @@ export function showExportDialog(
   })
 
   const preview = element('section', 'export-preview')
-  preview.setAttribute('aria-label', '导出预览')
+  preview.setAttribute('aria-label', t('export.exportPreview'))
   const page = element('div', 'export-preview-page')
   page.tabIndex = 0
-  preview.append(element('h3', '', '导出预览'), page)
+  preview.append(element('h3', '', t('export.exportPreview')), page)
   const options = element('div')
   options.append(formats, styleLabel, styleHint, chapterBox)
   const layout = element('div', 'export-layout')
@@ -79,7 +80,7 @@ export function showExportDialog(
     const first = chapters.find((_, index) => boxes[index].checked)
     if (!first) {
       page.removeAttribute('aria-busy')
-      page.replaceChildren(element('p', 'export-preview-message', '请选择要预览的章节。'))
+      page.replaceChildren(element('p', 'export-preview-message', t('export.chooseAChapterToPreview')))
       return
     }
     if (sample?.id !== first.id) sample = { id: first.id, chapter: readPreview(first) }
@@ -93,7 +94,7 @@ export function showExportDialog(
     } catch {
       if (sample === current) sample = undefined
       if (token === request && page.isConnected) {
-        page.replaceChildren(element('p', 'export-preview-message', '无法读取章节预览。'))
+        page.replaceChildren(element('p', 'export-preview-message', t('export.theChapterPreviewCouldNotBeLoaded')))
       }
     } finally {
       if (token === request) page.removeAttribute('aria-busy')
@@ -111,13 +112,13 @@ export function showExportDialog(
     }
     void refreshPreview()
   })
-  formDialog(root, { title: '导出编辑稿', action: '开始导出', fields: [layout] }, async (data) => {
+  formDialog(root, { title: t('export.exportManuscript'), action: t('export.startExport'), fields: [layout] }, async (data) => {
     const ids = new Set(data.getAll('chapter').map(String))
-    if (!ids.size) throw new Error('请至少选择一章。')
+    if (!ids.size) throw new Error(t('export.selectAtLeastOneChapter'))
     const format = selectedFormat()
     const preset = selectedStyle()
     const selection = await readSelection(ids)
-    if (!selection.length) throw new Error('所选章节已移除，请重新选择。')
+    if (!selection.length) throw new Error(t('export.aSelectedChapterHasBeenRemovedChooseChapters'))
     await exportEdition(format, title, selection, preset)
   })
   void refreshPreview()

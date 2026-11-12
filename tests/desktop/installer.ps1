@@ -101,7 +101,27 @@ if (!$invalid.WaitForExit(45000) -or $invalid.ExitCode -ne 3 -or (Get-Content -L
     throw 'Installer did not preserve the unrelated nonempty directory'
 }
 
-$setup = Start-Process -FilePath $Installer -PassThru
+$languageManifest = Join-Path $PWD 'public/locales/manifest.json'
+$languageMetadata = Get-Content -LiteralPath $languageManifest -Raw | ConvertFrom-Json
+$automaticRoot = Join-Path $env:RUNNER_TEMP 'New World System Language Test'
+$automaticLocale = if ((Get-UICulture).Name -match '^zh(?:-|$)') { 'zh-CN' } else { 'en' }
+$automaticCache = Join-Path (Join-Path $automaticRoot 'packs') $languageMetadata.version
+New-Item -ItemType Directory -Force -Path $automaticCache | Out-Null
+Copy-Item -LiteralPath (Join-Path $PWD "public/locales/New-World-lang-$automaticLocale.json") -Destination (Join-Path $automaticCache "$automaticLocale.json")
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File desktop/install-language.ps1 -Root $automaticRoot -Manifest $languageManifest
+if ($LASTEXITCODE -ne 0 -or (Get-Content (Join-Path $automaticRoot 'language.json') -Raw | ConvertFrom-Json).locale -ne $automaticLocale) {
+    throw 'Installer helper did not select the system language'
+}
+if (@(Get-ChildItem -LiteralPath $automaticCache -Filter '*.json').Count -ne 1) { throw 'More than the selected language was installed' }
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File desktop/install-language.ps1 -Root $automaticRoot -Manifest $languageManifest
+if ($LASTEXITCODE -ne 0) { throw 'Installer helper did not reuse the saved language' }
+Remove-Item -LiteralPath $automaticRoot -Recurse -Force
+
+$languageRoot = Join-Path $env:APPDATA 'NewWorld-languages'
+$languageCache = Join-Path (Join-Path $languageRoot 'packs') $languageMetadata.version
+New-Item -ItemType Directory -Force -Path $languageCache | Out-Null
+Copy-Item -LiteralPath (Join-Path $PWD 'public/locales/New-World-lang-zh-CN.json') -Destination (Join-Path $languageCache 'zh-CN.json')
+$setup = Start-Process -FilePath $Installer -ArgumentList '/APP_LANGUAGE=zh-CN' -PassThru
 try {
     $directoryField = Wait-For { Find-Control 1019 } 'installation directory field'
     [InstallerWindow]::SetPath($directoryField, $Directory)

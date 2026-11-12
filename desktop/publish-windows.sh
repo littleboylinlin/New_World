@@ -6,6 +6,7 @@ artifacts=$2
 version=${tag#v}
 installer="New-World-Setup-$version-x64.exe"
 sums=SHA256SUMS.txt
+languages=('New-World-lang-zh-CN.json' 'New-World-lang-en.json')
 notes="docs/releases/$tag.md"
 title="New World $tag · Windows"
 api="repos/$GITHUB_REPOSITORY/releases"
@@ -38,8 +39,8 @@ if [[ ! -s "$release_json" ]]; then
     -f name="$title" -F draft=true -F "body=@$notes" > "$release_json"
 elif jq -e '.draft == false and .prerelease == false' "$release_json" > /dev/null; then
   test "$target" = "$GITHUB_SHA"
-  jq -e --arg name "$installer" --arg sums "$sums" \
-    '([.assets[] | select(.state == "uploaded") | .name] | contains([$name, $sums]))' "$release_json" > /dev/null
+  jq -e --arg name "$installer" --arg sums "$sums" --arg zh "${languages[0]}" --arg en "${languages[1]}" \
+    '([.assets[] | select(.state == "uploaded") | .name] | contains([$name, $sums, $zh, $en]))' "$release_json" > /dev/null
   echo "$tag is already published."
   exit 0
 fi
@@ -48,7 +49,7 @@ jq -e --arg target "$GITHUB_SHA" --arg title "$title" \
   '.draft and (.prerelease | not) and .target_commitish == $target and .name == $title' "$release_json" > /dev/null
 release_id=$(jq -er '.id | numbers' "$release_json")
 
-for name in "$installer" "$sums"; do
+for name in "$installer" "${languages[@]}" "$sums"; do
   jq -c --arg name "$name" '.assets[] | select(.name == $name)' "$release_json" > "$asset_json"
   if [[ ! -s "$asset_json" ]]; then
     printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" | \

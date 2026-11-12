@@ -1,3 +1,4 @@
+import { locale, t } from './i18n'
 import { formDialog } from './dialogs'
 import { libraryChanges, storageError } from './library'
 import { emptyTrash, listTrash, restoreTrash, trashDays } from './trash'
@@ -13,31 +14,31 @@ function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (messa
   const copy = element('div', 'book-copy')
   const details = element('div', 'file-details')
   const left = Math.max(1, Math.ceil((entry.deletedAt + trashDays * day - Date.now()) / day))
-  const deleted = new Date(entry.deletedAt).toLocaleString('zh-CN', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const deleted = new Date(entry.deletedAt).toLocaleString(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   details.append(
     element('span', 'file-format', trashKinds[entry.kind]),
     element('span', 'filename', place ? `${libraries[entry.library].name} · ${place}` : libraries[entry.library].name),
-    element('span', 'file-size', `${deleted} 删除 · 还剩 ${left} 天`),
+    element('span', 'file-size', t('trash.deletedDaySRemaining', [deleted, left])),
   )
   copy.append(element('strong', 'book-title', entry.title), details)
   const controls = element('div', 'book-controls')
-  const restore = button('恢复', 'button button-primary button-small', 'undo')
-  const remove = button('彻底删除', 'button button-quiet button-small remove-button', 'trash')
+  const restore = button(t('trash.restore'), 'button button-primary button-small', 'undo')
+  const remove = button(t('trash.deletePermanently'), 'button button-quiet button-small remove-button', 'trash')
   restore.addEventListener('click', async () => {
     restore.disabled = remove.disabled = true
     try {
       await restoreTrash(entry.id)
-      report(`已恢复「${entry.title}」。`)
+      report(t('trash.restored', [entry.title]))
     } catch (error) {
       report(storageError(error), true)
       restore.disabled = remove.disabled = false
     }
   })
   remove.addEventListener('click', () => formDialog(root, {
-    title: '彻底删除？', action: '确认彻底删除', danger: true, description: `将永久删除「${entry.title}」，之后无法恢复。`,
+    title: t('trash.deletePermanently334'), action: t('trash.confirmPermanentDeletion'), danger: true, description: t('trash.willBePermanentlyDeletedAndCannotBeRestored', [entry.title]),
   }, async () => {
     await emptyTrash(entry.id)
-    report(`已彻底删除「${entry.title}」。`)
+    report(t('trash.permanentlyDeleted', [entry.title]))
   }))
   controls.append(restore, remove)
   row.append(copy, controls)
@@ -47,20 +48,20 @@ function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (messa
 export function renderTrash(root: HTMLElement, signal: AbortSignal) {
   const panel = element('section', 'trash-page')
   const nav = element('nav', 'breadcrumbs')
-  nav.setAttribute('aria-label', '当前位置')
-  const current = element('span', '', '回收站')
+  nav.setAttribute('aria-label', t('trash.currentLocation'))
+  const current = element('span', '', t('trash.title'))
   current.setAttribute('aria-current', 'page')
-  nav.append(link('#/', '书库首页'), element('span', 'crumb-separator', '/'), current)
+  nav.append(link('#/', t('navigation.home')), element('span', 'crumb-separator', '/'), current)
 
   const header = element('div', 'page-heading')
   const heading = element('div')
-  heading.append(element('p', 'eyebrow', 'TRASH'), element('h1', '', '回收站'),
-    element('p', 'intro-copy', `删除的作品、原文、编辑版本和章节会在这里保留 ${trashDays} 天，可以恢复到原来的位置。`))
-  const clear = button('清空回收站', 'button button-quiet remove-button', 'trash')
+  heading.append(element('p', 'eyebrow', 'TRASH'), element('h1', '', t('trash.title')),
+    element('p', 'intro-copy', t('trash.deletedWorksSourcesEditableVersionsAndChaptersAre', [trashDays])))
+  const clear = button(t('trash.emptyTrash'), 'button button-quiet remove-button', 'trash')
   header.append(heading, clear)
   const message = element('div', 'version-message')
   const content = element('div')
-  content.append(notice('正在读取回收站…'))
+  content.append(notice(t('trash.loadingTrash')))
   panel.append(nav, header, message, content)
   root.append(panel)
 
@@ -78,14 +79,14 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
       clear.disabled = !items.length
       if (items.length) {
         const list = element('ul', 'book-list')
-        list.setAttribute('aria-label', '回收站内容')
+        list.setAttribute('aria-label', t('trash.trashContents'))
         list.append(...items.map((item) => trashRow(root, item, report)))
         content.replaceChildren(arriving ? stagger(list) : list)
       } else {
         const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('trash'))
-        empty.append(emptyIcon, element('h3', '', '回收站是空的'), element('p', '', '删除的内容会先放到这里。'))
+        empty.append(emptyIcon, element('h3', '', t('trash.theTrashIsEmpty')), element('p', '', t('trash.deletedContentWillAppearHereFirst')))
         content.replaceChildren(empty)
       }
     } catch (error) {
@@ -95,10 +96,10 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
   }
 
   clear.addEventListener('click', () => formDialog(root, {
-    title: '清空回收站？', action: '确认清空', danger: true, description: '将永久删除回收站里的全部内容，之后无法恢复。',
+    title: t('trash.emptyTheTrash'), action: t('trash.confirmEmptyTrash'), danger: true, description: t('trash.everythingInTheTrashWillBePermanentlyDeleted'),
   }, async () => {
     await emptyTrash()
-    report('回收站已清空。')
+    report(t('trash.theTrashIsNowEmpty'))
   }))
   libraryChanges.addEventListener('update', () => { void refresh() }, { signal })
   window.addEventListener('focus', () => { void refresh() }, { signal })

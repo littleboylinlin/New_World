@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { announced, committed, maxTitleLength, openDatabase, resultOf, trashEntry, writing } from '../library'
 import type { Book, LibraryId, TrashEntry, WrittenBook } from '../library'
 import { emptyChapter, maxChapters, wordCount } from './model'
@@ -8,7 +9,7 @@ const chapterKey = (edition: EditionKey, id: string) => [...editionKey(edition),
 
 function checkedTitle(value: string) {
   const title = value.trim()
-  if (!title || title.length > maxTitleLength) throw new Error('请输入有效的名称。')
+  if (!title || title.length > maxTitleLength) throw new Error(t('store.enterAValidName'))
   return title
 }
 
@@ -22,7 +23,7 @@ function updateRecord<T, R>(tx: IDBTransaction, request: IDBRequest<T>, write: (
 type EditionOptions = Pick<Edition, 'source'> & Partial<Pick<Edition, 'notes' | 'copiedFrom' | 'originalId'>>
 
 function assembleEdition(book: Book, name: string, inputs: ChapterInput[], options: EditionOptions) {
-  if (!inputs.length || inputs.length > maxChapters) throw new Error(`编辑稿需要 1 至 ${maxChapters} 个章节。`)
+  if (!inputs.length || inputs.length > maxChapters) throw new Error(t('store.aManuscriptMustHaveBetween1AndChapters', [maxChapters]))
   const id = crypto.randomUUID()
   const edition: Edition = {
     library: book.library, bookId: book.id, id, name: checkedTitle(name),
@@ -45,9 +46,9 @@ function addRecords(tx: IDBTransaction, edition: Edition, records: ChapterRecord
 }
 
 export async function createNovel(library: LibraryId, name: string) {
-  if (!globalThis.crypto?.randomUUID) throw new Error('请在 HTTPS 或本机 localhost 中打开 New World。')
+  if (!globalThis.crypto?.randomUUID) throw new Error(t('store.openNewWorldOverHttpsOrOnLocalhost'))
   const book: WrittenBook = { library, id: crypto.randomUUID(), title: checkedTitle(name), format: 'draft', importedAt: Date.now() }
-  const { edition, records } = assembleEdition(book, '编辑稿', [emptyChapter()], { source: 'blank' })
+  const { edition, records } = assembleEdition(book, t('store.manuscript'), [emptyChapter()], { source: 'blank' })
   const db = await openDatabase()
   const tx = db.transaction(['books', 'editions', 'chapters'], 'readwrite', { durability: 'strict' })
   tx.objectStore('books').add(book)
@@ -57,16 +58,16 @@ export async function createNovel(library: LibraryId, name: string) {
 }
 
 export async function createEdition(book: Book, inputs: ChapterInput[], options: EditionOptions, name?: string) {
-  const draft = assembleEdition(book, name ?? '编辑稿', inputs, options)
+  const draft = assembleEdition(book, name ?? t('store.manuscript'), inputs, options)
   const db = await openDatabase()
   const tx = db.transaction(['books', 'editions', 'chapters'], 'readwrite', { durability: 'strict' })
   const exists = tx.objectStore('books').get([book.library, book.id])
   const existing = tx.objectStore('editions').index('byBook').getAll([book.library, book.id])
   return updateRecord(tx, existing, (editions: Edition[]) => {
-    if (!exists.result) throw new Error('此作品已从书库移除。')
+    if (!exists.result) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
     if (name === undefined) {
       const names = new Set(editions.map((edition) => edition.name))
-      for (let i = 2; names.has(draft.edition.name); i++) draft.edition.name = `编辑稿 ${i}`
+      for (let i = 2; names.has(draft.edition.name); i++) draft.edition.name = t('store.manuscript193', [i])
     }
     addRecords(tx, draft.edition, draft.records)
     return draft.edition
@@ -83,7 +84,7 @@ export async function listEditions(library: LibraryId, bookId: string): Promise<
 export async function readChapter(edition: EditionKey, id: string): Promise<ChapterRecord> {
   const db = await openDatabase()
   const chapter = await resultOf(db.transaction('chapters').objectStore('chapters').get(chapterKey(edition, id)))
-  if (!chapter) throw new Error('此章节已被移除。')
+  if (!chapter) throw new Error(t('store.thisChapterHasBeenRemoved'))
   return chapter
 }
 
@@ -92,8 +93,8 @@ export async function saveChapter(edition: EditionKey, chapter: ChapterRecord, c
   const tx = db.transaction('chapters', 'readwrite', { durability: 'strict' })
   const chapters = tx.objectStore('chapters')
   return updateRecord(tx, chapters.get(chapterKey(edition, chapter.id)), (stored: ChapterRecord | undefined) => {
-    if (!stored) throw new Error('此章节已被移除。当前正文仍可导出。')
-    if (stored.revision !== chapter.revision) throw new Error('此章节已在其他页面更新。可另存为独立版本或导出当前正文。')
+    if (!stored) throw new Error(t('store.thisChapterHasBeenRemovedTheCurrentText'))
+    if (stored.revision !== chapter.revision) throw new Error(t('store.thisChapterWasUpdatedInAnotherPageSave'))
     const next = { ...stored, content, revision: stored.revision + 1 }
     chapters.put(next)
     return next
@@ -107,11 +108,11 @@ export async function readBundle(key: EditionKey): Promise<EditionBundle> {
     resultOf(tx.objectStore('editions').get(editionKey(key))),
     resultOf(tx.objectStore('chapters').index('byEdition').getAll(editionKey(key))),
   ])
-  if (!edition) throw new Error('此编辑版本已被移除。')
+  if (!edition) throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
   const byId = new Map(chapters.map((chapter) => [chapter.id, chapter.content]))
   return { edition, chapters: edition.chapters.map(({ id, title }) => {
     const content = byId.get(id)
-    if (!content) throw new Error('有章节无法从本地书库读取。')
+    if (!content) throw new Error(t('store.someChaptersCouldNotBeReadFromThe'))
     return { title, content }
   }) }
 }
@@ -135,8 +136,8 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
   const removed = change.type === 'delete' ? records.get(chapterKey(edition, change.id)) : undefined
   let trashed: TrashEntry | undefined
   return announced(updateRecord(tx, editions.get(editionKey(edition)), (stored: Edition | undefined) => {
-    if (!stored) throw new Error('此编辑版本已被移除。')
-    if (stored.revision !== edition.revision) throw new Error('章节目录已在其他页面更新。保存正文后重新打开此版本。')
+    if (!stored) throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
+    if (stored.revision !== edition.revision) throw new Error(t('store.theChapterListWasUpdatedInAnotherPage'))
     const chapters = [...stored.chapters]
     let selected: string
     function append(title: string) {
@@ -147,11 +148,11 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
     }
 
     if (change.type === 'add') {
-      if (chapters.length >= maxChapters) throw new Error(`每个编辑版本最多保存 ${maxChapters} 章。`)
+      if (chapters.length >= maxChapters) throw new Error(t('store.eachEditableVersionCanContainUpToChapters', [maxChapters]))
       selected = append(change.title)
     } else {
       const index = chapters.findIndex((chapter) => chapter.id === change.id)
-      if (index < 0) throw new Error('此章节已被移除。')
+      if (index < 0) throw new Error(t('store.thisChapterHasBeenRemoved'))
       selected = change.id
       if (change.type === 'rename') chapters[index] = { ...chapters[index], title: checkedTitle(change.title) }
       if (change.type === 'move') {
@@ -170,7 +171,7 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
         }
         chapters.splice(index, 1)
         records.delete(chapterKey(stored, change.id))
-        selected = chapters.length ? chapters[Math.min(index, chapters.length - 1)].id : append('第一章')
+        selected = chapters.length ? chapters[Math.min(index, chapters.length - 1)].id : append(t('editor.firstChapter'))
       }
     }
     const next = { ...stored, chapters, revision: stored.revision + 1 }
@@ -189,7 +190,7 @@ export async function deleteEdition(edition: EditionKey) {
   const records = chapters.index('byEdition').getAll(editionKey(edition))
   records.onsuccess = step(() => {
     const current: Edition | undefined = stored.result
-    if (!current) throw new Error('此编辑版本已被移除。')
+    if (!current) throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
     const entry = trashEntry('edition', current.library, current.bookId, current.name)
     entry.editions = [current]
     entry.chapters = records.result

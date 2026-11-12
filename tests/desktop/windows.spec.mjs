@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
@@ -32,6 +33,12 @@ async function runSetup(path, directory = '') {
 async function launch(testInfo) {
   const profile = testInfo.outputPath('profile')
   await mkdir(profile, { recursive: true })
+  if (!installedApp) {
+    const languageRoot = join(profile, 'NewWorld-languages')
+    await mkdir(languageRoot, { recursive: true })
+    const preference = join(languageRoot, 'language.json')
+    if (!await stat(preference).catch(() => false)) await writeFile(preference, JSON.stringify({ locale: 'zh-CN' }))
+  }
   const args = installedApp ? [] : ['.']
   // Keep normal startup offline. Version tests serve controlled responses via Chromium.
   args.push('--proxy-server=http://127.0.0.1:1', '--disable-gpu')
@@ -40,7 +47,9 @@ async function launch(testInfo) {
 }
 
 async function install() {
-  expect(await runSetup(installer, installDir)).toBe(0)
+  const code = await runSetup(installer, installDir)
+  const details = code ? await readFile(join(tmpdir(), 'NewWorld-language-install.log'), 'utf8').catch(() => '') : ''
+  expect(code, details).toBe(0)
   expect((await stat(installedApp)).isFile()).toBe(true)
 }
 
@@ -342,11 +351,16 @@ async function stagePreviousApp(previous, testInfo) {
   expect(packageInfo.version).toBe(version)
   await writeFile(metadata, JSON.stringify({ ...packageInfo, version: previous }))
   const assets = join(fixture, 'dist', 'assets')
-  const [bundle] = (await readdir(assets)).filter((name) => /^index-[\w-]+\.js$/.test(name))
-  const path = join(assets, bundle)
-  const renderer = await readFile(path, 'utf-8')
-  expect(renderer).toContain(version)
-  await writeFile(path, renderer.replaceAll(version, previous))
+  let replaced = false
+  for (const bundle of (await readdir(assets)).filter((name) => name.endsWith('.js'))) {
+    const path = join(assets, bundle)
+    const renderer = await readFile(path, 'utf8')
+    if (renderer.includes(version)) {
+      replaced = true
+      await writeFile(path, renderer.replaceAll(version, previous))
+    }
+  }
+  expect(replaced).toBe(true)
   const staged = testInfo.outputPath('previous-app.asar')
   await createPackage(fixture, staged)
   await rename(staged, archive)
@@ -440,4 +454,57 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     if (app) await stop(app)
     if (restarted) await closeRestarted(restarted).catch(() => {})
   }
+})
+
+test('英语语言包按需获取，切换菜单与界面后离线重开仍保留选择', async ({}, testInfo) => {
+  let app = await launch(testInfo)
+  try {
+    let page = await app.firstWindow()
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    if (installer) {
+      expect(await app.evaluate(({ app }) => {
+        const { existsSync } = process.getBuiltinModule('node:fs')
+        const { join } = process.getBuiltinModule('node:path')
+        return existsSync(join(app.getAppPath(), 'dist', 'locales'))
+      })).toBe(false)
+    }
+    const pack = await readFile('public/locales/New-World-lang-en.json', 'utf8')
+    await app.evaluate(({ session }, body) => {
+      globalThis.testLanguageRequests = []
+      session.fromPartition('new-world-language-packs').fetch = async (url) => {
+        globalThis.testLanguageRequests.push(url)
+        return url.endsWith('/New-World-lang-en.json') ? new Response(body) : new Response(null, { status: 404 })
+      }
+    }, pack)
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    let settings = page.getByRole('dialog', { name: '设置' })
+    await settings.getByRole('combobox', { name: '语言', exact: true }).selectOption('en')
+    await settings.getByRole('button', { name: '应用语言' }).click()
+    await expect.poll(() => app.evaluate(({ app }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-languages', 'language.json'), 'utf8')).locale
+    })).toBe('en')
+    settings = page.getByRole('dialog', { name: 'Settings' })
+    await expect(settings).toBeVisible()
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en')
+    expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['Edit', 'View'])
+    if (installer) {
+      expect(await app.evaluate(() => globalThis.testLanguageRequests)).toEqual([
+        `${releaseBase}/download/v${version}/New-World-lang-en.json`,
+      ])
+    }
+    await page.screenshot({ path: testInfo.outputPath('windows-english-settings.png') })
+    await stop(app)
+    app = await launch(testInfo)
+    page = await app.firstWindow()
+    await expect(page.getByRole('heading', { name: 'My novel library' })).toBeVisible()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    settings = page.getByRole('dialog', { name: 'Settings' })
+    await expect(settings.getByRole('combobox', { name: 'Language', exact: true })).toHaveValue('en')
+    await settings.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh-CN')
+    await settings.getByRole('button', { name: 'Apply language' }).click()
+    await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible()
+    expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['编辑', '视图'])
+  } finally { await stop(app) }
 })

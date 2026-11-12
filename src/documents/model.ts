@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import type { JSONContent } from '@tiptap/core'
 import type { LibraryId } from '../library'
 
@@ -48,13 +49,13 @@ export const maxChapters = 2000
 export const maxImageBytes = 4 * 1024 * 1024
 export const maxEditionImageBytes = 24 * 1024 * 1024
 
-export function emptyChapter(title = '第一章'): ChapterInput {
+export function emptyChapter(title = t('editor.firstChapter')): ChapterInput {
   return { title, content: { type: 'doc', content: [{ type: 'paragraph' }] } }
 }
 
 export function chapterText(content: DocumentContent, paragraphSeparator = '\n') {
   function text(node: JSONContent): string {
-    if (node.type === 'image') return node.attrs?.alt ? `[图片：${node.attrs.alt}]` : '[图片]'
+    if (node.type === 'image') return node.attrs?.alt ? t('docxExport.image', [node.attrs.alt]) : t('docxExport.image46')
     if (node.type === 'hardBreak') return '\n'
     if (node.type === 'horizontalRule') return '\n——\n'
     const separator = node.type === 'doc' ? paragraphSeparator

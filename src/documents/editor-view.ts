@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { Editor } from '@tiptap/core'
 import { formDialog, nameField } from '../dialogs'
 import { storageError } from '../library'
@@ -39,29 +40,29 @@ export async function renderEdition(
   const workspace = element('section', 'edition-workspace')
   const top = element('header', 'edition-header')
   const about = element('div', 'edition-about')
-  const origin = { original: '由原文件转换', blank: '在编辑器中创建', copy: '独立编辑副本' }[edition.source]
+  const origin = { original: t('editor.convertedFromTheOriginalFile'), blank: t('editor.createdInTheEditor'), copy: t('editor.independentEditableCopy') }[edition.source]
   about.append(element('p', 'eyebrow', origin), element('h2', '', edition.name))
   const commands = element('div', 'edition-commands')
-  const status = element('span', 'save-status', '已保存')
+  const status = element('span', 'save-status', t('editor.saved'))
   status.setAttribute('role', 'status')
-  const save = button('手动保存', 'button button-primary button-small', 'check')
+  const save = button(t('editor.saveNow'), 'button button-primary button-small', 'check')
   save.title = 'Ctrl / ⌘ + S'
   const mode = button('', 'button button-quiet button-small', 'book')
-  const modeLabel = element('span', '', '阅读模式')
+  const modeLabel = element('span', '', t('editor.readingMode'))
   mode.append(modeLabel)
-  const saveCopy = button('另存为独立版本', 'button button-quiet button-small', 'copy')
-  const exportButton = button('导出', 'button button-quiet button-small', 'download')
-  const removeVersion = button('删除版本', 'button button-quiet button-small remove-button', 'trash')
+  const saveCopy = button(t('editor.saveAsASeparateVersion'), 'button button-quiet button-small', 'copy')
+  const exportButton = button(t('editor.export'), 'button button-quiet button-small', 'download')
+  const removeVersion = button(t('editor.deleteVersion'), 'button button-quiet button-small remove-button', 'trash')
   commands.append(status, save, mode, saveCopy, exportButton, removeVersion)
   top.append(about, commands)
 
   const error = element('p', 'notice notice-error')
   error.setAttribute('role', 'alert')
   error.hidden = true
-  const recover = button('放弃本章未保存改动', 'button button-quiet button-small')
+  const recover = button(t('editor.discardUnsavedChangesInThisChapter'), 'button button-quiet button-small')
   recover.hidden = true
   const information = element('details', 'conversion-info')
-  information.append(element('summary', '', '查看转换说明'))
+  information.append(element('summary', '', t('editor.viewConversionNotes')))
   const details = element('ul')
   for (const note of edition.notes) details.append(element('li', '', note))
   information.append(details)
@@ -70,18 +71,18 @@ export async function renderEdition(
   const layout = element('div', 'edition-layout')
   const navigation = element('details', 'chapter-navigation')
   navigation.open = matchMedia('(min-width: 780px)').matches
-  const navLabel = element('summary', '', '章节目录')
+  const navLabel = element('summary', '', t('editor.chapterList'))
   const chapterList = element('ol', 'chapter-list')
-  chapterList.setAttribute('aria-label', '章节')
+  chapterList.setAttribute('aria-label', t('content.chapters'))
   const chapterActions = element('div', 'chapter-actions')
-  const add = button('新建章节', 'button button-quiet button-small', 'plus')
-  const rename = button('重命名章节', 'button button-quiet button-small', 'edit')
-  const up = button('上移', 'button button-quiet button-small', 'up')
-  const down = button('下移', 'button button-quiet button-small', 'down')
-  const remove = button('删除章节', 'button button-quiet button-small remove-button', 'trash')
+  const add = button(t('editor.newChapter'), 'button button-quiet button-small', 'plus')
+  const rename = button(t('editor.renameChapter'), 'button button-quiet button-small', 'edit')
+  const up = button(t('editor.moveUp'), 'button button-quiet button-small', 'up')
+  const down = button(t('editor.moveDown'), 'button button-quiet button-small', 'down')
+  const remove = button(t('editor.deleteChapter'), 'button button-quiet button-small remove-button', 'trash')
   chapterActions.append(add, rename, up, down, remove)
   const outline = element('nav', 'chapter-outline')
-  outline.setAttribute('aria-label', '本章小节')
+  outline.setAttribute('aria-label', t('editor.sectionsInThisChapter'))
   navigation.append(navLabel, chapterList, chapterActions, outline)
 
   const writing = element('section', 'writing-panel')
@@ -95,10 +96,10 @@ export async function renderEdition(
   chapterHeader.append(chapterTitle, counts)
   const toolbar = element('div', 'format-toolbar')
   toolbar.setAttribute('role', 'group')
-  toolbar.setAttribute('aria-label', '正文格式')
+  toolbar.setAttribute('aria-label', t('editor.textFormatting'))
   const heading = element('select', 'editor-select')
-  heading.setAttribute('aria-label', '段落样式')
-  for (const [value, label] of ['段落', '一级标题', '二级标题', '三级标题', '四级标题', '五级标题', '六级标题'].entries()) {
+  heading.setAttribute('aria-label', t('editor.paragraphStyle'))
+  for (const [value, label] of [t('editor.paragraph'), t('editor.heading1'), t('editor.heading2'), t('editor.heading3'), t('editor.heading4'), t('editor.heading5'), t('editor.heading6')].entries()) {
     const option = element('option', '', label)
     option.value = String(value)
     heading.append(option)
@@ -126,25 +127,25 @@ export async function renderEdition(
   }
   const divider = () => toolbar.append(element('span', 'format-divider'))
   divider()
-  tool('加粗', { glyph: 'B' }, () => editor.chain().focus().toggleBold().run(), 'bold', 'Ctrl / ⌘ + B')
-  tool('斜体', { glyph: 'I' }, () => editor.chain().focus().toggleItalic().run(), 'italic', 'Ctrl / ⌘ + I')
-  tool('下划线', { glyph: 'U' }, () => editor.chain().focus().toggleUnderline().run(), 'underline', 'Ctrl / ⌘ + U')
+  tool(t('editor.bold'), { glyph: 'B' }, () => editor.chain().focus().toggleBold().run(), 'bold', 'Ctrl / ⌘ + B')
+  tool(t('editor.italic'), { glyph: 'I' }, () => editor.chain().focus().toggleItalic().run(), 'italic', 'Ctrl / ⌘ + I')
+  tool(t('editor.underline'), { glyph: 'U' }, () => editor.chain().focus().toggleUnderline().run(), 'underline', 'Ctrl / ⌘ + U')
   divider()
-  tool('无序列表', 'list', () => editor.chain().focus().toggleBulletList().run(), 'bulletList')
-  tool('有序列表', 'ordered', () => editor.chain().focus().toggleOrderedList().run(), 'orderedList')
-  tool('引用', 'quote', () => editor.chain().focus().toggleBlockquote().run(), 'blockquote')
-  tool('分隔线', 'rule', () => editor.chain().focus().setHorizontalRule().run())
+  tool(t('editor.bulletedList'), 'list', () => editor.chain().focus().toggleBulletList().run(), 'bulletList')
+  tool(t('editor.numberedList'), 'ordered', () => editor.chain().focus().toggleOrderedList().run(), 'orderedList')
+  tool(t('editor.blockQuote'), 'quote', () => editor.chain().focus().toggleBlockquote().run(), 'blockquote')
+  tool(t('editor.horizontalRule'), 'rule', () => editor.chain().focus().setHorizontalRule().run())
   divider()
-  const undo = tool('撤销', 'undo', () => editor.chain().focus().undo().run(), undefined, 'Ctrl / ⌘ + Z')
-  const redo = tool('重做', 'redo', () => editor.chain().focus().redo().run(), undefined, 'Ctrl / ⌘ + Shift + Z')
+  const undo = tool(t('editor.undo'), 'undo', () => editor.chain().focus().undo().run(), undefined, 'Ctrl / ⌘ + Z')
+  const redo = tool(t('editor.redo'), 'redo', () => editor.chain().focus().redo().run(), undefined, 'Ctrl / ⌘ + Shift + Z')
   divider()
   const imageInput = element('input')
   imageInput.type = 'file'
   imageInput.accept = 'image/png,image/jpeg,image/gif,image/webp'
   imageInput.hidden = true
-  imageInput.setAttribute('aria-label', '选择插图')
+  imageInput.setAttribute('aria-label', t('editor.chooseAnImage'))
   let imageTarget: Editor | undefined
-  tool('插图', 'image', () => { imageTarget = editor; imageInput.click() })
+  tool(t('docxExport.illustration'), 'image', () => { imageTarget = editor; imageInput.click() })
   imageInput.addEventListener('change', async () => {
     const target = imageTarget
     imageTarget = undefined
@@ -153,12 +154,12 @@ export async function renderEdition(
     if (!file) return
     try {
       const src = await rasterData(file)
-      if (!src) throw new Error('请选择不超过 4 MiB 的 PNG、JPEG、GIF 或 WebP 图片。')
+      if (!src) throw new Error(t('editor.chooseAPngJpegGifOrWebpImage'))
       if (target === editor && editing && !signal.aborted) editor.chain().focus().setImage({ src, alt: file.name.slice(0, 255) }).run()
     } catch (cause) { report(cause) }
   })
 
-  const findButton = button('查找／替换', 'format-button find-toggle', 'search')
+  const findButton = button(t('editor.findReplace'), 'format-button find-toggle', 'search')
   findButton.title = 'Ctrl / ⌘ + F'
   const toolsRow = element('div', 'editor-tools-row')
   toolsRow.append(toolbar, findButton, imageInput)
@@ -167,19 +168,19 @@ export async function renderEdition(
   searchBar.hidden = true
   const query = element('input', 'title-input')
   query.type = 'search'
-  query.setAttribute('aria-label', '查找文字')
-  query.placeholder = '查找本章'
+  query.setAttribute('aria-label', t('editor.findText'))
+  query.placeholder = t('editor.findInChapter')
   query.maxLength = 512
   const replacement = element('input', 'title-input')
-  replacement.setAttribute('aria-label', '替换为')
-  replacement.placeholder = '替换为'
-  const nextMatch = button('下一处', 'format-button')
-  const previousMatch = button('上一处', 'format-button')
-  const replace = button('替换', 'format-button')
-  const replaceAll = button('全部替换', 'format-button')
+  replacement.setAttribute('aria-label', t('editor.replaceWith'))
+  replacement.placeholder = t('editor.replaceWith')
+  const nextMatch = button(t('editor.nextMatch'), 'format-button')
+  const previousMatch = button(t('editor.previousMatch'), 'format-button')
+  const replace = button(t('editor.replace'), 'format-button')
+  const replaceAll = button(t('editor.replaceAll'), 'format-button')
   const matchCount = element('span', 'match-count')
   matchCount.setAttribute('role', 'status')
-  const closeSearch = button('关闭查找', 'format-button')
+  const closeSearch = button(t('editor.closeFind'), 'format-button')
   searchBar.append(query, previousMatch, nextMatch, matchCount, replacement, replace, replaceAll, closeSearch)
   const paper = element('div', 'editor-paper')
   writing.append(chapterHeader, toolsRow, searchBar, paper)
@@ -188,10 +189,10 @@ export async function renderEdition(
   host.replaceChildren(workspace)
 
   function report(cause: unknown, saving = false) {
-    error.textContent = `${saving ? '保存失败。' : ''}${storageError(cause)}`
+    error.textContent = t('common.concatenate', [saving ? t('editor.saveFailed') : '', storageError(cause)])
     error.hidden = false
     recover.hidden = !saving || change === saved
-    if (saving) status.textContent = '未保存 · 失败'
+    if (saving) status.textContent = t('editor.unsavedFailed')
   }
 
   function scheduleSave() {
@@ -209,16 +210,16 @@ export async function renderEdition(
     while (change !== saved || pending) {
       if (!pending) {
         if (editor.view.composing) {
-          status.textContent = '输入完成后保存'
+          status.textContent = t('editor.saveAfterTypingFinishes')
           return false
         }
         const snapshot = editor.getJSON() as DocumentContent
         const checkpoint = change
-        status.textContent = '正在保存…'
+        status.textContent = t('editor.saving')
         pending = saveChapter(edition, chapter, snapshot).then((stored) => {
           chapter = stored
           saved = checkpoint
-          status.textContent = change === saved ? '已保存' : '未保存'
+          status.textContent = change === saved ? t('editor.saved') : t('editor.unsaved')
           error.hidden = recover.hidden = true
           if (change === saved) window.removeEventListener('beforeunload', unsaved)
           return true
@@ -230,7 +231,7 @@ export async function renderEdition(
   }
 
   function chapterInfo() {
-    return edition.chapters.find((entry) => entry.id === chapter.id) ?? { id: chapter.id, title: chapterTitle.textContent || '已移除章节' }
+    return edition.chapters.find((entry) => entry.id === chapter.id) ?? { id: chapter.id, title: chapterTitle.textContent || t('editor.chapterRemoved') }
   }
 
   const liveCount = () => Array.from(editor.state.doc.textContent.replace(/\s/gu, '')).length
@@ -239,7 +240,7 @@ export async function renderEdition(
     if (!words) return
     let sum = 0
     for (const { id } of edition.chapters) sum += words.get(id) ?? 0
-    total.textContent = `全书 ${number(sum)} 字`
+    total.textContent = t('editor.bookCharacters', [number(sum)])
     total.hidden = false
     for (const [id, label] of everyChapter ? wordLabels : [[chapter.id, wordLabels.get(chapter.id)] as const]) {
       if (label) label.textContent = number(words.get(id) ?? 0)
@@ -248,7 +249,7 @@ export async function renderEdition(
 
   function refreshContents() {
     const current = liveCount()
-    count.textContent = `本章 ${number(current)} 字`
+    count.textContent = t('editor.chapterCharacters', [number(current)])
     words?.set(chapter.id, current)
     refreshWords(false)
     outline.replaceChildren()
@@ -262,7 +263,7 @@ export async function renderEdition(
         links.append(item)
       }
     })
-    if (links.childNodes.length) outline.append(element('strong', '', '本章小节'), links)
+    if (links.childNodes.length) outline.append(element('strong', '', t('editor.sectionsInThisChapter')), links)
     refreshSearch()
   }
 
@@ -276,7 +277,7 @@ export async function renderEdition(
   function refreshSearch(reveal = false) {
     const { matches, overflow } = searchState(editor)
     activeMatch = Math.min(activeMatch, Math.max(0, matches.length - 1))
-    matchCount.textContent = matches.length ? `${activeMatch + 1} / ${overflow ? '≥' : ''}${matches.length}` : query.value ? '没有匹配' : ''
+    matchCount.textContent = matches.length ? `${activeMatch + 1} / ${overflow ? '≥' : ''}${matches.length}` : query.value ? t('editor.noMatches') : ''
     previousMatch.disabled = nextMatch.disabled = !matches.length
     replacement.hidden = replace.hidden = replaceAll.hidden = !editing
     replace.disabled = !matches.length
@@ -286,7 +287,7 @@ export async function renderEdition(
 
   function refreshChapters() {
     chapterTitle.textContent = chapterInfo().title
-    navLabel.textContent = `章节目录 · ${edition.chapters.length}`
+    navLabel.textContent = t('editor.chapterList105', [edition.chapters.length])
     wordLabels.clear()
     chapterList.replaceChildren(...edition.chapters.map(({ id, title }) => {
       const item = element('li')
@@ -294,7 +295,7 @@ export async function renderEdition(
       if (id === chapter.id) jump.setAttribute('aria-current', 'true')
       jump.addEventListener('click', () => { void switchChapter(id) })
       const label = element('span', 'chapter-words')
-      label.title = '本章字数'
+      label.title = t('editor.chapterCharacterCount')
       wordLabels.set(id, label)
       item.append(jump, label)
       return item
@@ -308,7 +309,7 @@ export async function renderEdition(
   function applyMode() {
     editor.setEditable(editing, false)
     editor.view.dom.setAttribute('role', editing ? 'textbox' : 'document')
-    modeLabel.textContent = editing ? '阅读模式' : '编辑正文'
+    modeLabel.textContent = editing ? t('editor.readingMode') : t('editor.editText')
     mode.setAttribute('aria-pressed', String(!editing))
     toolbar.hidden = chapterActions.hidden = save.hidden = !editing
     workspace.classList.toggle('edition-reading', !editing)
@@ -322,15 +323,15 @@ export async function renderEdition(
     chapter = next
     change = saved = 0
     activeMatch = 0
-    status.textContent = '已保存'
+    status.textContent = t('editor.saved')
     error.hidden = recover.hidden = true
     editor = new Editor({
       element: paper, extensions: [...documentExtensions, SearchHighlight], content: next.content, editable: editing,
       editorProps: {
-        attributes: { class: 'novel-body', 'aria-label': '章节正文', 'aria-multiline': 'true', spellcheck: 'false', ...(turn ? { 'data-turn': turn } : {}) },
+        attributes: { class: 'novel-body', 'aria-label': t('editor.chapterText'), 'aria-multiline': 'true', spellcheck: 'false', ...(turn ? { 'data-turn': turn } : {}) },
         transformPastedHTML: (markup) => {
           if (markup.length <= 36 * 1024 * 1024) return cleanMarkup(inertMarkup(markup))
-          report(new Error('剪贴板的富文本内容过大。可分段粘贴或使用纯文本粘贴。'))
+          report(new Error(t('editor.theRichTextOnTheClipboardIsToo')))
           return ''
         },
         handleDrop: (_, event, _slice, moved) => {
@@ -340,7 +341,7 @@ export async function renderEdition(
       },
       onUpdate: () => {
         change++
-        status.textContent = '未保存'
+        status.textContent = t('editor.unsaved')
         window.addEventListener('beforeunload', unsaved)
         scheduleSave()
         window.cancelAnimationFrame(refreshFrame)
@@ -369,7 +370,7 @@ export async function renderEdition(
   }
 
   async function alter(changeRequest: Parameters<typeof changeChapters>[1]) {
-    if (!await flush()) throw new Error('请先处理未保存的正文。')
+    if (!await flush()) throw new Error(t('editor.resolveUnsavedChangesFirst'))
     const result = await changeChapters(edition, changeRequest)
     edition = result.edition
     if (result.selected !== chapter.id) await switchChapter(result.selected)
@@ -384,7 +385,7 @@ export async function renderEdition(
   }
 
   async function currentChapters(selectedIds?: Set<string>): Promise<ChapterInput[]> {
-    if (editor.view.composing) throw new Error('请先完成当前输入。')
+    if (editor.view.composing) throw new Error(t('editor.finishTheCurrentInputFirst'))
     const visible = { title: chapterInfo().title, content: editor.getJSON() as DocumentContent }
     const visibleId = chapter.id
     const hasChanges = change !== saved
@@ -424,30 +425,30 @@ export async function renderEdition(
 
   save.addEventListener('click', () => { void flush() })
   mode.addEventListener('click', async () => { if (await flush()) { editing = !editing; applyMode() } })
-  add.addEventListener('click', () => formDialog(root, { title: '新建章节', action: '创建章节', fields: [nameField('章节名')] },
+  add.addEventListener('click', () => formDialog(root, { title: t('editor.newChapter'), action: t('editor.createChapter'), fields: [nameField(t('editor.chapterTitle'))] },
     async (data) => alter({ type: 'add', title: String(data.get('name')) })))
-  rename.addEventListener('click', () => formDialog(root, { title: '重命名章节', action: '保存章节名', fields: [nameField('章节名', chapterInfo().title)] },
+  rename.addEventListener('click', () => formDialog(root, { title: t('editor.renameChapter'), action: t('editor.saveChapterTitle'), fields: [nameField(t('editor.chapterTitle'), chapterInfo().title)] },
     async (data) => alter({ type: 'rename', id: chapter.id, title: String(data.get('name')) })))
   up.addEventListener('click', () => { void alter({ type: 'move', id: chapter.id, offset: -1 }).catch(report) })
   down.addEventListener('click', () => { void alter({ type: 'move', id: chapter.id, offset: 1 }).catch(report) })
-  remove.addEventListener('click', () => formDialog(root, { title: '删除章节？', action: '确认删除章节', danger: true, description: `将把「${chapterInfo().title}」及其正文移入回收站。删除最后一章后会创建空白章节。` },
+  remove.addEventListener('click', () => formDialog(root, { title: t('editor.deleteThisChapter'), action: t('editor.confirmChapterDeletion'), danger: true, description: t('editor.andItsTextWillBeMovedToThe', [chapterInfo().title]) },
     async () => alter({ type: 'delete', id: chapter.id })))
-  removeVersion.addEventListener('click', () => formDialog(root, { title: '删除编辑版本？', action: '确认删除版本', danger: true, description: `将把「${edition.name}」及其全部章节移入回收站。其他版本和原文件仍可使用。` }, async () => {
-    if (!await flush()) throw new Error('请先保存或另存当前改动。')
+  removeVersion.addEventListener('click', () => formDialog(root, { title: t('editor.deleteThisEditableVersion'), action: t('editor.confirmVersionDeletion'), danger: true, description: t('editor.andAllItsChaptersWillBeMovedTo', [edition.name]) }, async () => {
+    if (!await flush()) throw new Error(t('editor.saveTheCurrentChangesOrSaveASeparate'))
     const entry = await deleteEdition(edition)
     location.hash = bookPath(book.library, book.id)
     offerUndo(entry, (restored) => {
       if (restored.edition) location.hash = bookPath(book.library, book.id, restored.edition.id)
     })
   }))
-  recover.addEventListener('click', () => formDialog(root, { title: '放弃未保存的改动？', action: '放弃并返回书库', danger: true, description: '将舍弃当前未保存正文，保留已提交的内容。' }, async () => {
+  recover.addEventListener('click', () => formDialog(root, { title: t('editor.discardUnsavedChanges'), action: t('editor.discardAndReturnToLibrary'), danger: true, description: t('editor.theCurrentUnsavedTextWillBeDiscardedPreviously') }, async () => {
     window.clearTimeout(timer)
     if (pending) await pending
     saved = change
     window.removeEventListener('beforeunload', unsaved)
     location.hash = bookPath(book.library)
   }))
-  saveCopy.addEventListener('click', () => formDialog(root, { title: '另存为独立版本', action: '保存独立版本', fields: [nameField('版本名', `${edition.name} 副本`)] }, async (data) => {
+  saveCopy.addEventListener('click', () => formDialog(root, { title: t('editor.saveAsASeparateVersion'), action: t('editor.saveSeparateVersion'), fields: [nameField(t('editor.versionName'), t('editor.copy', [edition.name]))] }, async (data) => {
     await flush()
     const copy = await createEdition(book, await currentChapters(), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
     window.clearTimeout(timer)

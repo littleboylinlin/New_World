@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { version } from '../package.json'
 import { readWindowsInstaller, releaseEndpoint, releasePages, windowsReleaseList } from '../desktop/windows-release.mjs'
 
@@ -42,7 +43,7 @@ function failed(message: string): UpdateResult {
   return { kind: 'failed', message }
 }
 
-const invalidRelease = 'GitHub 返回的版本信息不完整或格式异常。请稍后重试。'
+const invalidRelease = t('updates.githubReturnedIncompleteOrInvalidReleaseInformationTry')
 
 function readRelease(payload: unknown) {
   if (!payload || typeof payload !== 'object') return
@@ -64,7 +65,7 @@ function describeRelease(release: Release, current: Version, windows?: true): Up
   const notes = typeof body === 'string' ? body.trim() : ''
   return {
     kind: 'available', tag, url: `${releasePages}tag/${encodeURIComponent(tag)}`, windows,
-    notes: notes.length > notesLimit ? `${notes.slice(0, notesLimit)}\n\n完整说明见 GitHub 发布页。` : notes,
+    notes: notes.length > notesLimit ? t('updates.seeTheGithubReleasePageForTheFull', [notes.slice(0, notesLimit)]) : notes,
   }
 }
 
@@ -88,8 +89,8 @@ function windowsReleaseResult(payload: unknown, current: Version): UpdateResult 
 
 export async function checkForUpdate(): Promise<UpdateResult> {
   const current = parseVersion(version)
-  if (!current) return failed('无法识别当前运行版本。')
-  if (!navigator.onLine) return failed('当前处于离线状态。联网后可以重试。')
+  if (!current) return failed(t('updates.theRunningVersionCouldNotBeIdentified'))
+  if (!navigator.onLine) return failed(t('updates.youAreOfflineConnectToTheInternetAnd'))
 
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
@@ -104,15 +105,15 @@ export async function checkForUpdate(): Promise<UpdateResult> {
     if (response.status === 429 || (response.status === 403 && (
       response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after')
     ))) {
-      return failed('GitHub 更新接口达到请求限额。请稍后重试。')
+      return failed(t('updates.theGithubUpdateApiRateLimitHasBeen'))
     }
-    if (!response.ok) return failed(`GitHub 暂时无法返回版本信息（HTTP ${response.status}）。请稍后重试。`)
+    if (!response.ok) return failed(t('updates.githubCouldNotReturnReleaseInformationHttpTry', [response.status]))
 
     const payload: unknown = await response.json().catch(() => undefined)
-    if (controller.signal.aborted) return failed('检查更新超时。请稍后重试。')
+    if (controller.signal.aborted) return failed(t('updates.theUpdateCheckTimedOutTryAgainLater'))
     return desktop ? windowsReleaseResult(payload, current) : webReleaseResult(payload, current)
   } catch {
-    return failed(controller.signal.aborted ? '检查更新超时。请稍后重试。' : '无法连接 GitHub 检查更新。请检查网络后重试。')
+    return failed(controller.signal.aborted ? t('updates.theUpdateCheckTimedOutTryAgainLater') : t('updates.githubCouldNotBeReachedCheckYourConnection'))
   } finally {
     window.clearTimeout(timeout)
   }

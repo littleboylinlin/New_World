@@ -1,37 +1,37 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#16130f">
-    <meta name="description" content="在浏览器本地整理自己的小说和准备续写、仿写的原作。">
-    <title>New World · 小说管理器</title>
+    <meta name="description" content="A local library for novels and continuations.">
+    <title>New World</title>
     <link rel="icon" href="./book.svg" type="image/svg+xml">
   </head>
   <body>
-    <a class="skip-link" href="#main">跳到正文</a>
+    <a class="skip-link" href="#main" data-i18n="header.skip"></a>
     <header class="site-header">
       <div class="shell header-inner">
-        <a class="brand" href="#/" aria-label="New World 书库首页">
+        <a class="brand" href="#/" data-i18n-label="header.home">
           <img src="./book.svg" width="36" height="36" alt="">
-          <span class="brand-name">New World <small>小说管理器</small></span>
+          <span class="brand-name">New World <small data-i18n="header.subtitle"></small></span>
         </a>
         <div class="header-actions">
-          <span class="local-label"><span aria-hidden="true"></span>本地保存</span>
+          <span class="local-label"><span aria-hidden="true"></span><span data-i18n="header.local"></span></span>
           <a id="trash-link" class="button button-quiet button-small" href="#/trash">
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13m-7 4v6m4-6v6"/></svg>
-            <span class="trash-label">回收站</span><span id="trash-count" class="trash-count"></span>
+            <span class="trash-label" data-i18n="trash.title"></span><span id="trash-count" class="trash-count"></span>
           </a>
-          <button type="button" id="settings" class="button button-quiet button-small" aria-haspopup="dialog" aria-controls="settings-dialog">设置</button>
+          <button type="button" id="settings" class="button button-quiet button-small" aria-haspopup="dialog" aria-controls="settings-dialog" data-i18n="settings.title"></button>
         </div>
       </div>
     </header>
     <div id="page" class="page">
     <section id="update-banner" class="shell update-banner" aria-label="版本更新提示" hidden></section>
     <main id="main" class="shell main-content" tabindex="-1"></main>
-    <footer class="shell site-footer"><span>New World <span id="app-version" class="version"></span></span><p id="storage-location" class="storage-location">小说与原件保存在当前浏览器</p></footer>
+    <footer class="shell site-footer"><span>New World <span id="app-version" class="version"></span></span><p id="storage-location" class="storage-location"></p></footer>
     </div>
-    <noscript>请启用 JavaScript 以使用本地书库。</noscript>
+    <noscript>Please enable JavaScript to use New World.</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

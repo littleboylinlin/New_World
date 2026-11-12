@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { generateHTML, generateJSON, getSchema } from '@tiptap/core'
 import { Image } from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
@@ -11,7 +12,7 @@ const LocalImage = Image.extend({
   },
   renderHTML({ HTMLAttributes }) {
     const { src, alt } = HTMLAttributes
-    return ['img', imageInfo(src) ? { src, alt: alt ?? '' } : { alt: alt || '图片不可用' }]
+    return ['img', imageInfo(src) ? { src, alt: alt ?? '' } : { alt: alt || t('schema.imageUnavailable') }]
   },
 }).configure({ allowBase64: true })
 
@@ -30,5 +31,5 @@ const schema = getSchema(documentExtensions)
 export function checkDocument(content: DocumentContent) {
   const node = schema.nodeFromJSON(content)
   node.check()
-  if (node.type !== schema.topNodeType) throw new Error('编辑稿的正文结构无效。')
+  if (node.type !== schema.topNodeType) throw new Error(t('schema.theManuscriptTextStructureIsInvalid'))
 }

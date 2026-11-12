@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import {
   BorderStyle, Document, HeadingLevel, ImageRun, LevelFormat, LineRuleType, Packer, Paragraph,
   Table, TableCell, TableRow, TextRun, WidthType, convertMillimetersToTwip,
@@ -42,12 +43,12 @@ async function imageRun(node: JSONContent): Promise<ImageRun | TextRun> {
         data = new Uint8Array(await png.arrayBuffer())
         type = 'png'
       }
-      return new ImageRun({ type, data, transformation: { width, height }, altText: { name: alt || '插图', title: alt, description: alt } })
+      return new ImageRun({ type, data, transformation: { width, height }, altText: { name: alt || t('docxExport.illustration'), title: alt, description: alt } })
     } catch {
       // Retain the image description if the browser cannot decode the raster.
     }
   }
-  return new TextRun(alt ? `[图片：${alt}]` : '[图片]')
+  return new TextRun(alt ? t('docxExport.image', [alt]) : t('docxExport.image46'))
 }
 
 async function inline(content: JSONContent[], code = false) {

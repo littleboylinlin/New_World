@@ -11,6 +11,7 @@ export default defineConfig({
   use: {
     browserName: 'chromium',
     baseURL,
+    locale: 'zh-CN',
     launchOptions: { executablePath: process.env.CHROMIUM_PATH },
   },
   webServer: {
