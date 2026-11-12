@@ -126,8 +126,12 @@ FunctionEnd
   File /oname=$PLUGINSDIR\install-language.ps1 "${PROJECT_DIR}\desktop\install-language.ps1"
   File /oname=$PLUGINSDIR\language-manifest.json "${PROJECT_DIR}\public\locales\manifest.json"
   ${GetOptions} $CMDLINE "/APP_LANGUAGE=" $R8
+  StrCpy $R7 ""
+  ${If} $R8 != ""
+    StrCpy $R7 '-Locale "$R8"'
+  ${EndIf}
   downloadLanguage:
-    nsExec::ExecToStack /TIMEOUT=45000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\install-language.ps1" -Root "$APPDATA\NewWorld-languages" -Manifest "$PLUGINSDIR\language-manifest.json" -Locale "$R8" -Selection "$PLUGINSDIR\language.txt"'
+    nsExec::ExecToStack /TIMEOUT=45000 '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\install-language.ps1" -Root "$APPDATA\NewWorld-languages" -Manifest "$PLUGINSDIR\language-manifest.json" $R7 -Selection "$PLUGINSDIR\language.txt"'
     Pop $R0
     Pop $R1
     ${If} $R0 != "0"
