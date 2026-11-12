@@ -7,6 +7,7 @@ const storageLocation = require('./storage-location.cjs')
 const closeBehavior = require('./close-behavior.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
+const { createMacInstaller } = require('./macos-install.cjs')
 const { releasePages, windowsReleaseList } = require('./windows-release.mjs')
 
 const appId = 'com.littleboylinlin.newworld'
@@ -59,6 +60,42 @@ function trustedFrame(event) {
 
 let desktopUpdater
 let languages
+let macInstaller
+let maintenanceStarted = false
+
+function languageNetworkFor(manifest, partition) {
+  const network = session.fromPartition(partition)
+  const prefix = `https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/`
+  const allowedFiles = Object.values(manifest.packs).map((pack) => prefix + pack.file)
+  network.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
+    const url = new URL(request.url)
+    done({ cancel: request.method !== 'GET' || url.protocol !== 'https:' || Boolean(url.username || url.password)
+      || (Boolean(url.port) && url.port !== '443')
+      || (!allowedFiles.includes(request.url) && url.hostname !== 'release-assets.githubusercontent.com') })
+  })
+  return network
+}
+
+ipcMain.on('new-world:ready', (event) => {
+  if (!trustedFrame(event) || !languages || maintenanceStarted) return
+  maintenanceStarted = true
+  const token = process.env.NEW_WORLD_UPDATE_TOKEN
+  delete process.env.NEW_WORLD_UPDATE_TOKEN
+  void (async () => {
+    await macInstaller?.finishBoot(app.getVersion(), token)
+    await languages.cleanup()
+    const cacheVersion = join(profile, 'NewWorld-cache-version')
+    if (await readFile(cacheVersion, 'utf8').catch(() => '') !== app.getVersion()) {
+      await session.defaultSession.clearCache()
+      await session.defaultSession.clearCodeCaches({})
+      await writeFile(cacheVersion, app.getVersion(), { mode: 0o600 })
+    }
+    if (process.env.NEW_WORLD_UPDATE_FAILED) {
+      delete process.env.NEW_WORLD_UPDATE_FAILED
+      void dialog.showMessageBox({ type: 'error', title: 'New World', message: t('macUpdate.restoredOldVersion') })
+    }
+  })().catch((error) => console.warn('New World startup cleanup:', error.code || error.message))
+})
 
 async function performUpdate(event, action) {
   if (!trustedFrame(event)) throw new Error(t('main.invalidUpdateRequest'))
@@ -293,30 +330,24 @@ if (!app.requestSingleInstanceLock()) {
       })
     }
     if (app.isPackaged && process.platform === 'darwin' && ['arm64', 'x64'].includes(process.arch)) {
+      const cache = join(appData, 'NewWorld-updates', 'macos')
+      macInstaller = createMacInstaller({
+        bundle: resolve(app.getPath('exe'), '../../..'), cache, arch: process.arch,
+        prepareLanguage: async (manifest) => {
+          const network = languageNetworkFor(manifest, 'new-world-update-language')
+          const store = await createLanguageStore({ root: join(appData, 'NewWorld-languages'), manifest, request: (url, options) => network.fetch(url, options) })
+          await store.prepare(languages.current.locale)
+        },
+      })
       desktopUpdater = await createMacUpdater({
         network: session.fromPartition('new-world-update'), version: app.getVersion(), arch: process.arch,
-        chooseDestination: async (name) => {
-          const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
-            title: t('macUpdate.saveInstaller'), defaultPath: join(app.getPath('downloads'), name),
-            filters: [{ name: 'macOS DMG', extensions: ['dmg'] }],
-          })
-          return canceled ? undefined : filePath
-        },
-        openPackage: (path) => shell.openPath(path),
+        cache, legacyDownloads: app.getPath('downloads'), installer: macInstaller,
       })
     }
-    const languageNetwork = session.fromPartition('new-world-language-packs')
     const manifest = JSON.parse(readFileSync(app.isPackaged
       ? join(__dirname, 'language-manifest.json')
       : join(app.getAppPath(), 'public', 'locales', 'manifest.json'), 'utf8'))
-    const prefix = `https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/`
-    const allowedFiles = Object.values(manifest.packs).map((pack) => prefix + pack.file)
-    languageNetwork.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
-      const url = new URL(request.url)
-      done({ cancel: request.method !== 'GET' || url.protocol !== 'https:' || Boolean(url.username || url.password)
-        || (Boolean(url.port) && url.port !== '443')
-        || (!allowedFiles.includes(request.url) && url.hostname !== 'release-assets.githubusercontent.com') })
-    })
+    const languageNetwork = languageNetworkFor(manifest, 'new-world-language-packs')
     languages = await createLanguageStore({
       root: join(appData, 'NewWorld-languages'), manifest,
       request: (url, options) => languageNetwork.fetch(url, options),

@@ -30,7 +30,7 @@ export function mountUpdateView(
   const releaseLink = element('a', 'button button-quiet', t('update.viewGithubRelease'))
   releaseLink.target = '_blank'
   releaseLink.rel = 'noopener noreferrer'
-  const update = button(macos ? t('macUpdate.downloadInstaller') : desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
+  const update = button(desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
   const releaseActions = element('div', 'update-actions')
   releaseActions.append(releaseLink, update)
   const updateHint = element('p', 'update-hint', macos ? t('macUpdate.installHint') : desktop

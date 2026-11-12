@@ -94,3 +94,4 @@ if (window.newWorldDesktop) {
   window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
 }
 mountSettingsView(saveBeforeLeaving)
+window.newWorldDesktop?.reportReady?.()

@@ -1,4 +1,7 @@
 {
-  "version": "0.9.1",
-  "platforms": ["windows", "macos"]
+  "version": "0.10.0",
+  "platforms": [
+    "windows",
+    "macos"
+  ]
 }
