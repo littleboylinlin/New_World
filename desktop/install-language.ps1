@@ -5,6 +5,7 @@ param(
     [string]$Selection = ''
 )
 
+$env:PSModulePath = "$PSHOME\Modules"
 $ErrorActionPreference = 'Stop'
 $temporary = $null
 try {
@@ -27,8 +28,16 @@ try {
     New-Item -ItemType Directory -Force -Path $cache | Out-Null
     $target = Join-Path $cache "$Locale.json"
     function Test-Pack([string]$Path) {
-        if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
-        return (Get-Item -LiteralPath $Path).Length -eq $pack.size -and (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -eq $pack.sha256
+        if (![IO.File]::Exists($Path) -or ([IO.FileInfo]$Path).Length -ne $pack.size) { return $false }
+        $stream = [IO.File]::OpenRead($Path)
+        $algorithm = [Security.Cryptography.SHA256]::Create()
+        try {
+            $digest = [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+            return $digest -eq $pack.sha256
+        } finally {
+            $stream.Dispose()
+            $algorithm.Dispose()
+        }
     }
     if (!(Test-Pack $target)) {
         $temporary = Join-Path $cache ("download-" + [Guid]::NewGuid().ToString('N') + '.tmp')
