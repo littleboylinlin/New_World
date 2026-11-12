@@ -253,6 +253,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .desktop .site-header { flex: none; user-select: none; -webkit-app-region: drag; }
   .desktop .site-header :is(a, button) { -webkit-app-region: no-drag; }
   .desktop .header-inner { width: auto; min-height: 46px; margin: 0; padding-inline: calc(env(titlebar-area-x, 0px) + 14px) calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 14px); }
+  .desktop.macos .header-inner { padding-inline: 84px 14px; }
   .desktop .brand img { width: 28px; height: 28px; border-radius: 7px; }
   .desktop .brand-name { font-size: 1rem; }
   .desktop .site-header .button { min-height: 32px; padding-block: 2px; }

@@ -4,11 +4,12 @@ set -euo pipefail
 tag=$1
 artifacts=$2
 version=${tag#v}
-installer="New-World-Setup-$version-x64.exe"
+test "$(node -p 'require("./release.json").version')" = "$version"
+mapfile -t files < <(node desktop/release-plan.mjs)
 sums=SHA256SUMS.txt
-languages=('New-World-lang-zh-CN.json' 'New-World-lang-en.json')
+files+=("$sums")
 notes="docs/releases/$tag.md"
-title="New World $tag · Windows"
+title=$(node desktop/release-plan.mjs --title)
 api="repos/$GITHUB_REPOSITORY/releases"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -39,8 +40,9 @@ if [[ ! -s "$release_json" ]]; then
     -f name="$title" -F draft=true -F "body=@$notes" > "$release_json"
 elif jq -e '.draft == false and .prerelease == false' "$release_json" > /dev/null; then
   test "$target" = "$GITHUB_SHA"
-  jq -e --arg name "$installer" --arg sums "$sums" --arg zh "${languages[0]}" --arg en "${languages[1]}" \
-    '([.assets[] | select(.state == "uploaded") | .name] | contains([$name, $sums, $zh, $en]))' "$release_json" > /dev/null
+  for name in "${files[@]}"; do
+    jq -e --arg name "$name" 'any(.assets[]; .name == $name and .state == "uploaded")' "$release_json" > /dev/null
+  done
   echo "$tag is already published."
   exit 0
 fi
@@ -49,7 +51,7 @@ jq -e --arg target "$GITHUB_SHA" --arg title "$title" \
   '.draft and (.prerelease | not) and .target_commitish == $target and .name == $title' "$release_json" > /dev/null
 release_id=$(jq -er '.id | numbers' "$release_json")
 
-for name in "$installer" "${languages[@]}" "$sums"; do
+for name in "${files[@]}"; do
   jq -c --arg name "$name" '.assets[] | select(.name == $name)' "$release_json" > "$asset_json"
   if [[ ! -s "$asset_json" ]]; then
     printf 'header = "Authorization: Bearer %s"\n' "$GH_TOKEN" | \

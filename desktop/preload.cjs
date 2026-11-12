@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('newWorldDesktop', {
+  platform: process.platform,
+  arch: process.arch,
+  onSettingsRequested: (listener) => { ipcRenderer.on('new-world:open-settings', () => listener()) },
   getLanguage: () => ipcRenderer.invoke('new-world:get-language'),
   setLanguage: (locale) => ipcRenderer.invoke('new-world:set-language', locale),
   reloadForLanguage: () => ipcRenderer.invoke('new-world:reload-language'),

@@ -454,5 +454,20 @@
   "header.local": "Stored locally",
   "app.description": "Organize your novels and source works for continuations in a local library.",
   "editor.imageAlt": "[Image: {0}]",
-  "officeImport.illustration": "ODT illustration"
+  "officeImport.illustration": "ODT illustration",
+  "macUpdate.checkReleases": "Checks stable macOS releases for this Mac architecture.",
+  "macUpdate.downloadInstaller": "Download installer",
+  "macUpdate.installHint": "You can keep writing during the download. After verification, your text is saved and the app quits. In the DMG, drag New World into Applications to replace the previous version.",
+  "macUpdate.noInstaller": "No verifiable stable macOS installer for {0} is available on GitHub yet.",
+  "macUpdate.verified": "Installer verified. Saving text and opening the DMG…",
+  "macUpdate.ready": "Quitting New World. Complete the installation in the DMG.",
+  "macUpdate.unavailable": "No installer for this Mac is available for this version. Check for updates again.",
+  "macUpdate.openFailed": "The DMG could not be opened. Open the installer from the location you selected.",
+  "macUpdate.installedAppRequired": "Use the installed macOS version of New World to download an installer.",
+  "macUpdate.saveInstaller": "Save macOS installer",
+  "macMenu.about": "About New World",
+  "macMenu.hide": "Hide New World",
+  "macMenu.hideOthers": "Hide Others",
+  "macMenu.showAll": "Show All",
+  "macMenu.quit": "Quit New World"
 }

@@ -193,6 +193,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
     input.addEventListener('change', () => { void save(input.value as CloseBehavior) })
   }
   entry.addEventListener('click', () => open())
+  desktop?.onSettingsRequested?.(() => open())
   close.addEventListener('click', () => dialog.close())
   dialog.addEventListener('cancel', (event) => { if (locked) event.preventDefault() })
   paint()

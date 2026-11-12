@@ -1,6 +1,6 @@
 import { t } from './i18n'
 import { version } from '../package.json'
-import { readWindowsInstaller, releaseEndpoint, releasePages, windowsReleaseList } from '../desktop/windows-release.mjs'
+import { readMacInstaller, readWindowsInstaller, releaseEndpoint, releasePages, desktopReleaseList } from '../desktop/release.mjs'
 
 const timeoutMs = 8000
 const notesLimit = 12000
@@ -33,7 +33,7 @@ function compareToStable(current: Version, stable: Version) {
 }
 
 export type UpdateResult =
-  | { kind: 'available'; tag: string; notes: string; url: string; windows?: true }
+  | { kind: 'available'; tag: string; notes: string; url: string; windows?: true; macos?: true }
   | { kind: 'current' }
   | { kind: 'ahead'; tag: string }
   | { kind: 'unpublished' }
@@ -56,7 +56,7 @@ function readRelease(payload: unknown) {
 
 type Release = NonNullable<ReturnType<typeof readRelease>>
 
-function describeRelease(release: Release, current: Version, windows?: true): UpdateResult {
+function describeRelease(release: Release, current: Version, platform?: string): UpdateResult {
   const { tag, version, body } = release
   const comparison = compareToStable(current, version)
   if (comparison === 0) return { kind: 'current' }
@@ -64,7 +64,7 @@ function describeRelease(release: Release, current: Version, windows?: true): Up
 
   const notes = typeof body === 'string' ? body.trim() : ''
   return {
-    kind: 'available', tag, url: `${releasePages}tag/${encodeURIComponent(tag)}`, windows,
+    kind: 'available', tag, url: `${releasePages}tag/${encodeURIComponent(tag)}`, windows: platform === 'win32' ? true : undefined, macos: platform === 'darwin' ? true : undefined,
     notes: notes.length > notesLimit ? t('updates.seeTheGithubReleasePageForTheFull', [notes.slice(0, notesLimit)]) : notes,
   }
 }
@@ -75,16 +75,20 @@ function webReleaseResult(payload: unknown, current: Version): UpdateResult {
   return release.stable ? describeRelease(release, current) : { kind: 'unpublished' }
 }
 
-function windowsReleaseResult(payload: unknown, current: Version): UpdateResult {
+function desktopReleaseResult(payload: unknown, current: Version): UpdateResult {
   if (!Array.isArray(payload)) return failed(invalidRelease)
   const releases = payload.map(readRelease).filter((release) => release !== undefined)
   if (payload.length && !releases.length) return failed(invalidRelease)
+  const platform = window.newWorldDesktop?.platform ?? 'win32'
+  const arch = window.newWorldDesktop?.arch ?? 'x64'
   let best: Release | undefined
   for (const release of releases) {
-    if (!release.stable || !readWindowsInstaller(release.tag, release.assets)) continue
+    const installer = platform === 'darwin' ? readMacInstaller(release.tag, release.assets, arch)
+      : platform === 'win32' && arch === 'x64' ? readWindowsInstaller(release.tag, release.assets) : undefined
+    if (!release.stable || !installer) continue
     if (!best || compareToStable(best.version, release.version) < 0) best = release
   }
-  return best ? describeRelease(best, current, true) : { kind: 'unpublished' }
+  return best ? describeRelease(best, current, platform) : { kind: 'unpublished' }
 }
 
 export async function checkForUpdate(): Promise<UpdateResult> {
@@ -96,7 +100,7 @@ export async function checkForUpdate(): Promise<UpdateResult> {
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   const desktop = !!window.newWorldDesktop
   try {
-    const response = await fetch(desktop ? windowsReleaseList : `${releaseEndpoint}/latest`, {
+    const response = await fetch(desktop ? desktopReleaseList : `${releaseEndpoint}/latest`, {
       headers: { Accept: 'application/vnd.github+json' },
       credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
       cache: 'no-store', signal: controller.signal,
@@ -111,7 +115,7 @@ export async function checkForUpdate(): Promise<UpdateResult> {
 
     const payload: unknown = await response.json().catch(() => undefined)
     if (controller.signal.aborted) return failed(t('updates.theUpdateCheckTimedOutTryAgainLater'))
-    return desktop ? windowsReleaseResult(payload, current) : webReleaseResult(payload, current)
+    return desktop ? desktopReleaseResult(payload, current) : webReleaseResult(payload, current)
   } catch {
     return failed(controller.signal.aborted ? t('updates.theUpdateCheckTimedOutTryAgainLater') : t('updates.githubCouldNotBeReachedCheckYourConnection'))
   } finally {

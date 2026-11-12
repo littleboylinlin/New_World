@@ -17,7 +17,10 @@ document.querySelector('meta[name="description"]')?.setAttribute('content', t('a
 const main = document.querySelector<HTMLElement>('#main')!
 const page = document.querySelector<HTMLElement>('#page')!
 // The desktop window has no system title bar. The app header takes its place and the page scrolls below it.
-if (window.newWorldDesktop) document.documentElement.classList.add('desktop')
+if (window.newWorldDesktop) {
+  document.documentElement.classList.add('desktop')
+  if (window.newWorldDesktop.platform === 'darwin') document.documentElement.classList.add('macos')
+}
 let view: AbortController | undefined
 let leaveGuard: (() => Promise<boolean>) | undefined
 let activeHash = location.hash
