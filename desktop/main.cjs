@@ -267,6 +267,7 @@ function openWindow() {
   mainWindow = new BrowserWindow({
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
     backgroundColor: '#f4eee2',
+    icon: join(__dirname, 'icon.png'),
     // The app header is the title bar. Windows draws only the window buttons over its right end.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 16 } }

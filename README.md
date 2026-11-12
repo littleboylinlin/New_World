@@ -2,11 +2,11 @@
 
 [English](README.en.md)
 
-New World v0.10.3 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.10.4 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
 ## Windows 桌面版
 
-Windows 与 macOS 当前正式版均为 [v0.10.3](https://github.com/littleboylinlin/New_World/releases/tag/v0.10.3)。界面控件不再随拖动框选，正文、输入框和文本预览仍可选择复制，顶栏仅保留 New World 品牌名称。检查更新时各自只选择本平台的安装包。
+Windows 与 macOS 当前正式版均为 [v0.10.4](https://github.com/littleboylinlin/New_World/releases/tag/v0.10.4)。界面控件不再随拖动框选，正文、输入框和文本预览仍可选择复制，顶栏仅保留 New World 品牌名称。检查更新时各自只选择本平台的安装包。
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 
@@ -36,7 +36,7 @@ Mac 检查更新只匹配本机芯片的 DMG。点击「更新并重启」后，
 
 在「设置 → 语言」选择语言并应用。应用会先保存正文，再获取尚未下载的语言包；下载失败时保留当前语言。已下载的语言可离线使用，重新打开应用和升级时沿用已选语言。作品名、章节名和正文不会随界面语言改变。Web 版首次按浏览器语言选择，只请求当前所需的语言包。
 
-语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.10.3\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
+语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.10.4\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
 
 窗口顶部的应用栏同时是标题栏，可以拖动窗口。缩放用 `Ctrl` 加 `+`、`-`、`0`，全屏用 `F11`。桌面书库与浏览器书库分开保存，现有浏览器数据仍可在原浏览器和地址中访问。
 
