@@ -90,7 +90,7 @@ test('Mac 旧下载残留只匹配应用临时文件，保留手动保存的 DMG
     const temporary = dmg + '.' + randomUUID() + '.download'
     for (const name of [dmg, temporary, 'my-book.download']) { await writeFile(join(root, name), 'keep'); await utimes(join(root, name), 0, 0) }
     await cleanLegacyMacDownloads(root)
-    expect(await readdir(root)).toEqual([dmg, 'my-book.download'])
+    expect((await readdir(root)).sort()).toEqual([dmg, 'my-book.download'].sort())
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
