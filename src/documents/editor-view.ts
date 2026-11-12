@@ -6,6 +6,7 @@ import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
 import { offerUndo } from '../undo'
+import { appearanceMenu } from '../appearance-view'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
 import { wordCount } from './model'
@@ -161,7 +162,9 @@ export async function renderEdition(
   const findButton = button(t('editor.findReplace'), 'format-button find-toggle', 'search')
   findButton.title = 'Ctrl / ⌘ + F'
   const toolsRow = element('div', 'editor-tools-row')
-  toolsRow.append(toolbar, findButton, imageInput)
+  const sideTools = element('div', 'editor-side-tools')
+  sideTools.append(appearanceMenu(), findButton)
+  toolsRow.append(toolbar, sideTools, imageInput)
 
   const searchBar = element('div', 'search-panel')
   searchBar.hidden = true

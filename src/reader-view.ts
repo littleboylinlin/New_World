@@ -7,6 +7,7 @@ import { emptyChapter, chapterText } from './documents/model'
 import { createEdition, listEditions } from './documents/store'
 import type { RegisterLeave } from './documents/editor-view'
 import { openText } from './text-preview'
+import { appearanceMenu } from './appearance-view'
 import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, link, notice, originalPath } from './ui'
 
 function readingText(text: string, source = false) {
@@ -33,7 +34,9 @@ function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: Abo
     select.append(option)
   }
   field.append(select)
-  toolbar.append(heading, field)
+  const tools = element('div', 'preview-tools')
+  tools.append(field, appearanceMenu())
+  toolbar.append(heading, tools)
   const content = element('div', 'preview-body')
   host.replaceChildren(toolbar, content)
 
@@ -58,7 +61,7 @@ function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: Abo
 
 function showPaged(
   host: HTMLElement, title: string, unit: string, count: number,
-  read: (index: number) => Promise<HTMLElement>, signal: AbortSignal,
+  read: (index: number) => Promise<HTMLElement>, signal: AbortSignal, textTools = false,
 ) {
   const toolbar = element('div', 'preview-toolbar')
   const paging = element('div', 'pagination')
@@ -67,7 +70,13 @@ function showPaged(
   const number = element('span', 'page-number')
   number.setAttribute('role', 'status')
   paging.append(previous, number, next)
-  toolbar.append(element('h2', '', title), paging)
+  if (textTools) {
+    const tools = element('div', 'preview-tools')
+    tools.append(paging, appearanceMenu())
+    toolbar.append(element('h2', '', title), tools)
+  } else {
+    toolbar.append(element('h2', '', title), paging)
+  }
   const content = element('div', 'preview-body')
   host.replaceChildren(toolbar, content)
 
@@ -110,7 +119,7 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
       const text = chapterText(await readRtf(blob))
       if (!signal.aborted) {
         const heading = element('div', 'preview-toolbar')
-        heading.append(element('h2', '', t('reader.rtfText')))
+        heading.append(element('h2', '', t('reader.rtfText')), appearanceMenu())
         host.replaceChildren(heading, readingText(text))
       }
       return
@@ -125,13 +134,13 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
     if (book.format === 'epub') {
       const epub = await openEpub(blob, signal)
       if (!signal.aborted) {
-        showPaged(host, t('reader.epubText'), t('reader.section'), epub.length, async (index) => readingText(await epub.readSection(index)), signal)
+        showPaged(host, t('reader.epubText'), t('reader.section'), epub.length, async (index) => readingText(await epub.readSection(index)), signal, true)
       }
     } else {
       const text = await (book.format === 'docx' ? openDocx : openOdt)(blob, signal)
       if (!signal.aborted) {
         const heading = element('div', 'preview-toolbar')
-        heading.append(element('h2', '', t('reader.text', [format.label])))
+        heading.append(element('h2', '', t('reader.text', [format.label])), appearanceMenu())
         host.replaceChildren(heading, readingText(text))
       }
     }
