@@ -86,7 +86,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
         const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('trash'))
-        empty.append(emptyIcon, element('h3', '', t('trash.theTrashIsEmpty')), element('p', '', t('trash.deletedContentWillAppearHereFirst')))
+        empty.append(emptyIcon, element('h3', '', t('trash.theTrashIsEmpty')))
         content.replaceChildren(empty)
       }
     } catch (error) {

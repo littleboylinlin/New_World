@@ -18,7 +18,7 @@ export function mountUpdateView(
   document.querySelector('#app-version')!.textContent = runningVersion
 
   const currentVersion = element('p', 'update-version', t('update.runningVersion', [runningVersion, desktop ? ` · ${platformLabel}` : '']))
-  const state = element('p', 'update-state', macos ? t('macUpdate.checkReleases') : desktop ? t('update.checksWindowsStableReleasesOnGithub') : t('update.checksStableReleasesOnGithub'))
+  const state = element('p', 'update-state')
   state.setAttribute('role', 'status')
   const check = button(t('update.checkForUpdates'), 'button button-primary')
   const controls = element('div', 'update-actions')
@@ -33,9 +33,8 @@ export function mountUpdateView(
   const update = button(desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
   const releaseActions = element('div', 'update-actions')
   releaseActions.append(releaseLink, update)
-  const updateHint = element('p', 'update-hint', macos ? t('macUpdate.installHint') : desktop
-    ? t('update.youCanKeepWritingDuringTheDownloadAfter')
-    : t('update.reloadingLoadsTheVersionCurrentlyDeployedToThis'))
+  const updateHint = element('p', 'update-hint', macos ? t('macUpdate.installHint') : t('update.youCanKeepWritingDuringTheDownloadAfter'))
+  updateHint.hidden = !desktop
   const updateError = element('p', 'field-error')
   updateError.setAttribute('role', 'alert')
   updateError.hidden = true

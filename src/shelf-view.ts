@@ -14,10 +14,7 @@ const libraryIds: LibraryId[] = ['original', 'reference']
 export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const home = element('section', 'home')
   const intro = element('header', 'home-intro')
-  intro.append(
-    element('h1', '', t('shelf.myNovelLibrary')),
-    element('p', 'intro-copy', t('shelf.writeYourOwnStoriesOrCreateContinuationsBased')),
-  )
+  intro.append(element('h1', '', t('shelf.myNovelLibrary')))
 
   const cards = element('div', 'shelf-grid')
   const counts = new Map<LibraryId, HTMLElement>()
@@ -27,7 +24,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     card.href = bookPath(id)
     card.setAttribute('aria-label', t('shelf.open', [library.name]))
     const copy = element('div', 'card-copy')
-    copy.append(element('h2', '', library.name), element('p', '', library.description))
+    copy.append(element('h2', '', library.name))
     const bottom = element('div', 'card-bottom')
     const count = element('span', 'card-count', t('shelf.loading'))
     const enter = element('span', 'card-enter')
@@ -38,9 +35,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     cards.append(card)
   }
 
-  const local = element('p', 'local-note')
-  local.append(icon('device'), element('strong', '', t('shelf.originalFilesAreAlwaysAvailableToDownload')), window.newWorldDesktop ? t('shelf.importingAndReadingStayOnThisComputer') : t('shelf.importingAndReadingStayInThisBrowser'))
-  home.append(intro, stagger(cards), local)
+  home.append(intro, stagger(cards))
   root.append(home)
 
   async function refreshCounts() {
@@ -146,7 +141,7 @@ function bookCard(root: HTMLElement, book: Book) {
   const length = Array.from(book.title).length
   cover.append(element('strong', length > 14 ? 'book-title book-title-long' : length > 6 ? 'book-title book-title-medium' : 'book-title', book.title))
   open.append(cover, book.library === 'reference'
-    ? element('span', 'file-details', t('shelf.continuationProjectViewContinuationsAndSources')) : fileDetails(book))
+    ? element('span', 'file-details', t('continuation.continuationProject')) : fileDetails(book))
   const controls = element('div', 'book-controls')
   const rename = button(t('shelf.rename'), 'button button-quiet button-small', 'edit')
   const remove = button(t('shelf.delete'), 'button button-quiet button-small remove-button', 'trash')
@@ -162,7 +157,7 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   const panel = element('section', `shelf-page mode-${id}`)
   const header = element('div', 'page-heading')
   const heading = element('div')
-  heading.append(element('p', 'eyebrow', `${library.index} / ${library.label}`), element('h1', '', library.name), element('p', 'intro-copy', library.description))
+  heading.append(element('p', 'eyebrow', `${library.index} / ${library.label}`), element('h1', '', library.name))
   const { choose, input, progress } = bookImport(id, id === 'reference' ? t('shelf.importSourceToCreateAProject') : t('shelf.importFiles'), () => changes.dispatchEvent(new Event('update')))
   const create = button(t('shelf.newNovel'), 'button button-quiet', 'plus')
   const controls = element('div', 'shelf-actions')
@@ -203,7 +198,8 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
         const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('book'))
-        empty.append(emptyIcon, element('h3', '', library.empty), element('p', '', id === 'reference' ? t('shelf.importASourceAndOpenItsProjectTo') : t('shelf.importNovelsInTxtPdfEpubDocxAnd')))
+        empty.append(emptyIcon, element('h3', '', library.empty))
+        if (id === 'original') empty.append(element('p', '', t('shelf.importNovelsInTxtPdfEpubDocxAnd')))
         content.replaceChildren(empty)
       }
     } catch (error) {

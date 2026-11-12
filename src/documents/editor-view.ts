@@ -40,8 +40,7 @@ export async function renderEdition(
   const workspace = element('section', 'edition-workspace')
   const top = element('header', 'edition-header')
   const about = element('div', 'edition-about')
-  const origin = { original: t('editor.convertedFromTheOriginalFile'), blank: t('editor.createdInTheEditor'), copy: t('editor.independentEditableCopy') }[edition.source]
-  about.append(element('p', 'eyebrow', origin), element('h2', '', edition.name))
+  about.append(element('h2', '', edition.name))
   const commands = element('div', 'edition-commands')
   const status = element('span', 'save-status', t('editor.saved'))
   status.setAttribute('role', 'status')

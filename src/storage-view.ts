@@ -36,7 +36,7 @@ export function mountStorageView(
       badge.textContent = t('settings.browserManaged')
       path.textContent = t('storage.thisBrowser')
       change.hidden = reset.hidden = true
-      state.textContent = t('storage.theLibraryLocationIsManagedByYourBrowser')
+      state.textContent = ''
       return
     }
     change.hidden = reset.hidden = false

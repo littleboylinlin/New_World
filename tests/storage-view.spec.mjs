@@ -26,7 +26,7 @@ test('Web 端显示由浏览器托管，隐藏更改与恢复按钮', async ({ p
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.storage-badge')).toHaveText('浏览器托管')
   await expect(dialog.locator('.storage-path')).toHaveText('当前浏览器')
-  await expect(dialog.locator('.storage-state')).toHaveText('书库位置由当前浏览器管理')
+  await expect(dialog.locator('.storage-state')).toBeEmpty()
   await expect(dialog.getByRole('button', { name: '更改位置' })).toBeHidden()
   await expect(dialog.getByRole('button', { name: '恢复默认' })).toBeHidden()
   await dialog.getByRole('button', { name: '关闭' }).click()

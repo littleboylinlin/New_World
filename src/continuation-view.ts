@@ -68,7 +68,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         row.append(entry, element('span', 'file-size', t('continuation.chapterS', [edition.chapters.length])))
         chapterList.append(row)
       }
-      draftList.replaceChildren(editions.length ? (arriving ? stagger(chapterList) : chapterList) : element('p', 'continuation-empty', t('continuation.noContinuationsYetCreateOneToStartWith')))
+      draftList.replaceChildren(editions.length ? (arriving ? stagger(chapterList) : chapterList) : element('p', 'continuation-empty', t('continuation.noContinuationsYet')))
 
       const sourceList = element('ul', 'book-list')
       sourceList.setAttribute('aria-label', t('continuation.sourceFiles'))
@@ -90,7 +90,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         row.append(entry, remove)
         sourceList.append(row)
       }
-      originalList.replaceChildren(sourceList.childElementCount ? (arriving ? stagger(sourceList) : sourceList) : element('p', 'continuation-empty', t('continuation.noSourceFilesYetYouCanAddA')))
+      originalList.replaceChildren(sourceList.childElementCount ? (arriving ? stagger(sourceList) : sourceList) : element('p', 'continuation-empty', t('continuation.noSourceFilesYet')))
       if (heading.parentElement !== body) body.replaceChildren(heading, lists)
     } catch (error) {
       if (!signal.aborted && current === request) body.replaceChildren(notice(storageError(error), true))

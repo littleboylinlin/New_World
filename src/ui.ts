@@ -5,12 +5,10 @@ import type { Book, LibraryId } from './library'
 export const libraries = {
   original: {
     name: t('libraries.original'), index: '01', label: t('ui.yourOwnWorks'),
-    description: t('ui.keepYourStoriesTogetherAndRevisitDraftsAnd'),
     empty: t('ui.noOriginalWorksYet'),
   },
   reference: {
     name: t('libraries.reference'), index: '02', label: t('ui.continuationWriting'),
-    description: t('ui.createAProjectForEachSourceWorkWith'),
     empty: t('ui.noSourceWorksYet'),
   },
 } as const
@@ -22,7 +20,6 @@ const paths = {
   book: 'M12 6a9 9 0 0 0-8-2v14a9 9 0 0 1 8 2 9 9 0 0 1 8-2V4a9 9 0 0 0-8 2Zm0 0v14',
   file: 'M13 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9Zm0 0v6h6M8 13h8m-8 4h6',
   download: 'M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4',
-  device: 'M4 5h16v11H4zM2 20h20m-13-8 2 2 4-4',
   up: 'M12 19V5m-6 6 6-6 6 6',
   down: 'M12 5v14m-6-6 6 6 6-6',
   edit: 'M4 20h4L19 9l-4-4L4 16v4Zm10-14 4 4',
@@ -103,7 +100,7 @@ export function breadcrumbs(library: LibraryId, inReader = false) {
 export function fileDetails(book: Book) {
   const details = element('div', 'file-details')
   if (book.format === 'draft') {
-    details.append(element('span', 'file-format', t('ui.builtInDocument')), element('span', '', t('ui.createdInNewWorld')))
+    details.append(element('span', 'file-format', t('ui.builtInDocument')))
     return details
   }
   const size = book.size < 1024 ? `${book.size} B`

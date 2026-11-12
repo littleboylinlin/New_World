@@ -242,7 +242,6 @@ export async function renderReader(
       const convert = button(reference ? t('reader.continueFromSourceText') : book.format === 'pdf' ? t('reader.extractTextAsManuscript') : t('reader.convertToManuscript'), 'button button-primary button-small')
       convert.addEventListener('click', () => { void create(true) })
       actions.prepend(convert)
-      actions.append(element('span', 'version-hint', book.format === 'pdf' ? t('reader.extractsTextPageByPageThePdfKeeps') : reference ? t('reader.copiesTheSourceTextIntoAnIndependentContinuation') : t('reader.editedContentIsSavedInASeparateVersion')))
     }
     body.append(actions, message)
     if (!blob) return

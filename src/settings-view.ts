@@ -146,7 +146,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
     if (!desktop) {
       options.hidden = true
       badge.hidden = false
-      state.textContent = t('settings.windowClosingIsManagedByYourBrowser')
+      state.textContent = ''
       return
     }
     options.hidden = false

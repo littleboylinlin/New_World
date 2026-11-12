@@ -111,12 +111,9 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .shelf-card:focus-visible { outline-offset: 4px; }
 .card-index { color: var(--card); font-family: var(--display); font-size: .92rem; font-weight: 900; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
 .card-copy h2 { font-size: 1.7rem; font-weight: 900; line-height: 1.3; }
-.card-copy p { margin-top: 8px; color: var(--muted); font-size: .92rem; line-height: 1.7; }
 .card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--hair); font-size: .88rem; }
 .card-count { color: var(--muted); font-weight: 650; font-variant-numeric: tabular-nums; }
 .card-enter { display: flex; align-items: center; gap: 6px; color: var(--card); font-weight: 800; }
-.local-note { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 26px; color: var(--muted); font-size: .84rem; line-height: 1.6; }
-.local-note strong { color: var(--ink); font-weight: 750; }
 .empty-icon { display: grid; place-items: center; flex: none; border: 2px solid var(--ink); color: var(--ink); background: var(--yellow); }
 
 .breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; color: var(--muted); font-size: .84rem; font-weight: 600; }
@@ -235,7 +232,6 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .version-tab:focus-visible { outline-offset: -4px; }
 .version-tab[aria-current] { padding-block: 10px 9px; color: #fff; background: var(--accent); }
 .version-actions { margin-bottom: 16px; }
-.version-hint { color: var(--muted); font-size: .85rem; }
 .version-message:not(:empty) { margin-bottom: 14px; }
 .continuation-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
 .continuation-list { min-width: 0; }
