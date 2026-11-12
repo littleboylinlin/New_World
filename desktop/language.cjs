@@ -1,6 +1,7 @@
 const { createHash, randomUUID } = require('node:crypto')
 const { mkdir, readFile, rename, rm, writeFile } = require('node:fs/promises')
 const { join } = require('node:path')
+const { cleanLanguageCache } = require('./cleanup.cjs')
 let formatMessage = (messages, key) => messages[key] ?? key
 
 let activeMessages = {}
@@ -87,7 +88,7 @@ async function createLanguageStore({ root, manifest, request, developmentRoot })
     return activate(locale)
   }
 
-  return { initialize, activate, get current() { return current } }
+  return { initialize, activate, prepare, cleanup: () => cleanLanguageCache(root, manifest.version), get current() { return current } }
 }
 
 module.exports = { t, createLanguageStore }

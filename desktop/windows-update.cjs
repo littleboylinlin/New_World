@@ -1,25 +1,18 @@
 const { spawn } = require('node:child_process')
 const { createHash } = require('node:crypto')
 const { createReadStream, createWriteStream } = require('node:fs')
-const { mkdir, mkdtemp, readdir, rm, stat } = require('node:fs/promises')
+const { mkdir, mkdtemp, stat } = require('node:fs/promises')
 const { join } = require('node:path')
 const { Readable, Transform } = require('node:stream')
 const { pipeline } = require('node:stream/promises')
 const { isNewerWindowsTag, isUpdateUrl, readWindowsInstaller, releaseEndpoint } = require('./windows-release.mjs')
+const { cleanDownloads, remove: removeDownload } = require('./cleanup.cjs')
 
 class UpdateError extends Error {}
 
 const invalidPackage = "windowsUpdate.theInstallerSizeOrSha256ChecksumDoes"
 const downloadFailed = "windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour"
 const installFailed = "windowsUpdate.theUpdateInstallerCouldNotBeStartedMake"
-
-const removeDownload = (path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 }).catch(() => {})
-
-async function cleanDownloads(cache) {
-  const entries = await readdir(cache, { withFileTypes: true }).catch(() => [])
-  await Promise.all(entries.filter((entry) => entry.isDirectory() && /^download-[0-9A-Za-z]{6}$/.test(entry.name))
-    .map((entry) => removeDownload(join(cache, entry.name))))
-}
 
 async function officialInstaller(request, tag) {
   const release = await request(releaseEndpoint + '/tags/' + tag, {

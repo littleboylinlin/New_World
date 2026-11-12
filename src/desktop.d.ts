@@ -24,6 +24,7 @@ interface Window {
   newWorldDesktop?: {
     platform: string
     arch: string
+    reportReady: () => void
     onSettingsRequested: (listener: () => void) => void
     getLanguage: () => Promise<import('../shared/language-packs.mjs').LanguagePack>
     setLanguage: (locale: import('../shared/language-packs.mjs').Locale) => Promise<import('../shared/language-packs.mjs').LanguagePack>

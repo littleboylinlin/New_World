@@ -93,7 +93,15 @@ async function expectCleanPdf(bytes, expectedText) {
 }
 
 test.beforeAll(async () => {
-  if (installer) await install()
+  if (installer) {
+    await install()
+    const oldPack = join(process.env.APPDATA, 'NewWorld-languages', 'packs', '0.0.0')
+    await mkdir(oldPack, { recursive: true })
+    await writeFile(join(oldPack, 'en.json'), 'old cache')
+    const abandoned = join(tmpdir(), 'New World Updates', 'download-aB123C')
+    await mkdir(abandoned, { recursive: true })
+    await writeFile(join(abandoned, 'previous.exe'), 'old download')
+  }
 })
 
 test.afterAll(async () => {
@@ -110,6 +118,11 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
   try {
     let page = await app.firstWindow()
     await expect(page.locator('#app-version')).toHaveText(versionTag)
+    if (installer) {
+      await expect.poll(() => stat(join(process.env.APPDATA, 'NewWorld-languages', 'packs', '0.0.0')).then(() => true, () => false)).toBe(false)
+      await expect.poll(() => readFile(join(process.env.APPDATA, 'NewWorld', 'NewWorld-cache-version'), 'utf8').catch(() => '')).toBe(version)
+      await expect.poll(() => stat(join(tmpdir(), 'New World Updates', 'download-aB123C')).then(() => true, () => false)).toBe(false)
+    }
     await expect(page).toHaveURL('new-world://app/')
     await expect(page.locator('#update-banner')).toBeHidden()
     expect(await page.evaluate(() => ({ secure: isSecureContext, node: typeof require }))).toEqual({ secure: true, node: 'undefined' })
@@ -391,6 +404,8 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
   release.assets[0].size = (await stat(installer)).size
   release.assets[0].digest = 'sha256:' + createHash('sha256').update(await readFile(installer)).digest('hex')
   await stagePreviousApp(previous, testInfo)
+  const obsolete = join(installDir, 'resources', 'obsolete-previous-version.txt')
+  await writeFile(obsolete, 'must disappear')
 
   let app = await launch(testInfo)
   let restarted = 0
@@ -449,6 +464,8 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     app = await launch(testInfo)
     const current = await app.firstWindow()
     expect(await app.evaluate(({ app }) => app.getVersion())).toBe(version)
+    await expect(stat(obsolete)).rejects.toHaveProperty('code', 'ENOENT')
+    await expect.poll(async () => (await readdir(join(tmpdir(), 'New World Updates'))).filter((name) => name.startsWith('download-')), { timeout: 30_000 }).toEqual([])
     await expect(current.locator('#app-version')).toHaveText(versionTag)
     await current.goto(draftUrl)
     await expect(editor(current)).toHaveText(lastText)
