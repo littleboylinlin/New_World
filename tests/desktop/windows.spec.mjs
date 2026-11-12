@@ -107,8 +107,8 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMenuBarVisible())).toBe(false)
     const header = await page.evaluate(() => {
       const inner = document.querySelector('.header-inner')
-      const help = document.querySelector('#update-help').getBoundingClientRect()
-      return { top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight), gap: innerWidth - help.right }
+      const settings = document.querySelector('#settings').getBoundingClientRect()
+      return { top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight), gap: innerWidth - settings.right }
     })
     expect(header.top).toBe(0)
     expect(header.reserved).toBeGreaterThan(90)
@@ -265,8 +265,8 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     expect(requests).toBe(1)
     await banner.getByRole('button', { name: '本次忽略' }).click()
     await expect(banner).toBeHidden()
-    await page.getByRole('button', { name: '帮助与更新' }).click()
-    const help = page.getByRole('dialog', { name: '帮助与更新' })
+    await page.getByRole('button', { name: '设置' }).click()
+    const help = page.getByRole('dialog', { name: '设置' })
     await expect(help).toContainText(`当前运行版本 ${versionTag} · Windows x64`)
     await expect(help).toContainText('改进离线写作。')
     await expect(help.getByRole('link', { name: '查看 GitHub 发布页' })).toHaveAttribute('href', `${releaseBase}/tag/${next}`)
@@ -274,23 +274,23 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     const check = help.getByRole('button', { name: '检查更新' })
     result = [stable(future, { assets: [] }), stable(versionTag)]
     await check.click()
-    await expect(help.getByRole('status')).toHaveText('当前已是最新版本。')
+    await expect(help.locator('.update-state')).toHaveText('当前已是最新版本。')
     responseStatus = 0
     await check.click()
-    await expect(help.getByRole('status')).toContainText('无法连接 GitHub')
+    await expect(help.locator('.update-state')).toContainText('无法连接 GitHub')
     responseStatus = 429
     await check.click()
-    await expect(help.getByRole('status')).toContainText('请求限额')
+    await expect(help.locator('.update-state')).toContainText('请求限额')
     responseStatus = 200
     result = { unexpected: true }
     await check.click()
-    await expect(help.getByRole('status')).toContainText('版本信息不完整或格式异常')
+    await expect(help.locator('.update-state')).toContainText('版本信息不完整或格式异常')
     result = [stable(future, { assets: [] }), foreign, noDigest]
     await check.click()
-    await expect(help.getByRole('status')).toContainText('暂未提供可校验的 Windows x64 正式安装包')
+    await expect(help.locator('.update-state')).toContainText('暂未提供可校验的 Windows x64 正式安装包')
     result = [stable(next)]
     await check.click()
-    await expect(help.getByRole('status')).toContainText(next)
+    await expect(help.locator('.update-state')).toContainText(next)
     expect(requests).toBe(7)
     await help.getByRole('button', { name: '关闭', exact: true }).click()
 
@@ -308,7 +308,7 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     const expectedRequests = await mockUpdateDownload(app, corrupt, { body: 'x' })
     await page.evaluate(() => { globalThis.desktopTestStorageFull = true })
     await editor(page).fill('这段正文必须留在桌面端。')
-    await page.getByRole('button', { name: '帮助与更新' }).click()
+    await page.getByRole('button', { name: '设置' }).click()
     const download = help.getByRole('button', { name: '更新并重启' })
     await download.click()
     await expect(help.getByRole('alert')).toContainText('当前正文尚未保存')
@@ -403,8 +403,8 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     await editor(page).fill('更新前已写好的正文。')
     await expect(status(page)).toHaveText('已保存')
     const draftUrl = page.url()
-    await page.getByRole('button', { name: '帮助与更新' }).click()
-    const help = page.getByRole('dialog', { name: '帮助与更新' })
+    await page.getByRole('button', { name: '设置' }).click()
+    const help = page.getByRole('dialog', { name: '设置' })
     const update = help.getByRole('button', { name: '更新并重启' })
     await update.click()
     const progress = help.getByRole('progressbar', { name: '安装包下载进度' })

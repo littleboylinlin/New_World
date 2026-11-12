@@ -2,25 +2,23 @@ import { button, element } from './ui'
 import { checkForUpdate, runningVersion } from './updates'
 import type { UpdateResult } from './updates'
 
-export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
+export function mountUpdateView(
+  content: HTMLElement,
+  saveBeforeLeaving: () => Promise<boolean>,
+  openHelp: () => void,
+  setBusy: (busy: boolean, allowClose?: boolean) => void,
+) {
   const desktop = window.newWorldDesktop
-  const help = document.querySelector<HTMLButtonElement>('#update-help')!
+  const settings = document.querySelector<HTMLButtonElement>('#settings')!
   const banner = document.querySelector<HTMLElement>('#update-banner')!
   document.querySelector('#app-version')!.textContent = runningVersion
 
-  const title = element('h2', '', '帮助与更新')
-  title.id = 'update-help-title'
-  const dialog = element('dialog', 'manage-dialog update-dialog')
-  dialog.id = 'update-help-dialog'
-  dialog.setAttribute('aria-labelledby', title.id)
-  const content = element('div', 'manage-form')
   const currentVersion = element('p', 'update-version', `当前运行版本 ${runningVersion}${desktop ? ' · Windows x64' : ''}`)
   const state = element('p', 'update-state', desktop ? '可查询 GitHub 上的 Windows 正式发行版。' : '可查询 GitHub 上的正式发行版。')
   state.setAttribute('role', 'status')
   const check = button('检查更新', 'button button-primary')
-  const close = button('关闭', 'button button-quiet')
   const controls = element('div', 'update-actions')
-  controls.append(check, close)
+  controls.append(check)
 
   const release = element('section', 'update-release')
   release.hidden = true
@@ -40,10 +38,8 @@ export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
   const progress = element('progress', 'update-progress')
   progress.setAttribute('aria-label', '安装包下载进度')
   progress.hidden = true
-  release.append(element('h3', '', '更新说明'), notes, releaseActions, updateHint, progress, updateError)
-  content.append(title, currentVersion, controls, state, release)
-  dialog.append(content)
-  document.body.append(dialog)
+  release.append(element('h4', '', '更新说明'), notes, releaseActions, updateHint, progress, updateError)
+  content.append(currentVersion, controls, state, release)
 
   const bannerMessage = element('p', 'update-banner-message')
   bannerMessage.setAttribute('role', 'status')
@@ -60,10 +56,6 @@ export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
   let offeredTag: string | undefined
   let installerTag: string | undefined
   let ignoredTag: string | undefined
-
-  function openHelp() {
-    if (!dialog.open) dialog.showModal()
-  }
 
   function present(result: UpdateResult) {
     state.classList.toggle('update-state-error', result.kind === 'failed')
@@ -100,15 +92,12 @@ export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
     }
   }
 
-  help.addEventListener('click', openHelp)
   details.addEventListener('click', openHelp)
-  close.addEventListener('click', () => dialog.close())
-  dialog.addEventListener('cancel', (event) => { if (applying) event.preventDefault() })
   check.addEventListener('click', () => { void runCheck() })
   ignore.addEventListener('click', () => {
     ignoredTag = offeredTag
     banner.hidden = true
-    help.focus()
+    settings.focus()
   })
   function updateStatus(message: string) {
     state.textContent = bannerMessage.textContent = message
@@ -125,6 +114,7 @@ export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
     const tag = installerTag
     if (updating || checking || (desktop && !tag)) return
     updating = check.disabled = update.disabled = ignore.disabled = true
+    setBusy(true, true)
     updateError.hidden = true
     let restarting = false
     try {
@@ -142,7 +132,8 @@ export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
       const downloaded = await desktop.downloadUpdate(tag!)
       if (!downloaded.ok) throw new Error(downloaded.message)
 
-      applying = close.disabled = true
+      applying = true
+      setBusy(true)
       openHelp()
       progress.hidden = true
       updateStatus('安装包校验通过，正在保存正文并安装…')
@@ -157,7 +148,8 @@ export function mountUpdateView(saveBeforeLeaving: () => Promise<boolean>) {
       if (desktop && tag) updateStatus(`发现新版本 ${tag}`)
     } finally {
       if (!restarting) {
-        applying = updating = check.disabled = update.disabled = close.disabled = ignore.disabled = false
+        applying = updating = check.disabled = update.disabled = ignore.disabled = false
+        setBusy(false)
         progress.hidden = true
         banner.hidden = !offeredTag || offeredTag === ignoredTag
       }
