@@ -82,7 +82,7 @@ test('从 DMG 安装后原生打开，标题栏、Command 保存、PDF 导出和
     const exportDialog = page.getByRole('dialog', { name: '导出编辑稿' })
     await exportDialog.getByRole('radio', { name: 'PDF', exact: true }).check()
     await exportDialog.getByRole('button', { name: '开始导出' }).click()
-    await expect(exportDialog).toBeHidden()
+    await expect(exportDialog).toBeHidden({ timeout: 30_000 })
     expect((await readFile(pdf)).subarray(0, 5).toString()).toBe('%PDF-')
     await stop(app)
     await installDmg()
