@@ -64,9 +64,9 @@ test('字号有上下限，可恢复默认', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: '设置' })
   const section = dialog.getByRole('region', { name: '外观', exact: true })
   await expect(section.getByRole('heading', { level: 3, name: '外观' })).toBeFocused()
-  await section.getByRole('button', { name: '恢复默认字号' }).click()
+  await section.getByRole('button', { name: '使用默认字号' }).click()
   await expect(section.locator('output')).toHaveText('18 px')
-  await expect(section.getByRole('button', { name: '恢复默认字号' })).toBeDisabled()
+  await expect(section.getByRole('button', { name: '使用默认字号' })).toBeDisabled()
   await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--reading-size'))).toBe('')
 })
 

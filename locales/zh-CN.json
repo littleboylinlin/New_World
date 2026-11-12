@@ -464,7 +464,7 @@
   "appearance.smaller": "缩小字号",
   "appearance.larger": "放大字号",
   "appearance.sizeValue": "{0} px",
-  "appearance.resetSize": "恢复默认字号",
+  "appearance.resetSize": "使用默认字号",
   "appearance.more": "更多设置…",
   "appearance.hint": "外观只保存在这台设备上，改动立即生效，不影响导出的文件。",
   "appearance.latinSample": "The quick brown fox",
