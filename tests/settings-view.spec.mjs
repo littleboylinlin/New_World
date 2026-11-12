@@ -30,7 +30,7 @@ test('主要设置集中在同一列表，Web 端说明浏览器管理的项目'
   await expect(page.locator('.site-footer').getByRole('button')).toHaveCount(0)
   await expect(dialog.getByRole('radiogroup', { name: '关闭窗口时' })).toBeHidden()
   await expect(dialog.locator('.settings-badge')).toHaveText('浏览器托管')
-  await expect(dialog.getByRole('region', { name: '关闭窗口时', exact: true }).locator('.settings-state')).toHaveText('关闭窗口由当前浏览器管理')
+  await expect(dialog.getByRole('region', { name: '关闭窗口时', exact: true }).locator('.settings-state')).toBeEmpty()
   await dialog.getByRole('button', { name: '检查更新' }).scrollIntoViewIfNeeded()
   expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
   await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeInViewport()

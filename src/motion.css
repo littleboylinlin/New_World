@@ -28,8 +28,6 @@
 
   .stagger > * { animation: 380ms var(--ease-out) backwards rise; animation-delay: calc(var(--order, 0) * 28ms + 40ms); }
   .home-intro > * { animation: 420ms var(--ease-out) backwards rise; }
-  .home-intro > :nth-child(2) { animation-delay: 60ms; }
-  .local-note { animation: 420ms var(--ease-out) 260ms backwards fade-in; }
 
   .notice, .import-notice:not([hidden]), .field-error:not([hidden]) { animation: 240ms var(--ease-out) backwards drop-in; }
   .update-banner:not([hidden]) { animation: 360ms var(--ease-out) backwards drop-in; }
