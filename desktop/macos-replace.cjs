@@ -1,6 +1,8 @@
 const { spawn } = require('node:child_process')
 const { execFile } = require('node:child_process')
-const { lstat, stat, readFile, writeFile, rename, rm, rmdir } = require('node:fs/promises')
+const { lstat, stat, readFile, writeFile, rename, rm, rmdir } = (() => {
+  try { return require('original-fs').promises } catch { return require('node:fs/promises') }
+})()
 const { dirname, isAbsolute, join, resolve } = require('node:path')
 const { promisify } = require('node:util')
 
@@ -62,7 +64,8 @@ async function discardStage(plan) {
   if (mount && mount.dev !== (await stat(plan.directory)).dev) {
     await command('/usr/bin/hdiutil', ['detach', join(plan.directory, 'mounted')], { timeout: 30_000 })
   }
-  await rm(plan.stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  if (process.platform === 'darwin') await command('/bin/rm', ['-rf', plan.stage], { timeout: 30_000 })
+  else await rm(plan.stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   await rmdir(plan.stageRoot)
   await rm(plan.directory, { recursive: true, force: true })
 }
@@ -92,9 +95,8 @@ async function runUpdate(plan, options = {}) {
     await writeJSON(join(plan.directory, 'phase.json'), { phase: 'waiting-for-interface', pid })
     await boot(plan, pid)
     committed = true
-    const result = { id: plan.id, version: plan.version, state: 'installed', pid }
-    await discardStage(plan).catch((error) => { result.cleanupPending = true; console.warn('Mac update cleanup deferred:', error.code) })
-    await writeJSON(join(cache, 'last-update.json'), result)
+    await writeJSON(join(plan.directory, 'phase.json'), { phase: 'awaiting-cleanup', pid })
+    await writeJSON(join(cache, 'last-update.json'), { id: plan.id, version: plan.version, state: 'awaiting-cleanup', pid })
   } catch (error) {
     if (committed) throw error
     if (pid) await stop(pid)
@@ -114,6 +116,10 @@ async function finishBoot({ cache, target, version, token }) {
     const plan = validatePlan(JSON.parse(await readFile(join(cache, 'job-' + token, 'plan.json'), 'utf8')), cache)
     if (plan.target !== target || plan.version !== version) throw new Error('Mac update receipt does not match this application')
     await writeJSON(join(plan.directory, 'boot.json'), { id: plan.id, version, pid: process.pid })
+    const worker = await readFile(join(plan.directory, 'worker.json'), 'utf8').then(JSON.parse)
+    await waitForExit(worker.pid)
+    await discardStage(plan)
+    await writeJSON(join(cache, 'last-update.json'), { id: plan.id, version, state: 'installed', pid: process.pid })
   }
   const directories = await require('node:fs/promises').readdir(cache, { withFileTypes: true }).catch(() => [])
   for (const entry of directories) {
@@ -128,6 +134,7 @@ async function finishBoot({ cache, target, version, token }) {
         && workerFile && Date.now() - workerFile.mtimeMs < 5 * 60_000) continue
       if (!(await lstat(target)).isDirectory()) continue
       await discardStage(plan)
+      if (plan.version === version) await writeJSON(join(cache, 'last-update.json'), { id: plan.id, version, state: 'installed', pid: process.pid })
     } catch (error) {
       if (error.code === 'ENOENT' && tokenPattern.test(entry.name.slice(4))) {
         await rm(join(cache, entry.name, 'plan.json.tmp'), { force: true }).catch(() => {})

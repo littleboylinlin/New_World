@@ -34,6 +34,7 @@ function createMacInstaller({ bundle, cache, arch, prepareLanguage }) {
   async function prepare(dmg, tag) {
     if (process.platform !== 'darwin' || !(await lstat(bundle)).isDirectory() || !bundle.endsWith('.app')) throw new Error('Use an installed Mac app')
     await access(dirname(bundle), constants.W_OK)
+    await access(bundle, constants.W_OK)
     const id = randomUUID()
     const directory = join(cache, 'job-' + id)
     const stageRoot = join(dirname(bundle), '.NewWorld-update-' + id)

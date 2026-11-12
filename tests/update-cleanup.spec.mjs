@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, readdir, rename, rm, writeFile, utimes, symlink, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -112,6 +113,8 @@ test('Mac 整包替换成功后移除旧文件、备份和事务目录', async (
     const { plan, cache, swap } = await transaction(root)
     await writeFile(join(root, 'books.txt'), 'keep')
     await runUpdate(plan, { swap, launch: async () => 12345, waitForExit: async () => {}, waitForBoot: async () => { expect(await readFile(join(plan.target, 'current.txt'), 'utf8')).toBe('new'); expect(await exists(join(plan.stage, 'obsolete.txt'))).toBe(true) } })
+    expect(JSON.parse(await readFile(join(cache, 'last-update.json'), 'utf8')).state).toBe('awaiting-cleanup')
+    await finishBoot({ cache, target: plan.target, version: plan.version })
     expect(await readdir(plan.target)).toEqual(['current.txt'])
     expect(await exists(plan.stageRoot)).toBe(false)
     expect(await exists(plan.directory)).toBe(false)
@@ -147,13 +150,20 @@ test('Mac 中断后的旧包在应用正常启动后回收，拒绝越界路径'
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('Mac 启动确认保留当前更新事务，交由更新进程清理', async () => {
+test('Mac 新版等待旧更新进程退出后才清理运行文件', async () => {
   const root = await mkdtemp(join(tmpdir(), 'nw-replace-'))
+  let worker
   try {
     const { plan, cache, swap } = await transaction(root)
     await swap()
-    await finishBoot({ cache, target: plan.target, version: plan.version, token: plan.id })
+    worker = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 700)'], { stdio: 'ignore' })
+    await writeFile(join(plan.directory, 'worker.json'), JSON.stringify({ pid: worker.pid }))
+    const finishing = finishBoot({ cache, target: plan.target, version: plan.version, token: plan.id })
+    await expect.poll(() => exists(join(plan.directory, 'boot.json'))).toBe(true)
     expect(await readFile(join(plan.stage, 'obsolete.txt'), 'utf8')).toBe('old')
     expect(JSON.parse(await readFile(join(plan.directory, 'boot.json'), 'utf8'))).toMatchObject({ id: plan.id, version: plan.version, pid: process.pid })
-  } finally { await rm(root, { recursive: true, force: true }) }
+    await finishing
+    expect(await exists(plan.stageRoot)).toBe(false)
+    expect(JSON.parse(await readFile(join(cache, 'last-update.json'), 'utf8')).state).toBe('installed')
+  } finally { worker?.kill(); await rm(root, { recursive: true, force: true }) }
 })
