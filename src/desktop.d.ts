@@ -22,6 +22,8 @@ interface DesktopUpdateProgress {
 
 interface Window {
   newWorldDesktop?: {
+    getLanguage: () => Promise<import('../shared/language-packs.mjs').LanguagePack>
+    setLanguage: (locale: import('../shared/language-packs.mjs').Locale) => Promise<import('../shared/language-packs.mjs').LanguagePack>
     downloadUpdate: (tag: string) => Promise<DesktopUpdateResult>
     installUpdate: (tag: string) => Promise<DesktopUpdateResult>
     onUpdateProgress: (listener: (progress: DesktopUpdateProgress) => void) => void

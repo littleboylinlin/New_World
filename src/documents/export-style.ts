@@ -1,7 +1,8 @@
+import { t } from '../i18n'
 export const exportStyles = {
-  standard: { label: '标准', fontPt: 13, lineHeight: 1.95, paragraphGap: 1, marginMm: 18 },
-  compact: { label: '紧凑', fontPt: 11, lineHeight: 1.6, paragraphGap: .65, marginMm: 15 },
-  spacious: { label: '宽松', fontPt: 14, lineHeight: 2.15, paragraphGap: 1.15, marginMm: 24 },
+  standard: { label: t('exportStyle.standard'), fontPt: 13, lineHeight: 1.95, paragraphGap: 1, marginMm: 18 },
+  compact: { label: t('exportStyle.compact'), fontPt: 11, lineHeight: 1.6, paragraphGap: .65, marginMm: 15 },
+  spacious: { label: t('exportStyle.spacious'), fontPt: 14, lineHeight: 2.15, paragraphGap: 1.15, marginMm: 24 },
 } as const
 
 export type ExportStyle = keyof typeof exportStyles

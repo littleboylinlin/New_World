@@ -1,16 +1,17 @@
+import { t } from './i18n'
 import { formats } from './formats'
 import type { Book, LibraryId } from './library'
 
 export const libraries = {
   original: {
-    name: '原创库', index: '01', label: '自己的作品',
-    description: '收好你写下的故事，随时翻看草稿与成稿。',
-    empty: '还没有原创作品',
+    name: t('libraries.original'), index: '01', label: t('ui.yourOwnWorks'),
+    description: t('ui.keepYourStoriesTogetherAndRevisitDraftsAnd'),
+    empty: t('ui.noOriginalWorksYet'),
   },
   reference: {
-    name: '续写／仿写库', index: '02', label: '续写创作',
-    description: '按原作建立续写项目。每个项目都有原文和独立的续写稿。',
-    empty: '还没有参考原作',
+    name: t('libraries.reference'), index: '02', label: t('ui.continuationWriting'),
+    description: t('ui.createAProjectForEachSourceWorkWith'),
+    empty: t('ui.noSourceWorksYet'),
   },
 } as const
 
@@ -88,12 +89,12 @@ export function originalPath(id: string) {
 
 export function breadcrumbs(library: LibraryId, inReader = false) {
   const nav = element('nav', 'breadcrumbs')
-  nav.setAttribute('aria-label', '当前位置')
-  nav.append(link('#/', '书库首页'), element('span', 'crumb-separator', '/'))
+  nav.setAttribute('aria-label', t('trash.currentLocation'))
+  nav.append(link('#/', t('navigation.home')), element('span', 'crumb-separator', '/'))
   if (inReader) {
     nav.append(link(bookPath(library), libraries[library].name), element('span', 'crumb-separator', '/'))
   }
-  const current = element('span', '', inReader ? '作品详情' : libraries[library].name)
+  const current = element('span', '', inReader ? t('navigation.workDetails') : libraries[library].name)
   current.setAttribute('aria-current', 'page')
   nav.append(current)
   return nav
@@ -102,7 +103,7 @@ export function breadcrumbs(library: LibraryId, inReader = false) {
 export function fileDetails(book: Book) {
   const details = element('div', 'file-details')
   if (book.format === 'draft') {
-    details.append(element('span', 'file-format', '内建文档'), element('span', '', '在 New World 中创建'))
+    details.append(element('span', 'file-format', t('ui.builtInDocument')), element('span', '', t('ui.createdInNewWorld')))
     return details
   }
   const size = book.size < 1024 ? `${book.size} B`

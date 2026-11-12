@@ -1,10 +1,11 @@
+import { t } from './i18n'
 import { storageError } from './library'
 import type { TrashEntry } from './library'
 import { restoreTrash } from './trash'
 import { leave } from './motion'
 import { button, element } from './ui'
 
-export const trashKinds = { book: '作品', original: '原文', edition: '编辑版本', chapter: '章节' } as const
+export const trashKinds = { book: t('content.work'), original: t('content.source'), edition: t('content.edition'), chapter: t('content.chapters') } as const
 type Restored = Awaited<ReturnType<typeof restoreTrash>>
 
 let shown: HTMLElement | undefined
@@ -30,10 +31,10 @@ export function offerUndo(entry: TrashEntry, restored?: (result: Restored) => vo
   dismiss(true)
   const toast = element('div', 'undo-toast')
   toast.setAttribute('role', 'status')
-  const message = element('p', '', `已将${trashKinds[entry.kind]}「${shortTitle(entry.title)}」移入回收站`)
-  const undo = button('撤销', 'button button-small', 'undo')
+  const message = element('p', '', t('undo.movedToTrash', [trashKinds[entry.kind], shortTitle(entry.title)]))
+  const undo = button(t('editor.undo'), 'button button-small', 'undo')
   const close = button('', 'undo-close', 'close')
-  close.setAttribute('aria-label', '关闭提示')
+  close.setAttribute('aria-label', t('undo.dismissNotification'))
   toast.append(message, undo, close)
   close.addEventListener('click', () => dismiss())
   undo.addEventListener('click', async () => {

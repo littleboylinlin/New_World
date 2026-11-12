@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { button, element } from './ui'
 
 export function mountStorageView(
@@ -19,8 +20,8 @@ export function mountStorageView(
   error.setAttribute('role', 'alert')
   error.hidden = true
 
-  const change = button('更改位置', 'button button-primary')
-  const reset = button('恢复默认', 'button button-quiet')
+  const change = button(t('storage.changeLocation'), 'button button-primary')
+  const reset = button(t('storage.restoreDefault'), 'button button-quiet')
   const controls = element('div', 'settings-actions')
   controls.append(change, reset)
   content.append(box, controls, state, error)
@@ -31,27 +32,27 @@ export function mountStorageView(
 
   function paint() {
     if (!desktop) {
-      summary.textContent = '小说与原件保存在当前浏览器'
-      badge.textContent = '浏览器托管'
-      path.textContent = '当前浏览器'
+      summary.textContent = t('storage.novelsAndOriginalsAreStoredInThisBrowser')
+      badge.textContent = t('settings.browserManaged')
+      path.textContent = t('storage.thisBrowser')
       change.hidden = reset.hidden = true
-      state.textContent = '书库位置由当前浏览器管理'
+      state.textContent = t('storage.theLibraryLocationIsManagedByYourBrowser')
       return
     }
     change.hidden = reset.hidden = false
     change.disabled = busy || refreshing || !current
     reset.disabled = busy || refreshing || !current?.custom
     if (!current) {
-      summary.textContent = '小说与原件保存在本机书库'
-      badge.textContent = '本机书库'
-      path.textContent = refreshing ? '正在读取存储位置…' : '存储位置暂不可用'
+      summary.textContent = t('storage.novelsAndOriginalsAreStoredInTheLocal')
+      badge.textContent = t('storage.localLibrary')
+      path.textContent = refreshing ? t('storage.readingStorageLocation') : t('storage.storageLocationUnavailable')
       return
     }
-    badge.textContent = current.custom ? '自定义位置' : '默认位置'
+    badge.textContent = current.custom ? t('storage.customLocation') : t('storage.defaultLocation')
     path.textContent = current.path
     summary.textContent = current.custom
-      ? `小说与原件保存在 ${current.path}`
-      : '小说与原件保存在本机书库'
+      ? t('storage.novelsAndOriginalsAreStoredIn', [current.path])
+      : t('storage.novelsAndOriginalsAreStoredInTheLocal')
   }
 
   async function refresh() {
@@ -65,7 +66,7 @@ export function mountStorageView(
       current = await desktop.getStorageLocation()
       paint()
     } catch {
-      error.textContent = '无法读取存储位置，请重新打开设置后重试。'
+      error.textContent = t('storage.theStorageLocationCouldNotBeReadReopen')
       error.hidden = false
     } finally {
       refreshing = false
@@ -83,17 +84,17 @@ export function mountStorageView(
     let restarting = false
     try {
       if (!await saveBeforeLeaving()) {
-        throw new Error('当前正文尚未保存，请先保存再更改存储位置。')
+        throw new Error(t('storage.theCurrentTextIsNotSavedSaveIt'))
       }
       const result = await action()
       if (result) {
         current = { path: result.path, defaultPath: current?.defaultPath ?? result.path, custom: result.custom }
         paint()
         restarting = result.restart
-        state.textContent = result.restart ? '正在重启 New World…' : done
+        state.textContent = result.restart ? t('storage.restartingNewWorld') : done
       }
     } catch (cause) {
-      error.textContent = cause instanceof Error ? cause.message : '更改存储位置失败，请重试。'
+      error.textContent = cause instanceof Error ? cause.message : t('storage.theStorageLocationCouldNotBeChangedTry')
       error.hidden = false
     } finally {
       if (!restarting) {
@@ -104,8 +105,8 @@ export function mountStorageView(
     }
   }
 
-  change.addEventListener('click', () => { void apply(() => desktop!.setStorageLocation(), '已更新存储位置') })
-  reset.addEventListener('click', () => { void apply(() => desktop!.resetStorageLocation(), '已恢复默认位置') })
+  change.addEventListener('click', () => { void apply(() => desktop!.setStorageLocation(), t('storage.storageLocationUpdated')) })
+  reset.addEventListener('click', () => { void apply(() => desktop!.resetStorageLocation(), t('storage.defaultLocationRestored')) })
   paint()
   void refresh()
   return refresh

@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { maxTitleLength, storageError } from './library'
 import { button, element } from './ui'
 
@@ -25,7 +26,7 @@ export function formDialog(root: HTMLElement, options: DialogOptions, submit: (d
   error.setAttribute('role', 'alert')
   error.hidden = true
   const controls = element('div', 'dialog-controls')
-  const cancel = button('取消', 'button button-quiet')
+  const cancel = button(t('common.cancel'), 'button button-quiet')
   const confirm = button(options.action, options.danger ? 'button button-danger' : 'button button-primary')
   confirm.type = 'submit'
   controls.append(cancel, confirm)

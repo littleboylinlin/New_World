@@ -1,3 +1,4 @@
+import { t } from './i18n'
 export const formats = {
   txt: { label: 'TXT', preview: 'text' },
   pdf: { label: 'PDF', preview: 'pdf' },
@@ -60,5 +61,5 @@ export function decodeText(bytes: Uint8Array, selected?: TextEncoding) {
       // Invalid byte sequences can be decoded with another encoding.
     }
   }
-  throw new Error('无法用当前编码读取文件。可以手动选择其他编码。')
+  throw new Error(t('formats.theFileCouldNotBeReadWithThis'))
 }

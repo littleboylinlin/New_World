@@ -84,7 +84,7 @@ test('首页、两个独立书库、原件下载、去重、重命名与删除',
 test('关闭整个浏览器后用同一配置重新打开，作品名、正文和字节仍在', async ({ baseURL }, testInfo) => {
   const novel = file('夜航记录.txt', '凌晨三点，灯塔还亮着。')
   const profile = testInfo.outputPath('browser-profile')
-  const launch = async () => withoutRelease(await chromium.launchPersistentContext(profile, { baseURL, executablePath: process.env.CHROMIUM_PATH }))
+  const launch = async () => withoutRelease(await chromium.launchPersistentContext(profile, { baseURL, locale: 'zh-CN', executablePath: process.env.CHROMIUM_PATH }))
 
   const first = await launch()
   try {

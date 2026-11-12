@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { fileFormat, maxImportSize } from './formats'
 import type { Format } from './formats'
 import type { ChapterRecord, Edition } from './documents/model'
@@ -89,7 +90,7 @@ export function openDatabase() {
     request.onerror = () => reject(request.error)
     request.onblocked = () => {
       blocked = true
-      reject(new Error('其他 New World 页面正在使用旧版书库。关闭那些页面后再试。'))
+      reject(new Error(t('library.anotherNewWorldPageIsUsingAnOlder')))
     }
   })
   connection = opening
@@ -109,7 +110,7 @@ export function resultOf<T>(request: IDBRequest<T>): Promise<T> {
 export function committed(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve()
-    transaction.onabort = () => reject(transaction.error ?? new Error('书库操作已中断。'))
+    transaction.onabort = () => reject(transaction.error ?? new Error(t('library.theLibraryOperationWasInterrupted')))
   })
 }
 
@@ -156,16 +157,16 @@ export async function readBook(library: LibraryId, id: string) {
   ])
   if (!book) return null
   if (book.format === 'draft') return { book, blob: null } as const
-  if (!file) throw new Error('此作品的原文件在本地书库中缺失。')
+  if (!file) throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
   return { book, blob: file.blob }
 }
 
 export async function importBook(library: LibraryId, file: File, workId?: string) {
   const format = fileFormat(file.name)
-  if (!format) throw new Error('此文件扩展名不在导入列表中。')
-  if (file.size === 0) throw new Error('文件为空。')
-  if (file.size > maxImportSize) throw new Error('单个文件不能超过 128 MiB。')
-  if (!globalThis.crypto?.subtle) throw new Error('请在 HTTPS 或本机 localhost 中打开 New World。')
+  if (!format) throw new Error(t('library.thisFileExtensionIsNotSupportedForImport'))
+  if (file.size === 0) throw new Error(t('library.theFileIsEmpty'))
+  if (file.size > maxImportSize) throw new Error(t('library.aSingleFileCannotExceed128Mib'))
+  if (!globalThis.crypto?.subtle) throw new Error(t('store.openNewWorldOverHttpsOrOnLocalhost'))
 
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
   const digest = Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -198,13 +199,13 @@ export async function importBook(library: LibraryId, file: File, workId?: string
     }
   }
   await committed(tx)
-  if (invalidParent) throw new Error('续写项目已被移除。')
+  if (invalidParent) throw new Error(t('library.theContinuationProjectHasBeenRemoved'))
   return duplicate ? { book: duplicate, duplicate: true } : { book, duplicate: false }
 }
 
 export async function renameBook(library: LibraryId, id: string, value: string) {
   const title = value.trim()
-  if (!title || title.length > maxTitleLength) throw new Error('请输入有效的作品名。')
+  if (!title || title.length > maxTitleLength) throw new Error(t('library.enterAValidWorkTitle'))
   const db = await openDatabase()
   const tx = db.transaction('books', 'readwrite', { durability: 'strict' })
   const books = tx.objectStore('books')
@@ -218,7 +219,7 @@ export async function renameBook(library: LibraryId, id: string, value: string) 
     }
   }
   await committed(tx)
-  if (!found) throw new Error('此作品已从书库移除。')
+  if (!found) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
 }
 
 // Deleting moves a work with its originals, editions and chapters to the trash in one transaction.
@@ -235,7 +236,7 @@ export async function deleteBook(library: LibraryId, id: string) {
   members.onsuccess = step(() => {
     const owned: Book[] = members.result.filter((book: Book) => book.id === id || book.workId === id)
     const root = owned.find((book) => book.id === id)
-    if (!root) throw new Error('此作品已从书库移除。')
+    if (!root) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
     const entry = trashEntry('book', library, id, root.title)
     entry.books = owned
     // Requests on one transaction finish in order, so the last read sees every earlier result.
@@ -271,7 +272,7 @@ export async function removeWorkOriginal(workId: string, id: string) {
   const stored = files.get(key)
   stored.onsuccess = step(() => {
     const book: Book | undefined = request.result
-    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) throw new Error('该原文已被移除。')
+    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) throw new Error(t('library.thisSourceHasBeenRemoved'))
     const entry = trashEntry('original', 'reference', workId, book.originalName)
     entry.books = [book]
     if (stored.result) entry.files = [stored.result]
@@ -286,12 +287,12 @@ export async function removeWorkOriginal(workId: string, id: string) {
 
 export function storageError(error: unknown) {
   if (error instanceof DOMException) {
-    if (error.name === 'QuotaExceededError') return '本地存储空间不足，未保存本次更改。'
-    if (error.name === 'ConstraintError') return '已有同名的编辑版本，请换一个名称。'
+    if (error.name === 'QuotaExceededError') return t('library.localStorageIsFullTheLatestChangesWere')
+    if (error.name === 'ConstraintError') return t('library.anEditableVersionWithThisNameAlreadyExists')
     if (error.name === 'SecurityError' || error.name === 'InvalidStateError') {
-      return '当前浏览器环境无法访问本地书库。请检查网站存储权限后重试。'
+      return t('library.theLocalLibraryIsUnavailableInThisBrowser')
     }
-    return '本地书库操作失败，请重试。'
+    return t('library.theLocalLibraryOperationFailedTryAgain')
   }
-  return error instanceof Error ? error.message : '本地书库操作失败，请重试。'
+  return error instanceof Error ? error.message : t('library.theLocalLibraryOperationFailedTryAgain')
 }

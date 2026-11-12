@@ -9,9 +9,9 @@ const { isNewerWindowsTag, isUpdateUrl, readWindowsInstaller, releaseEndpoint } 
 
 class UpdateError extends Error {}
 
-const invalidPackage = '安装包大小或 SHA-256 校验不匹配，请重新下载。'
-const downloadFailed = '下载安装包失败。请检查网络和可用磁盘空间后重试。'
-const installFailed = '无法启动更新安装。请确认当前是通过 Windows 安装包安装的 New World 后重试。'
+const invalidPackage = "windowsUpdate.theInstallerSizeOrSha256ChecksumDoes"
+const downloadFailed = "windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour"
+const installFailed = "windowsUpdate.theUpdateInstallerCouldNotBeStartedMake"
 
 const removeDownload = (path) => rm(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 }).catch(() => {})
 
@@ -30,7 +30,7 @@ async function officialInstaller(request, tag) {
   const metadata = release.ok && await release.json()
   const installer = metadata?.tag_name === tag && metadata.draft === false && metadata.prerelease === false
     && readWindowsInstaller(tag, metadata.assets)
-  if (!installer) throw new UpdateError('GitHub 暂未提供此版本可校验的 Windows 安装包，请重新检查更新。')
+  if (!installer) throw new UpdateError("windowsUpdate.noVerifiableWindowsInstallerIsAvailableForThis")
   return installer
 }
 
@@ -105,8 +105,8 @@ function createWindowsUpdater({ network, cache, installDir, version }) {
   const request = (address, options) => network.fetch(address, { cache: 'no-store', credentials: 'omit', ...options })
 
   async function download(tag, progress) {
-    if (!isNewerWindowsTag(tag, version)) throw new UpdateError('该版本不能用于更新，请重新检查更新。')
-    if (downloading || installing) throw new UpdateError('正在处理另一次更新，请稍候。')
+    if (!isNewerWindowsTag(tag, version)) throw new UpdateError("windowsUpdate.thisVersionCannotBeUsedForAnUpdate")
+    if (downloading || installing) throw new UpdateError("windowsUpdate.anotherUpdateIsInProgressPleaseWait")
     if (ready?.tag === tag) return
     downloading = true
     let directory
@@ -133,7 +133,7 @@ function createWindowsUpdater({ network, cache, installDir, version }) {
   }
 
   async function install(tag) {
-    if (downloading || installing || !ready || ready.tag !== tag) throw new UpdateError('请先下载并校验此版本的安装包。')
+    if (downloading || installing || !ready || ready.tag !== tag) throw new UpdateError("windowsUpdate.downloadAndVerifyThisVersionSInstallerFirst")
     installing = true
     try {
       await verifyOnDisk(ready)

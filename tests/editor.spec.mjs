@@ -143,7 +143,7 @@ test('Chromium IME 组合输入、复制粘贴、格式、撤销重做和替换'
 
 test('自动保存后关闭浏览器，重新打开仍可读取各章', async ({ baseURL }, testInfo) => {
   const profile = testInfo.outputPath('profile')
-  const launch = async () => withoutRelease(await chromium.launchPersistentContext(profile, { baseURL, executablePath: process.env.CHROMIUM_PATH }))
+  const launch = async () => withoutRelease(await chromium.launchPersistentContext(profile, { baseURL, locale: 'zh-CN', executablePath: process.env.CHROMIUM_PATH }))
   const first = await launch()
   let address
   try {

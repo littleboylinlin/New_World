@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { maxChapters } from './documents/model'
 import type { Edition } from './documents/model'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
@@ -19,10 +20,10 @@ export async function listTrash(): Promise<TrashItem[]> {
   return Promise.all(entries.map(async (entry) => {
     if (entry.kind === 'book') return { entry, place: '' }
     const book: Book | undefined = await resultOf(tx.objectStore('books').get([entry.library, entry.bookId]))
-    if (!book) return { entry, place: '所属作品已删除' }
+    if (!book) return { entry, place: t('trash.parentWorkDeleted') }
     if (!entry.position) return { entry, place: book.title }
     const edition: Edition | undefined = await resultOf(tx.objectStore('editions').get([entry.library, entry.bookId, entry.position.editionId]))
-    return { entry, place: edition ? `${book.title} · ${edition.name}` : `${book.title} · 所属版本已删除` }
+    return { entry, place: edition ? `${book.title} · ${edition.name}` : t('trash.parentVersionDeleted', [book.title]) }
   }))
 }
 
@@ -44,7 +45,7 @@ export async function restoreTrash(id: string) {
   const request = trash.get(id)
   request.onsuccess = step(() => {
     const entry: TrashEntry | undefined = request.result
-    if (!entry) throw new Error('这一项已不在回收站。')
+    if (!entry) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
     const key = [entry.library, entry.bookId]
     trash.delete(id)
     if (entry.kind === 'book') {
@@ -59,7 +60,7 @@ export async function restoreTrash(id: string) {
     if (entry.kind === 'original') {
       owner.onsuccess = step(() => {
         const work: Book | undefined = owner.result
-        if (!work) throw new Error('所属续写项目已不在书库。请先恢复这个项目。')
+        if (!work) throw new Error(t('trash.theParentContinuationProjectIsNoLongerIn'))
         const [original] = entry.books
         // The first original shares its record with the project, which may have been renamed since.
         if (original.id === work.id) books.put({ ...original, title: work.title })
@@ -73,11 +74,11 @@ export async function restoreTrash(id: string) {
     if (entry.kind === 'edition') {
       const siblings = editions.index('byBook').getAll(key)
       siblings.onsuccess = step(() => {
-        if (!owner.result) throw new Error('所属作品已不在书库。请先恢复这部作品。')
+        if (!owner.result) throw new Error(t('trash.theParentWorkIsNoLongerInThe'))
         const names = new Set(siblings.result.map((edition: Edition) => edition.name))
         const [stored] = entry.editions
         let name = stored.name
-        for (let i = 1; names.has(name); i++) name = `${stored.name}（恢复${i > 1 ? ` ${i}` : ''}）`
+        for (let i = 1; names.has(name); i++) name = t('trash.restored356', [stored.name, i > 1 ? ` ${i}` : ''])
         const edition = { ...stored, name }
         editions.add(edition)
         for (const chapter of entry.chapters) chapters.add(chapter)
@@ -89,8 +90,8 @@ export async function restoreTrash(id: string) {
     const target = editions.get([...key, entry.position!.editionId])
     target.onsuccess = step(() => {
       const stored: Edition | undefined = target.result
-      if (!stored) throw new Error('所属编辑版本已不在书库。请先恢复这个版本。')
-      if (stored.chapters.length >= maxChapters) throw new Error(`每个编辑版本最多保存 ${maxChapters} 章。`)
+      if (!stored) throw new Error(t('trash.theParentEditableVersionIsNoLongerIn'))
+      if (stored.chapters.length >= maxChapters) throw new Error(t('store.eachEditableVersionCanContainUpToChapters', [maxChapters]))
       const [chapter] = entry.chapters
       const list = [...stored.chapters]
       list.splice(Math.min(entry.position!.index, list.length), 0, { id: chapter.id, title: entry.title })
@@ -107,7 +108,7 @@ export async function restoreTrash(id: string) {
     return restored
   } catch (error) {
     // Ids are unique, so a constraint can only come from an identical original imported after the deletion.
-    if (error instanceof DOMException && error.name === 'ConstraintError') throw new Error('书库里已有内容相同的原文件。请先删除那一份，再恢复这一项。')
+    if (error instanceof DOMException && error.name === 'ConstraintError') throw new Error(t('trash.theLibraryAlreadyContainsAnIdenticalOriginalFile'))
     throw error
   }
 }

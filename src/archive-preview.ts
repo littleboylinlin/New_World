@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { BlobReader, ZipReader } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { decodeText } from './formats'
@@ -13,16 +14,16 @@ export async function openPackage(blob: Blob, signal: AbortSignal) {
     let count = 0
     for await (const entry of zip.getEntriesGenerator()) {
       signal.throwIfAborted()
-      if (++count > maxArchiveEntries) throw new Error('压缩包内的文件过多。')
+      if (++count > maxArchiveEntries) throw new Error(t('archivePreview.theArchiveContainsTooManyFiles'))
       if (!entry.directory) {
-        if (entries.has(entry.filename)) throw new Error('压缩包含有重名文件，无法安全预览。')
+        if (entries.has(entry.filename)) throw new Error(t('archivePreview.theArchiveContainsDuplicateFileNamesAndCannot'))
         entries.set(entry.filename, entry)
       }
     }
   } catch (error) {
     signal.throwIfAborted()
-    if (error instanceof Error && error.message.startsWith('压缩包')) throw error
-    throw new Error('无法读取文档的压缩包。文件可能损坏或与扩展名不符。')
+    if (error instanceof Error && error.message.startsWith(t('archivePreview.archive'))) throw error
+    throw new Error(t('archivePreview.theDocumentArchiveCouldNotBeReadIt'))
   } finally {
     await zip.close()
   }
@@ -30,16 +31,16 @@ export async function openPackage(blob: Blob, signal: AbortSignal) {
   async function binary(path: string, limit = maxTextPreviewSize) {
     signal.throwIfAborted()
     const entry = entries.get(path)
-    if (!entry) throw new Error('文档缺少预览所需的文件。')
-    if (entry.encrypted) throw new Error('文档内容已加密。')
-    if (entry.uncompressedSize > limit) throw new Error('文档的这一部分超过可处理大小。')
+    if (!entry) throw new Error(t('archivePreview.theDocumentIsMissingFilesRequiredForPreview'))
+    if (entry.encrypted) throw new Error(t('archivePreview.theDocumentContentIsEncrypted'))
+    if (entry.uncompressedSize > limit) throw new Error(t('archivePreview.thisPartOfTheDocumentExceedsTheProcessing'))
 
     let size = 0
     const chunks: Uint8Array<ArrayBuffer>[] = []
     const output = new WritableStream<Uint8Array>({
       write(chunk) {
         size += chunk.length
-        if (size > limit) throw new Error('内容超过处理上限。')
+        if (size > limit) throw new Error(t('archivePreview.theContentExceedsTheProcessingLimit'))
         chunks.push(chunk.slice())
       },
     })
@@ -48,7 +49,7 @@ export async function openPackage(blob: Blob, signal: AbortSignal) {
       return new Blob(chunks)
     } catch {
       signal.throwIfAborted()
-      throw new Error('无法解包或解码文档的这一部分。')
+      throw new Error(t('archivePreview.thisPartOfTheDocumentCouldNotBe'))
     }
   }
   return {
@@ -61,9 +62,9 @@ export async function openPackage(blob: Blob, signal: AbortSignal) {
 }
 
 export function xml(source: string) {
-  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(source)) throw new Error('文档使用了预览器无法处理的 XML 声明。')
+  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(source)) throw new Error(t('archivePreview.theDocumentContainsAnXmlDeclarationThePreviewer'))
   const parsed = new DOMParser().parseFromString(source, 'application/xml')
-  if (parsed.getElementsByTagName('parsererror').length) throw new Error('文档结构损坏，无法预览。')
+  if (parsed.getElementsByTagName('parsererror').length) throw new Error(t('archivePreview.theDocumentStructureIsDamagedAndCannotBe'))
   return parsed
 }
 
@@ -84,7 +85,7 @@ export async function openEpub(blob: Blob, signal: AbortSignal) {
   const container = xml(await read('META-INF/container.xml'))
   const root = container.getElementsByTagNameNS('*', 'rootfile')[0]?.getAttribute('full-path')
   const packageFile = root && packagePath('', root)
-  if (!packageFile) throw new Error('EPUB 缺少书籍目录。')
+  if (!packageFile) throw new Error(t('archivePreview.theEpubIsMissingItsBookDirectory'))
   const book = xml(await read(packageFile))
   const manifest = new Map<string, Element>()
   for (const item of book.getElementsByTagNameNS('*', 'item')) {
@@ -98,7 +99,7 @@ export async function openEpub(blob: Blob, signal: AbortSignal) {
     const type = chapter?.getAttribute('media-type')
     if (href && (type === 'application/xhtml+xml' || type === 'text/html')) return packagePath(packageFile, href)
   })
-  if (!pages.some(Boolean)) throw new Error('EPUB 没有可预览的正文目录。')
+  if (!pages.some(Boolean)) throw new Error(t('archivePreview.theEpubHasNoReadableContentDirectory'))
 
   const encrypted = new Set<string>()
   if (archive.entries.has('META-INF/encryption.xml')) {
@@ -110,8 +111,8 @@ export async function openEpub(blob: Blob, signal: AbortSignal) {
   }
   async function readSource(index: number) {
     const path = pages[index]
-    if (!path) throw new Error('本节的内容类型或路径无法预览。')
-    if (encrypted.has(path)) throw new Error('本节受 DRM 或其他加密保护。')
+    if (!path) throw new Error(t('archivePreview.thisSectionSContentTypeOrPathCannot'))
+    if (encrypted.has(path)) throw new Error(t('archivePreview.thisSectionIsProtectedByDrmOrOther'))
     return { path, source: await read(path) }
   }
   return {
@@ -136,13 +137,13 @@ export async function openDocx(blob: Blob, signal: AbortSignal) {
   ))
   const target = main?.getAttribute('Target')
   const path = target && packagePath('', target)
-  if (!path) throw new Error('DOCX 缺少正文入口。')
+  if (!path) throw new Error(t('archivePreview.theDocxIsMissingItsDocumentEntryPoint'))
   const doc = xml(await read(path))
   const ns = doc.documentElement.namespaceURI
   const body = doc.getElementsByTagNameNS(ns, 'body')[0]
   if (ns !== 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-      && ns !== 'http://purl.oclc.org/ooxml/wordprocessingml/main') throw new Error('文件不包含 Word 正文。')
-  if (!body) throw new Error('DOCX 缺少正文。')
+      && ns !== 'http://purl.oclc.org/ooxml/wordprocessingml/main') throw new Error(t('archivePreview.theFileDoesNotContainAWordDocument'))
+  if (!body) throw new Error(t('archivePreview.theDocxIsMissingItsDocumentBody'))
   const paragraphs = Array.from(body.getElementsByTagNameNS(ns, 'p'), (paragraph) => {
     const parts: string[] = []
     for (const item of paragraph.getElementsByTagNameNS(ns, '*')) {
@@ -161,7 +162,7 @@ export async function openOdt(blob: Blob, signal: AbortSignal) {
   const office = 'urn:oasis:names:tc:opendocument:xmlns:office:1.0'
   const text = 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'
   const body = doc.getElementsByTagNameNS(office, 'text')[0]
-  if (!body) throw new Error('ODT 缺少正文。')
+  if (!body) throw new Error(t('archivePreview.theOdtIsMissingItsDocumentBody'))
 
   let length = 0
   function readParagraph(paragraph: Element) {
@@ -169,7 +170,7 @@ export async function openOdt(blob: Blob, signal: AbortSignal) {
     const parts: string[] = []
     const append = (value: string) => {
       length += value.length
-      if (length > maxTextPreviewSize) throw new Error('正文超过 16 MiB 的文本预览上限。')
+      if (length > maxTextPreviewSize) throw new Error(t('archivePreview.theTextExceedsThe16MibPreviewLimit'))
       parts.push(value)
     }
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {

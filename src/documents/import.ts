@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import type { JSONContent } from '@tiptap/core'
 import { decodeText } from '../formats'
 import type { Format, TextEncoding } from '../formats'
@@ -38,7 +39,7 @@ function chunked(blocks: JSONContent[], name: string): ChapterInput[] {
   let characters = 0
   function flush() {
     if (!current.length) return
-    const title = chapters.length ? `${name}（续 ${chapters.length}）` : name
+    const title = chapters.length ? t('import.continued', [name, chapters.length]) : name
     chapters.push({ title, content: { type: 'doc', content: current } })
     current = []
     characters = 0
@@ -54,9 +55,9 @@ function chunked(blocks: JSONContent[], name: string): ChapterInput[] {
   return chapters
 }
 
-function textChapters(text: string, name = '正文', detectChapters = true): ChapterInput[] {
+function textChapters(text: string, name = t('import.text'), detectChapters = true): ChapterInput[] {
   const lines = text.replace(/\r\n?/g, '\n').split('\n', 250_001)
-  if (lines.length > 250_000) throw new Error('文本的行数超过可转换上限。')
+  if (lines.length > 250_000) throw new Error(t('import.theTextHasTooManyLinesToConvert'))
   const result: ChapterInput[] = []
   let title = name
   let blocks: JSONContent[] = []
@@ -82,7 +83,7 @@ function textChapters(text: string, name = '正文', detectChapters = true): Cha
   return result
 }
 
-function structuredChapters(content: DocumentContent, name = '正文', detectChapters = true) {
+function structuredChapters(content: DocumentContent, name = t('import.text'), detectChapters = true) {
   const blocks = content.content ?? []
   const result: ChapterInput[] = []
   const level = blocks.some((block) => block.type === 'heading' && block.attrs?.level === 1) ? 1 : 2
@@ -103,15 +104,15 @@ function structuredChapters(content: DocumentContent, name = '正文', detectCha
 function htmlChapters(markup: string, notes: string[]) {
   const budget = imageBudget()
   const doc = fromMarkup(cleanMarkup(inertMarkup(markup), budget))
-  if (budget.omitted) notes.push(`有 ${budget.omitted} 张远程、外部或超限图片未导入。`)
+  if (budget.omitted) notes.push(t('import.remoteExternalOrOversizedImageSWereNot', [budget.omitted]))
   return structuredChapters(doc)
 }
 
 async function convertText(format: 'txt' | 'md' | 'html', blob: Blob, encoding?: TextEncoding): Promise<Conversion> {
-  if (blob.size > maxTextPreviewSize) throw new Error('正文超过 16 MiB 的转换上限。')
+  if (blob.size > maxTextPreviewSize) throw new Error(t('import.theTextExceedsThe16MibConversionLimit'))
   const { text } = decodeText(new Uint8Array(await blob.arrayBuffer()), encoding)
   if (format === 'txt') return { chapters: textChapters(text), notes: [] }
-  const notes = format === 'html' ? ['保留可用的正文结构、常见文字样式和内嵌图片。网页样式、脚本和远程内容不进入编辑稿。'] : []
+  const notes = format === 'html' ? [t('import.preservesSupportedDocumentStructureCommonTextStylesAnd')] : []
   if (format === 'html') return { chapters: htmlChapters(text, notes), notes }
   const { default: MarkdownIt } = await import('markdown-it')
   const markup = new MarkdownIt({ html: true }).render(text)
@@ -121,9 +122,9 @@ async function convertText(format: 'txt' | 'md' | 'html', blob: Blob, encoding?:
 async function convertEpub(blob: Blob, signal: AbortSignal): Promise<Conversion> {
   const { openEpub } = await import('../archive-preview')
   const book = await openEpub(blob, signal)
-  if (book.length > maxChapters) throw new Error(`此 EPUB 超过 ${maxChapters} 节的转换上限。`)
+  if (book.length > maxChapters) throw new Error(t('import.thisEpubExceedsTheConversionLimitOfSections', [maxChapters]))
   const chapters: ChapterInput[] = []
-  const notes = ['按 EPUB 阅读顺序转换正文、常见样式和包内图片。书籍样式、外部资源和固定排版以原文件为准。']
+  const notes = [t('import.convertsTextCommonStylesAndEmbeddedImagesIn')]
   const budget = imageBudget()
   const cached = new Map<string, string | undefined>()
   let loaded = 0
@@ -131,7 +132,7 @@ async function convertEpub(blob: Blob, signal: AbortSignal): Promise<Conversion>
   for (let index = 0; index < book.length; index++) {
     const { path, source } = await book.readSource(index)
     characters += source.length
-    if (characters > 24 * 1024 * 1024) throw new Error('EPUB 正文部件总大小超过转换上限。')
+    if (characters > 24 * 1024 * 1024) throw new Error(t('import.theEpubTextExceedsTheTotalConversionSize'))
     const template = inertMarkup(source)
     const firstHeading = (template.content.querySelector('h1,h2,h3,h4,h5,h6') ?? template.content.querySelector('title'))?.textContent ?? ''
     for (const img of template.content.querySelectorAll('img[src]')) {
@@ -148,10 +149,10 @@ async function convertEpub(blob: Blob, signal: AbortSignal): Promise<Conversion>
       img.setAttribute('src', cached.get(key) ?? '')
     }
     const doc = fromMarkup(cleanMarkup(template, budget))
-    const chapterTitle = titleOf(firstHeading, `第 ${index + 1} 节`)
+    const chapterTitle = titleOf(firstHeading, t('import.section', [index + 1]))
     chapters.push(...structuredChapters(doc, chapterTitle, false))
   }
-  if (budget.omitted) notes.push(`有 ${budget.omitted} 张外部、受保护或超限图片未导入。`)
+  if (budget.omitted) notes.push(t('import.externalProtectedOrOversizedImageSWereNot', [budget.omitted]))
   return { chapters, notes }
 }
 
@@ -160,20 +161,20 @@ async function convertPdf(blob: Blob, signal: AbortSignal): Promise<Conversion> 
   const controller = new AbortController()
   try {
     const pdf = await openPdf(blob, AbortSignal.any([controller.signal, signal]))
-    if (pdf.length > maxChapters) throw new Error(`此 PDF 超过 ${maxChapters} 页的转换上限。`)
+    if (pdf.length > maxChapters) throw new Error(t('import.thisPdfExceedsTheConversionLimitOfPages', [maxChapters]))
     const chapters: ChapterInput[] = []
     let skipped = 0
     let length = 0
     for (let index = 0; index < pdf.length; index++) {
       const text = await pdf.readText(index)
       length += text.length
-      if (length > maxTextPreviewSize) throw new Error('PDF 提取的文字超过转换上限。')
-      if (text.trim()) chapters.push(...textChapters(text, `第 ${index + 1} 页`, false))
+      if (length > maxTextPreviewSize) throw new Error(t('import.theExtractedPdfTextExceedsTheConversionLimit'))
+      if (text.trim()) chapters.push(...textChapters(text, t('import.page', [index + 1]), false))
       else skipped++
     }
-    if (!chapters.length) throw new Error('此 PDF 没有可提取的文字。扫描件需要先做 OCR，原文件仍可阅读和下载。')
-    const notes = ['编辑稿按页提取文字。原始版式、图片和分页保存在 PDF 中，提取的阅读顺序可能需要调整。']
-    if (skipped) notes.push(`有 ${skipped} 页没有可提取的文字，仍可在原 PDF 查看。`)
+    if (!chapters.length) throw new Error(t('import.thisPdfHasNoExtractableTextScannedDocuments'))
+    const notes = [t('import.textIsExtractedPageByPageThePdf')]
+    if (skipped) notes.push(t('import.pageSHaveNoExtractableTextAndCan', [skipped]))
     return { chapters, notes }
   } finally {
     controller.abort()
@@ -188,7 +189,7 @@ export async function convertFile(format: Format, blob: Blob, signal: AbortSigna
       break
     case 'rtf': {
       const { readRtf } = await import('./rtf')
-      converted = { chapters: structuredChapters(await readRtf(blob)), notes: ['转换正文与基本行内样式。RTF 的图片、复杂列表、表格和页式布局以原件为准。'] }
+      converted = { chapters: structuredChapters(await readRtf(blob)), notes: [t('import.convertsTextAndBasicInlineStylesReferTo')] }
       break
     }
     case 'docx': case 'odt': {
@@ -199,11 +200,11 @@ export async function convertFile(format: Format, blob: Blob, signal: AbortSigna
     }
     case 'epub': converted = await convertEpub(blob, signal); break
     case 'pdf': converted = await convertPdf(blob, signal); break
-    default: throw new Error('此格式只能保存原文件。可另建空白编辑稿。')
+    default: throw new Error(t('import.thisFormatCanOnlyBeStoredAsAn'))
   }
   signal.throwIfAborted()
-  if (!converted.chapters.some((chapter) => meaningful(chapter.content))) throw new Error('未找到可转换的正文或图片。')
-  if (converted.chapters.length > maxChapters) throw new Error(`转换结果超过 ${maxChapters} 章。`)
+  if (!converted.chapters.some((chapter) => meaningful(chapter.content))) throw new Error(t('import.noConvertibleTextOrImagesWereFound'))
+  if (converted.chapters.length > maxChapters) throw new Error(t('import.theConvertedDocumentExceedsChapters', [maxChapters]))
   for (const chapter of converted.chapters) checkDocument(chapter.content)
   return converted
 }

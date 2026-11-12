@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import { maxEditionImageBytes, maxImageBytes } from './model'
 
 const raster = /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/i
@@ -70,7 +71,7 @@ export function cleanMarkup(template: HTMLTemplateElement, budget = imageBudget(
       const info = imageInfo(source)
       if (!info || info.bytes > budget.remaining) {
         budget.omitted++
-        node.replaceWith(`[图片未导入${alt ? `：${alt}` : ''}]`)
+        node.replaceWith(t('markup.imageNotImported', [alt ? `：${alt}` : '']))
       } else {
         budget.remaining -= info.bytes
         node.setAttribute('src', source!)

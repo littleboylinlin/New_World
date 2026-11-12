@@ -1,3 +1,4 @@
+import { t } from './i18n'
 import { decodeText } from './formats'
 import type { TextEncoding } from './formats'
 
@@ -31,12 +32,12 @@ export function htmlText(source: string): string {
 }
 
 export function requireText(text: string) {
-  if (!text.trim()) throw new Error('这一部分没有可预览的正文。')
+  if (!text.trim()) throw new Error(t('textPreview.thisSectionHasNoTextAvailableToPreview'))
   return text
 }
 
 export async function openText(blob: Blob, isHtml: boolean, encoding?: TextEncoding) {
-  if (blob.size > maxTextPreviewSize) throw new Error('正文超过 16 MiB 的文本预览上限。')
+  if (blob.size > maxTextPreviewSize) throw new Error(t('archivePreview.theTextExceedsThe16MibPreviewLimit'))
   const result = decodeText(new Uint8Array(await blob.arrayBuffer()), encoding)
   return { ...result, text: requireText(isHtml ? htmlText(result.text) : result.text) }
 }
