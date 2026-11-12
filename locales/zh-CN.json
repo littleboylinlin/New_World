@@ -450,7 +450,6 @@
   "settings.languageSaveRequired": "当前正文尚未保存，请先保存或另存后再切换语言。",
   "header.skip": "跳到正文",
   "header.home": "New World 书库首页",
-  "header.subtitle": "小说管理器",
   "header.local": "本地保存",
   "app.description": "在浏览器本地整理自己的小说和准备续写、仿写的原作。",
   "editor.imageAlt": "［图片：{0}］",

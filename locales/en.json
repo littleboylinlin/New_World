@@ -450,7 +450,6 @@
   "settings.languageSaveRequired": "Save the current text or a separate copy before changing languages.",
   "header.skip": "Skip to content",
   "header.home": "New World library home",
-  "header.subtitle": "Novel library",
   "header.local": "Stored locally",
   "app.description": "Organize your novels and source works for continuations in a local library.",
   "editor.imageAlt": "[Image: {0}]",
