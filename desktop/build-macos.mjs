@@ -7,6 +7,9 @@ if (!['arm64', 'x64'].includes(arch) || arch !== process.arch) throw new Error('
 const output = 'dist-macos'
 const { appDir, devDependencies } = await prepareDesktopApp(output)
 
+// Ad-hoc signing needs no certificate and must also run for pull-request builds.
+process.env.CSC_FOR_PULL_REQUEST = 'true'
+
 await build({
   targets: Platform.MAC.createTarget('dmg', arch === 'arm64' ? Arch.arm64 : Arch.x64),
   publish: 'never',
