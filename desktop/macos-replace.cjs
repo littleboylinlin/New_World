@@ -83,10 +83,13 @@ async function runUpdate(plan, options = {}) {
   const cache = dirname(plan.directory)
   validatePlan(plan, cache)
   try {
+    await writeJSON(join(plan.directory, 'phase.json'), { phase: 'waiting-for-exit', parentPid: plan.parentPid })
     await parentExit(plan.parentPid)
+    await writeJSON(join(plan.directory, 'phase.json'), { phase: 'replacing' })
     await exchange(plan)
     exchanged = true
     pid = await startApp(plan)
+    await writeJSON(join(plan.directory, 'phase.json'), { phase: 'waiting-for-interface', pid })
     await boot(plan, pid)
     committed = true
     const result = { id: plan.id, version: plan.version, state: 'installed', pid }
@@ -142,8 +145,7 @@ if (require.main === module) {
     const file = process.argv[2]
     const plan = validatePlan(JSON.parse(await readFile(file, 'utf8')), dirname(dirname(file)))
     transaction = plan
-    if (process.send) await new Promise((done, reject) => process.send({ ready: true }, (error) => error ? reject(error) : done()))
-    process.disconnect?.()
+    await writeJSON(join(plan.directory, 'worker-ready.json'), { id: plan.id, pid: process.pid })
     await runUpdate(plan)
   })().catch(async (error) => {
     if (transaction) await writeJSON(join(dirname(transaction.directory), 'last-update.json'), {

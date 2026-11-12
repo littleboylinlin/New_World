@@ -1,5 +1,5 @@
-const { fork, execFile } = require('node:child_process')
-const { constants } = require('node:fs')
+const { spawn, execFile } = require('node:child_process')
+const { constants, openSync, closeSync } = require('node:fs')
 const { access, copyFile, lstat, mkdir, open, readFile, rm, rmdir } = require('node:fs/promises')
 const { dirname, join, resolve } = require('node:path')
 const { randomUUID } = require('node:crypto')
@@ -74,18 +74,24 @@ function createMacInstaller({ bundle, cache, arch, prepareLanguage }) {
   }
 
   async function install(plan) {
-    const child = fork(join(plan.directory, 'macos-replace.cjs'), [join(plan.directory, 'plan.json')], {
-      execPath: process.execPath, detached: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    const log = openSync(join(plan.directory, 'worker.log'), 'a', 0o600)
+    const child = spawn(process.execPath, [join(plan.directory, 'macos-replace.cjs'), join(plan.directory, 'plan.json')], {
+      detached: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', log, log],
     })
-    const ready = new Promise((done, reject) => {
-      const timer = setTimeout(() => reject(new Error('The Mac update helper did not start')), 10_000)
-      child.once('error', (error) => { clearTimeout(timer); reject(error) })
-      child.once('exit', (code) => { clearTimeout(timer); reject(new Error('The Mac update helper exited: ' + code)) })
-      child.once('message', (message) => { if (message?.ready) { clearTimeout(timer); done() } })
-    })
+    closeSync(log)
+    let failure
+    child.once('error', (error) => { failure = error })
+    child.once('exit', (code) => { failure = new Error('The Mac update helper exited: ' + code) })
     try {
-      await Promise.all([writeJSON(join(plan.directory, 'worker.json'), { pid: child.pid }), ready])
+      await writeJSON(join(plan.directory, 'worker.json'), { pid: child.pid })
+      const until = Date.now() + 10_000
+      while (true) {
+        if (failure) throw failure
+        const ready = await readFile(join(plan.directory, 'worker-ready.json'), 'utf8').then(JSON.parse).catch(() => undefined)
+        if (ready?.id === plan.id && ready.pid === child.pid) break
+        if (Date.now() >= until) throw new Error('The Mac update helper did not start')
+        await new Promise((done) => setTimeout(done, 100))
+      }
     } catch (error) {
       child.kill()
       await rm(plan.stage, { recursive: true, force: true }).catch(() => {})

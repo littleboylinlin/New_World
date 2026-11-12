@@ -21,6 +21,7 @@ const exists = (path) => stat(path).then(() => true, () => false)
 let directory, bundle, executable
 
 test.skip(process.platform !== 'darwin', 'Requires macOS')
+test.describe.configure({ mode: 'serial' })
 
 async function installDmg() {
   const mount = join(directory, 'mounted')
@@ -259,6 +260,14 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     await current.goto(draftUrl)
     await expect(editor(current)).toHaveText('下载期间新增的正文也必须保留。')
     expect(await exists(join(languages, 'packs', previous))).toBe(false)
+  } catch (error) {
+    for (const name of (await readdir(updateCache).catch(() => [])).filter((name) => name.startsWith('job-'))) {
+      const job = join(updateCache, name)
+      for (const file of ['plan.json', 'worker.json', 'worker-ready.json', 'phase.json', 'boot.json', 'worker.log']) {
+        console.log('Mac update diagnostic:', name, file, await readFile(join(job, file), 'utf8').catch(() => 'missing'))
+      }
+    }
+    throw error
   } finally {
     if (restarted) { try { process.kill(restarted, 'SIGKILL') } catch {} }
     if (!exited) await stop(app)
