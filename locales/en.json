@@ -464,7 +464,7 @@
   "appearance.smaller": "Smaller text",
   "appearance.larger": "Larger text",
   "appearance.sizeValue": "{0} px",
-  "appearance.resetSize": "Reset",
+  "appearance.resetSize": "Reset text size",
   "appearance.more": "More settings…",
   "appearance.hint": "Appearance is saved on this device, applies right away and does not change exported files.",
   "appearance.latinSample": "The quick brown fox",
