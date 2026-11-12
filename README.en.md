@@ -40,6 +40,17 @@ Language preferences and the desktop language cache are stored in `%APPDATA%\New
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
+## Appearance
+
+"Settings → Appearance" sets the theme, English font, Chinese font and text size. Changes apply right away. The "Aa" button in the reading and editor toolbars opens a small panel for the theme, text size and English font; "More settings…" opens the full settings.
+
+- Theme: Match system, White, Dark or Beige, applied to the whole app. The default follows the system's light or dark mode. The app bar doubles as the window title bar and stays dark in every theme.
+- English font: Times New Roman (default), Georgia, Lora, Inter or System Sans. Lora and Inter ship with the app and work offline; their licenses are in `src/fonts/` and in `licenses/` of the build.
+- Chinese font: Auto (default; Song with serif English fonts, otherwise Hei), Song, Hei or Kai, using the fonts installed on the system. Chinese characters, which the English fonts do not contain, use the chosen Chinese font.
+- Text size: shared by reading and writing, 14 to 28 px, with a reset to the default.
+
+Appearance is saved on this device. On the desktop it moves together with the library storage location. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style.
+
 ## Running
 
 Node.js 22.16 or newer is required. CI runs on Node.js 24.
