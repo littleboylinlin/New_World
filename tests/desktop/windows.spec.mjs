@@ -8,6 +8,7 @@ import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { file } from '../fixtures.mjs'
+import { checkNativeHeader } from '../header-layout.mjs'
 
 const { version } = JSON.parse(await readFile('package.json', 'utf-8'))
 const versionTag = `v${version}`
@@ -123,6 +124,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     expect(header.reserved).toBeGreaterThan(90)
     expect(header.gap).toBeGreaterThan(90)
     await page.screenshot({ path: testInfo.outputPath('windows-home.png') })
+    await checkNativeHeader(app, page, testInfo, 'windows')
     await page.locator('a[href="#/reference"]').first().click()
     await page.locator('input[type=file]').setInputFiles(original)
     await page.getByRole('link', { name: '查看 桌面续写原文', exact: true }).click()
@@ -495,6 +497,8 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
       ])
     }
     await page.screenshot({ path: testInfo.outputPath('windows-english-settings.png') })
+    await settings.getByRole('button', { name: 'Close', exact: true }).click()
+    await checkNativeHeader(app, page, testInfo, 'windows')
     await stop(app)
     app = await launch(testInfo)
     page = await app.firstWindow()
