@@ -49,7 +49,7 @@ The app bar at the top of the window doubles as the title bar and can be dragged
 - Chinese font: Auto (default; Song with serif English fonts, otherwise Hei), Song, Hei or Kai, using the fonts installed on the system. Chinese characters, which the English fonts do not contain, use the chosen Chinese font.
 - Text size: shared by reading and writing, 14 to 28 px, with a reset to the default.
 
-Appearance is saved on this device. On the desktop it moves together with the library storage location. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style.
+Appearance is saved on this device. On the desktop it moves together with the library storage location, and the chosen theme is also kept in `NewWorld-appearance.json` so the window opens with the matching background instead of flashing light first. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style.
 
 ## Running
 

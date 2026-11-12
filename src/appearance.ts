@@ -57,6 +57,8 @@ function apply(value: Appearance) {
   root.dataset.cjkFont = value.cjk
   if (value.size === null) root.style.removeProperty('--reading-size')
   else root.style.setProperty('--reading-size', `${value.size}px`)
+  // The desktop app opens its next window with this theme's background.
+  window.newWorldDesktop?.setWindowTheme?.(value.theme).catch(() => {})
 }
 
 export function appearance(): Appearance {

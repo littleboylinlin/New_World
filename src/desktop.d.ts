@@ -39,5 +39,6 @@ interface Window {
     resetStorageLocation: () => Promise<StorageResult | null>
     getCloseBehavior: () => Promise<CloseBehavior>
     setCloseBehavior: (mode: CloseBehavior) => Promise<CloseBehavior>
+    setWindowTheme?: (theme: import('./appearance').Theme) => Promise<void>
   }
 }

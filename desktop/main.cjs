@@ -1,10 +1,11 @@
 const { t, createLanguageStore } = require('./language.cjs')
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, session, shell, Tray } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, session, shell, Tray } = require('electron')
 const { mkdirSync, readFileSync } = require('node:fs')
 const { readFile, writeFile } = require('node:fs/promises')
 const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
 const storageLocation = require('./storage-location.cjs')
 const closeBehavior = require('./close-behavior.cjs')
+const windowTheme = require('./window-theme.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
@@ -32,6 +33,7 @@ mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId(appId)
 let behavior = closeBehavior.readBehavior(appData)
+let theme = windowTheme.readTheme(appData)
 
 async function serveApp(request) {
   try {
@@ -203,6 +205,25 @@ ipcMain.handle('new-world:set-close-behavior', (event, mode) => {
   return behavior
 })
 
+// The page reports its theme so the next window opens with the same background.
+ipcMain.handle('new-world:set-window-theme', (event, next) => {
+  if (!trustedFrame(event) || !windowTheme.isTheme(next)) throw new Error(t('main.invalidSettingsRequest'))
+  if (next !== theme) {
+    try { windowTheme.writeTheme(appData, next) } catch (error) { console.warn('New World theme:', error.code || error.message) }
+    theme = next
+  }
+  applyWindowTheme()
+})
+
+function windowBackground() {
+  return windowTheme.backgroundColor(theme, nativeTheme.shouldUseDarkColors)
+}
+
+function applyWindowTheme() {
+  nativeTheme.themeSource = windowTheme.themeSource(theme)
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
+}
+
 let mainWindow
 let closing = false
 let forceQuit = false
@@ -264,9 +285,10 @@ function refreshMenus() {
 }
 
 function openWindow() {
+  nativeTheme.themeSource = windowTheme.themeSource(theme)
   mainWindow = new BrowserWindow({
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
-    backgroundColor: '#f4eee2',
+    backgroundColor: windowBackground(),
     icon: join(__dirname, 'icon.png'),
     // The app header is the title bar. Windows draws only the window buttons over its right end.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
@@ -316,6 +338,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => { forceQuit = true })
   app.on('window-all-closed', () => app.quit())
   app.whenReady().then(async () => {
+    nativeTheme.on('updated', () => {
+      if (theme === 'system' && mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
+    })
     const local = session.defaultSession
     local.setPermissionRequestHandler((_contents, _permission, allow) => allow(false))
     local.setPermissionCheckHandler(() => false)

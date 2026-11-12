@@ -529,3 +529,39 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
     expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['编辑', '视图'])
   } finally { await stop(app) }
 })
+
+test('黑色主题重开时窗口直接以深色底色打开，不先闪浅色', async ({}, testInfo) => {
+  const themeFile = ({ app }) => {
+    const { readFileSync } = process.getBuiltinModule('node:fs')
+    const { join } = process.getBuiltinModule('node:path')
+    try { return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-appearance.json'), 'utf8')).theme } catch { return null }
+  }
+  const windowState = ({ BrowserWindow, nativeTheme }) => ({
+    background: BrowserWindow.getAllWindows()[0]?.getBackgroundColor().toLowerCase(),
+    source: nativeTheme.themeSource,
+  })
+  let app = await launch(testInfo)
+  try {
+    let page = await app.firstWindow()
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    let section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    await section.getByRole('radio', { name: /黑色/ }).check()
+    await expect.poll(() => app.evaluate(themeFile)).toBe('dark')
+    await expect.poll(() => app.evaluate(windowState)).toEqual({ background: '#131210', source: 'dark' })
+    await stop(app)
+
+    app = await launch(testInfo)
+    page = await app.firstWindow()
+    // Checked as soon as the window exists: the background comes from the saved theme, not the page.
+    expect(await app.evaluate(windowState)).toEqual({ background: '#131210', source: 'dark' })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await page.screenshot({ path: testInfo.outputPath('windows-dark-theme.png') })
+
+    // Leave the shared profile as it was for the other desktop tests.
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    await section.getByRole('radio', { name: /跟随系统/ }).check()
+    await expect.poll(() => app.evaluate(themeFile)).toBe('system')
+    await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
+  } finally { await stop(app) }
+})
