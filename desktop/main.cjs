@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, protocol, session, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, session, shell, Tray } = require('electron')
 const { mkdirSync } = require('node:fs')
 const { readFile, writeFile } = require('node:fs/promises')
 const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
 const storageLocation = require('./storage-location.cjs')
+const closeBehavior = require('./close-behavior.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { releasePages, windowsReleaseList } = require('./windows-release.mjs')
 
@@ -27,6 +28,7 @@ const profile = location.current
 mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId(appId)
+let behavior = closeBehavior.readBehavior(appData)
 
 async function serveApp(request) {
   try {
@@ -128,8 +130,51 @@ ipcMain.handle('new-world:reset-storage-location', (event) => {
   return { path: result.to, custom: false, restart: true }
 })
 
+ipcMain.handle('new-world:get-close-behavior', (event) => {
+  if (!trustedFrame(event)) throw new Error('无效的设置请求。')
+  return behavior
+})
+
+ipcMain.handle('new-world:set-close-behavior', (event, mode) => {
+  if (!trustedFrame(event) || !closeBehavior.isMode(mode)) throw new Error('无效的关闭方式。')
+  try {
+    closeBehavior.writeBehavior(appData, mode)
+  } catch {
+    throw new Error('设置未能保存，请重试。')
+  }
+  behavior = mode
+  return behavior
+})
+
 let mainWindow
 let closing = false
+let forceQuit = false
+let tray
+
+function showWindow() {
+  if (!mainWindow) {
+    void openWindow().catch(() => {})
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (!mainWindow.isVisible()) mainWindow.show()
+  mainWindow.focus()
+}
+
+function quitApp() {
+  forceQuit = true
+  app.quit()
+}
+
+function createTray() {
+  tray = new Tray(nativeImage.createFromPath(join(__dirname, 'tray.png')))
+  tray.setToolTip('New World')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示 New World', click: showWindow },
+    { label: '完全退出', click: quitApp },
+  ]))
+  tray.on('click', showWindow)
+}
 
 function openWindow() {
   mainWindow = new BrowserWindow({
@@ -159,6 +204,11 @@ function openWindow() {
     closing = true
     contents.send('new-world:save-before-close')
   })
+  mainWindow.on('close', (event) => {
+    if (closeBehavior.closeAction(behavior, { forceQuit }) !== 'background') return
+    event.preventDefault()
+    mainWindow.hide()
+  })
   mainWindow.on('closed', () => { mainWindow = undefined; closing = false })
   return mainWindow.loadURL(appUrl)
 }
@@ -172,10 +222,9 @@ ipcMain.on('new-world:close-result', (event, saved) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow?.isMinimized()) mainWindow.restore()
-    mainWindow?.focus()
-  })
+  app.on('second-instance', showWindow)
+  app.on('activate', showWindow)
+  app.on('before-quit', () => { forceQuit = true })
   app.on('window-all-closed', () => app.quit())
   app.whenReady().then(() => {
     const local = session.defaultSession
@@ -203,6 +252,7 @@ if (!app.requestSingleInstanceLock()) {
         { role: 'resetZoom', label: '还原缩放' }, { role: 'togglefullscreen', label: '全屏' },
       ] },
     ]))
+    try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
     return openWindow()
   }).catch(() => {
     dialog.showErrorBox('New World', '无法打开本地应用文件。请重新安装 New World。')

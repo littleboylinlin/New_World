@@ -12,6 +12,8 @@ await Promise.all([
   cp('desktop/main.cjs', join(appDir, 'desktop/main.cjs')),
   cp('desktop/preload.cjs', join(appDir, 'desktop/preload.cjs')),
   cp('desktop/storage-location.cjs', join(appDir, 'desktop/storage-location.cjs')),
+  cp('desktop/close-behavior.cjs', join(appDir, 'desktop/close-behavior.cjs')),
+  cp('desktop/tray.png', join(appDir, 'desktop/tray.png')),
   cp('desktop/windows-update.cjs', join(appDir, 'desktop/windows-update.cjs')),
   cp('desktop/windows-release.mjs', join(appDir, 'desktop/windows-release.mjs')),
   writeFile(join(appDir, 'package.json'), JSON.stringify({

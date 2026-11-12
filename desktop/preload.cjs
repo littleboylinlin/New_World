@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   getStorageLocation: () => ipcRenderer.invoke('new-world:get-storage-location'),
   setStorageLocation: () => ipcRenderer.invoke('new-world:set-storage-location'),
   resetStorageLocation: () => ipcRenderer.invoke('new-world:reset-storage-location'),
+  getCloseBehavior: () => ipcRenderer.invoke('new-world:get-close-behavior'),
+  setCloseBehavior: (mode) => ipcRenderer.invoke('new-world:set-close-behavior', mode),
   onCloseRequested: (save) => {
     ipcRenderer.on('new-world:save-before-close', async () => {
       const saved = await Promise.resolve().then(save).catch(() => false)

@@ -10,6 +10,8 @@ interface StorageResult {
   restart: boolean
 }
 
+type CloseBehavior = 'quit' | 'background'
+
 type DesktopUpdateResult = { ok: true } | { ok: false; message: string }
 
 interface DesktopUpdateProgress {
@@ -28,5 +30,7 @@ interface Window {
     getStorageLocation: () => Promise<StorageState>
     setStorageLocation: () => Promise<StorageResult | null>
     resetStorageLocation: () => Promise<StorageResult | null>
+    getCloseBehavior: () => Promise<CloseBehavior>
+    setCloseBehavior: (mode: CloseBehavior) => Promise<CloseBehavior>
   }
 }
