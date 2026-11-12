@@ -92,6 +92,7 @@ async function createMacUpdater({ network, version, arch, cache, legacyDownloads
     } catch (error) {
       if (ready) await remove(ready.directory)
       ready = undefined
+      if (!(error instanceof MacUpdateError)) console.warn('New World Mac update failed:', error.message)
       throw error instanceof MacUpdateError ? error : new MacUpdateError('macUpdate.openFailed')
     } finally { busy = false }
   }

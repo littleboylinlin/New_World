@@ -146,3 +146,14 @@ test('Mac 中断后的旧包在应用正常启动后回收，拒绝越界路径'
     expect(await exists(plan.stageRoot)).toBe(false)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
+
+test('Mac 启动确认保留当前更新事务，交由更新进程清理', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'nw-replace-'))
+  try {
+    const { plan, cache, swap } = await transaction(root)
+    await swap()
+    await finishBoot({ cache, target: plan.target, version: plan.version, token: plan.id })
+    expect(await readFile(join(plan.stage, 'obsolete.txt'), 'utf8')).toBe('old')
+    expect(JSON.parse(await readFile(join(plan.directory, 'boot.json'), 'utf8'))).toMatchObject({ id: plan.id, version: plan.version, pid: process.pid })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

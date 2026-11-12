@@ -115,14 +115,14 @@ async function finishBoot({ cache, target, version, token }) {
   const directories = await require('node:fs/promises').readdir(cache, { withFileTypes: true }).catch(() => [])
   for (const entry of directories) {
     if (!entry.isDirectory() || !/^job-/.test(entry.name)) continue
+    if (entry.name === 'job-' + token) continue
     try {
       const plan = validatePlan(JSON.parse(await readFile(join(cache, entry.name, 'plan.json'), 'utf8')), cache)
       if (plan.target !== target || plan.directory !== join(cache, entry.name)) continue
       const worker = await readFile(join(plan.directory, 'worker.json'), 'utf8').then(JSON.parse).catch(() => undefined)
-      if (Number.isSafeInteger(worker?.pid) && worker.pid > 1 && alive(worker.pid)) {
-        const { stdout } = await command('/bin/ps', ['-p', String(worker.pid), '-o', 'command='])
-        if (stdout.includes(join(plan.directory, 'macos-replace.cjs'))) continue
-      }
+      const workerFile = await stat(join(plan.directory, 'worker.json')).catch(() => undefined)
+      if (Number.isSafeInteger(worker?.pid) && worker.pid > 1 && alive(worker.pid)
+        && workerFile && Date.now() - workerFile.mtimeMs < 5 * 60_000) continue
       if (!(await lstat(target)).isDirectory()) continue
       await discardStage(plan)
     } catch (error) {
@@ -137,11 +137,19 @@ async function finishBoot({ cache, target, version, token }) {
 module.exports = { validatePlan, writeJSON, runUpdate, finishBoot }
 
 if (require.main === module) {
+  let transaction
   ;(async () => {
     const file = process.argv[2]
     const plan = validatePlan(JSON.parse(await readFile(file, 'utf8')), dirname(dirname(file)))
+    transaction = plan
     if (process.send) await new Promise((done, reject) => process.send({ ready: true }, (error) => error ? reject(error) : done()))
     process.disconnect?.()
     await runUpdate(plan)
-  })().catch((error) => { console.error(error); process.exitCode = 1 })
+  })().catch(async (error) => {
+    if (transaction) await writeJSON(join(dirname(transaction.directory), 'last-update.json'), {
+      id: transaction.id, version: transaction.version, state: 'failed', error: String(error.message).slice(0, 500),
+    }).catch(() => {})
+    console.error(error)
+    process.exitCode = 1
+  })
 }

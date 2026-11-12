@@ -181,6 +181,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
   await mkdir(join(languages, 'packs', previous), { recursive: true })
   await cp('public/locales/New-World-lang-zh-CN.json', join(languages, 'packs', previous, 'zh-CN.json'))
   let app = await electron.launch({ executablePath: executable, args: ['--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
+  app.on('console', (message) => console.log('Mac application:', message.text()))
   let exited = false
   let restarted
   try {
@@ -196,12 +197,22 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     await page.route(list, (route) => route.fulfill({ json: [release] }))
     await app.evaluate(({ session }, data) => {
       globalThis.corruptMacDownload = true
+      const gate = Promise.withResolvers()
+      globalThis.continueMacDownload = gate.resolve
       session.fromPartition('new-world-update').fetch = async (url) => {
         if (url.endsWith('/tags/' + data.release.tag_name)) return Response.json(data.release)
         if (globalThis.corruptMacDownload) return new Response('x')
         const stream = process.getBuiltinModule('node:fs').createReadStream(data.dmg)
-        const body = process.getBuiltinModule('node:stream').Readable.toWeb(stream)
-        return new Response(body)
+        const reader = process.getBuiltinModule('node:stream').Readable.toWeb(stream).getReader()
+        let sent = false
+        return new Response(new ReadableStream({
+          async pull(controller) {
+            if (sent) await gate.promise
+            const { value, done } = await reader.read()
+            if (done) controller.close()
+            else { controller.enqueue(value); sent = true }
+          }, cancel: () => reader.cancel(),
+        }))
       }
     }, { release, dmg })
     await page.reload()
@@ -223,12 +234,16 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     await app.evaluate(() => { globalThis.corruptMacDownload = false })
     const closed = app.waitForEvent('close', { timeout: 90_000 })
     await update.click()
+    await expect.poll(() => settings.getByRole('progressbar').evaluate((node) => node.value)).toBeGreaterThan(0)
+    await settings.getByRole('button', { name: '关闭', exact: true }).click()
+    await editor(page).fill('下载期间新增的正文也必须保留。')
+    await app.evaluate(() => globalThis.continueMacDownload())
     await closed
     exited = true
     let result
     await expect.poll(async () => {
       result = await readFile(join(updateCache, 'last-update.json'), 'utf8').then(JSON.parse).catch(() => undefined)
-      return result?.version === version && ['installed', 'rolled-back'].includes(result?.state)
+      return result?.version === version && ['installed', 'rolled-back', 'failed'].includes(result?.state)
     }, { timeout: 90_000 }).toBe(true)
     restarted = result.pid
     expect(result, JSON.stringify(result)).toMatchObject({ state: 'installed' })
@@ -242,7 +257,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     exited = false
     const current = await app.firstWindow()
     await current.goto(draftUrl)
-    await expect(editor(current)).toHaveText('整包更新必须保留正文。')
+    await expect(editor(current)).toHaveText('下载期间新增的正文也必须保留。')
     expect(await exists(join(languages, 'packs', previous))).toBe(false)
   } finally {
     if (restarted) { try { process.kill(restarted, 'SIGKILL') } catch {} }
