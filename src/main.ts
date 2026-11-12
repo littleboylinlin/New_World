@@ -5,8 +5,6 @@ import { renderHome, renderShelf } from './shelf-view'
 import { clearExpiredTrash, countTrash } from './trash'
 import { renderTrash } from './trash-view'
 import { mountSettingsView } from './settings-view'
-import { mountStorageView } from './storage-view'
-import { mountUpdateView } from './update-view'
 import { changeView, pop } from './motion'
 import { libraries } from './ui'
 import { libraryChanges } from './library'
@@ -88,6 +86,4 @@ const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
 if (window.newWorldDesktop) {
   window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
 }
-mountSettingsView()
-mountStorageView(saveBeforeLeaving)
-mountUpdateView(saveBeforeLeaving)
+mountSettingsView(saveBeforeLeaving)

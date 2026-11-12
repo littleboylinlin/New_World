@@ -1,15 +1,12 @@
 import { button, element } from './ui'
 
-export function mountStorageView(saveBeforeLeaving: () => Promise<boolean>) {
+export function mountStorageView(
+  content: HTMLElement,
+  saveBeforeLeaving: () => Promise<boolean>,
+  setBusy: (busy: boolean, allowClose?: boolean) => void,
+) {
   const desktop = window.newWorldDesktop
-  const entry = document.querySelector<HTMLButtonElement>('#storage-location')!
-
-  const title = element('h2', '', '存储位置')
-  title.id = 'storage-dialog-title'
-  const dialog = element('dialog', 'manage-dialog storage-dialog')
-  dialog.id = 'storage-dialog'
-  dialog.setAttribute('aria-labelledby', title.id)
-  const content = element('div', 'manage-form')
+  const summary = document.querySelector<HTMLElement>('#storage-location')!
 
   const box = element('div', 'storage-location-box')
   const badge = element('span', 'storage-badge')
@@ -24,54 +21,70 @@ export function mountStorageView(saveBeforeLeaving: () => Promise<boolean>) {
 
   const change = button('更改位置', 'button button-primary')
   const reset = button('恢复默认', 'button button-quiet')
-  const close = button('关闭', 'button button-quiet')
-  const controls = element('div', 'dialog-controls')
-  controls.append(change, reset, close)
-  content.append(title, box, state, error, controls)
-  dialog.append(content)
-  document.body.append(dialog)
+  const controls = element('div', 'settings-actions')
+  controls.append(change, reset)
+  content.append(box, controls, state, error)
 
   let current: StorageState | null = null
+  let busy = false
+  let refreshing = false
 
   function paint() {
-    if (!desktop || !current) {
-      entry.textContent = '小说与原件保存在当前浏览器'
+    if (!desktop) {
+      summary.textContent = '小说与原件保存在当前浏览器'
       badge.textContent = '浏览器托管'
       path.textContent = '当前浏览器'
       change.hidden = reset.hidden = true
       state.textContent = '书库位置由当前浏览器管理'
       return
     }
+    change.hidden = reset.hidden = false
+    change.disabled = busy || refreshing || !current
+    reset.disabled = busy || refreshing || !current?.custom
+    if (!current) {
+      summary.textContent = '小说与原件保存在本机书库'
+      badge.textContent = '本机书库'
+      path.textContent = refreshing ? '正在读取存储位置…' : '存储位置暂不可用'
+      return
+    }
     badge.textContent = current.custom ? '自定义位置' : '默认位置'
     path.textContent = current.path
-    entry.textContent = current.custom
+    summary.textContent = current.custom
       ? `小说与原件保存在 ${current.path}`
       : '小说与原件保存在本机书库'
-    change.hidden = reset.hidden = false
-    reset.disabled = !current.custom
   }
 
   async function refresh() {
     if (!desktop) return paint()
+    if (busy || refreshing) return
+    refreshing = true
+    error.hidden = true
+    state.textContent = ''
+    paint()
     try {
       current = await desktop.getStorageLocation()
       paint()
     } catch {
-      // Keep the last known state when the location cannot be read.
+      error.textContent = '无法读取存储位置，请重新打开设置后重试。'
+      error.hidden = false
+    } finally {
+      refreshing = false
+      paint()
     }
   }
 
   async function apply(action: () => Promise<StorageResult | null>, done: string) {
-    if (!desktop) return
+    if (!desktop || busy || !current) return
+    busy = true
+    setBusy(true)
+    paint()
     error.hidden = true
-    if (!await saveBeforeLeaving()) {
-      error.textContent = '当前正文尚未保存，请先保存再更改存储位置。'
-      error.hidden = false
-      return
-    }
-    change.disabled = reset.disabled = close.disabled = true
+    state.textContent = ''
     let restarting = false
     try {
+      if (!await saveBeforeLeaving()) {
+        throw new Error('当前正文尚未保存，请先保存再更改存储位置。')
+      }
       const result = await action()
       if (result) {
         current = { path: result.path, defaultPath: current?.defaultPath ?? result.path, custom: result.custom }
@@ -84,23 +97,16 @@ export function mountStorageView(saveBeforeLeaving: () => Promise<boolean>) {
       error.hidden = false
     } finally {
       if (!restarting) {
-        change.disabled = reset.disabled = close.disabled = false
-        if (current) reset.disabled = !current.custom
-      } else {
-        change.disabled = reset.disabled = close.disabled = true
+        busy = false
+        setBusy(false)
       }
+      paint()
     }
   }
 
-  entry.addEventListener('click', () => {
-    error.hidden = true
-    state.textContent = ''
-    paint()
-    void refresh()
-    dialog.showModal()
-  })
-  close.addEventListener('click', () => dialog.close())
   change.addEventListener('click', () => { void apply(() => desktop!.setStorageLocation(), '已更新存储位置') })
   reset.addEventListener('click', () => { void apply(() => desktop!.resetStorageLocation(), '已恢复默认位置') })
+  paint()
   void refresh()
+  return refresh
 }

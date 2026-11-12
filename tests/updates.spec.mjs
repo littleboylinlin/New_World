@@ -19,8 +19,8 @@ function reply(route, payload, status = 200, headers = {}) {
 }
 
 async function openHelp(page) {
-  await page.getByRole('button', { name: '帮助与更新', exact: true }).click()
-  return page.getByRole('dialog', { name: '帮助与更新' })
+  await page.getByRole('button', { name: '设置', exact: true }).click()
+  return page.getByRole('dialog', { name: '设置' })
 }
 
 test('启动检查异步且只请求一次，手动检查显示进度和最新状态', async ({ page }) => {
@@ -44,16 +44,16 @@ test('启动检查异步且只请求一次，手动检查显示进度和最新�
     const dialog = await openHelp(page)
     const check = dialog.getByRole('button', { name: '检查更新' })
     await expect(dialog.getByText(`当前运行版本 ${currentTag}`)).toBeVisible()
-    await expect(dialog.getByRole('status')).toHaveText('正在检查更新…')
+    await expect(dialog.locator('.update-state')).toHaveText('正在检查更新…')
     await expect(check).toBeDisabled()
     expect(requests).toBe(1)
     auto.resolve()
-    await expect(dialog.getByRole('status')).toHaveText('当前已是最新版本。')
+    await expect(dialog.locator('.update-state')).toHaveText('当前已是最新版本。')
     await check.click()
-    await expect(dialog.getByRole('status')).toHaveText('正在检查更新…')
+    await expect(dialog.locator('.update-state')).toHaveText('正在检查更新…')
     await expect.poll(() => requests).toBe(2)
     manual.resolve()
-    await expect(dialog.getByRole('status')).toHaveText('当前已是最新版本。')
+    await expect(dialog.locator('.update-state')).toHaveText('当前已是最新版本。')
     await dialog.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(banner(page)).toBeHidden()
   } finally {
@@ -78,7 +78,9 @@ test('较高的正式版本显示说明和可信入口，忽略后仍可从帮�
   await expect(notice).toContainText(`发现新版本 ${newerTag}`)
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await notice.getByRole('button', { name: '查看更新' }).click()
-  const dialog = page.getByRole('dialog', { name: '帮助与更新' })
+  const dialog = page.getByRole('dialog', { name: '设置' })
+  await expect(dialog.getByRole('heading', { name: '帮助与更新', exact: true })).toBeFocused()
+  await expect(page.locator('dialog[open]')).toHaveCount(1)
   const link = dialog.getByRole('link', { name: '查看 GitHub 发布页' })
   expect(await dialog.locator('.update-notes').textContent()).toBe(notes)
   await expect(dialog.locator('.update-notes img')).toHaveCount(0)
@@ -99,7 +101,7 @@ test('较高的正式版本显示说明和可信入口，忽略后仍可从帮�
   const response = page.waitForResponse(releaseEndpoint)
   await dialog.getByRole('button', { name: '检查更新' }).click()
   await response
-  await expect(dialog.getByRole('status')).toHaveText(`发现新版本 ${newerTag}`)
+  await expect(dialog.locator('.update-state')).toHaveText(`发现新版本 ${newerTag}`)
   await expect(notice).toBeHidden()
 })
 
@@ -116,17 +118,17 @@ test('草稿、预发布标记、预发布标签和无发行版都不提示升�
   await page.goto('/')
   const dialog = await openHelp(page)
   const check = dialog.getByRole('button', { name: '检查更新' })
-  await expect(dialog.getByRole('status')).toHaveText('GitHub 暂未提供可比较的正式发行版。')
+  await expect(dialog.locator('.update-state')).toHaveText('GitHub 暂未提供可比较的正式发行版。')
   for (let number = 2; number <= 4; number++) {
     const response = page.waitForResponse(releaseEndpoint)
     await check.click()
     await response
-    await expect(dialog.getByRole('status')).toHaveText('GitHub 暂未提供可比较的正式发行版。')
+    await expect(dialog.locator('.update-state')).toHaveText('GitHub 暂未提供可比较的正式发行版。')
     expect(requests).toBe(number)
     await expect(banner(page)).toBeHidden()
   }
   await check.click()
-  await expect(dialog.getByRole('status')).toHaveText('当前版本高于 GitHub 最新正式发行版 v0.2.9。')
+  await expect(dialog.locator('.update-state')).toHaveText('当前版本高于 GitHub 最新正式发行版 v0.2.9。')
   await expect(dialog.getByRole('link', { name: '查看 GitHub 发布页' })).toBeHidden()
   await expect(banner(page)).toBeHidden()
 })
@@ -148,7 +150,7 @@ test('离线、连接失败、限流、服务异常和无效版本可手动重�
   await expect(banner(page)).toBeHidden()
   const dialog = await openHelp(page)
   const check = dialog.getByRole('button', { name: '检查更新' })
-  const state = dialog.getByRole('status')
+  const state = dialog.locator('.update-state')
   await expect(state).toContainText('无法连接 GitHub')
   await context.setOffline(true)
   await check.click()
