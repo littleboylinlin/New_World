@@ -480,6 +480,11 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
     let settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByRole('combobox', { name: '语言', exact: true }).selectOption('en')
     await settings.getByRole('button', { name: '应用语言' }).click()
+    await expect.poll(() => app.evaluate(({ app }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-languages', 'language.json'), 'utf8')).locale
+    })).toBe('en')
     settings = page.getByRole('dialog', { name: 'Settings' })
     await expect(settings).toBeVisible()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')

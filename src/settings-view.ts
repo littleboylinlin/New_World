@@ -111,7 +111,8 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
       if (!await saveBeforeLeaving()) throw new Error(t('settings.languageSaveRequired'))
       await changeLanguage(language.value as Locale)
       try { sessionStorage.setItem('new-world:settings-open', '1') } catch { /* Language selection is already saved. */ }
-      location.reload()
+      if (desktop?.reloadForLanguage) await desktop.reloadForLanguage()
+      else location.reload()
     } catch (cause) {
       languageError.textContent = cause instanceof Error && cause.message === t('settings.languageSaveRequired')
         ? cause.message : t('settings.languageFailed')

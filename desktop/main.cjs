@@ -144,6 +144,11 @@ ipcMain.handle('new-world:set-language', async (event, locale) => {
   return pack
 })
 
+ipcMain.handle('new-world:reload-language', (event) => {
+  if (!trustedFrame(event)) throw new Error('Invalid language request')
+  setImmediate(() => { if (!event.sender.isDestroyed()) event.sender.reload() })
+})
+
 ipcMain.handle('new-world:get-close-behavior', (event) => {
   if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
   return behavior
