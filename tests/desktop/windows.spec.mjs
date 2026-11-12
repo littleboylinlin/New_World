@@ -565,3 +565,51 @@ test('黑色主题重开时窗口直接以深色底色打开，不先闪浅色',
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
   } finally { await stop(app) }
 })
+
+test('拼写检查使用随应用安装的英文词典，不需要联网下载', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    expect(await app.evaluate(({ app, session }) => {
+      const { readdirSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return {
+        files: readdirSync(join(app.getPath('userData'), 'Dictionaries')).filter((name) => name.endsWith('.bdic')).sort(),
+        languages: session.defaultSession.getSpellCheckerLanguages(),
+      }
+    })).toEqual({ files: ['en-GB-10-2.bdic', 'en-US-10-2.bdic'], languages: ['en-US', 'en-GB'] })
+    await app.evaluate(({ BrowserWindow, session }) => {
+      globalThis.dictionaryFailures = []
+      session.defaultSession.on('spellcheck-dictionary-download-failure', (_event, language) => globalThis.dictionaryFailures.push(language))
+      // Record the right click instead of opening the native menu, which would wait for input.
+      const contents = BrowserWindow.getAllWindows()[0].webContents
+      contents.removeAllListeners('context-menu')
+      contents.on('context-menu', (_event, params) => {
+        globalThis.spellingClick = { word: params.misspelledWord, suggestions: params.dictionarySuggestions }
+      })
+    })
+
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.getByRole('textbox', { name: '作品名' }).fill('Spelling')
+    await page.getByRole('button', { name: '创建小说' }).click()
+    await expect(editor(page)).toBeVisible()
+    await page.getByRole('button', { name: '外观', exact: true }).click()
+    const spelling = page.getByRole('group', { name: '外观' }).getByRole('checkbox', { name: '拼写检查' })
+    await spelling.check()
+    await page.keyboard.press('Escape')
+    await editor(page).click()
+    await page.keyboard.type('Teh lighthouse ')
+
+    await expect.poll(async () => {
+      await editor(page).locator('p').first().click({ button: 'right', position: { x: 8, y: 12 } })
+      return app.evaluate(() => globalThis.spellingClick?.word ?? '')
+    }, { timeout: 20_000 }).toBe('Teh')
+    expect(await app.evaluate(() => globalThis.spellingClick.suggestions)).toContain('The')
+    expect(await app.evaluate(() => globalThis.dictionaryFailures)).toEqual([])
+
+    // Leave the shared profile as it was for the other desktop tests.
+    await page.getByRole('button', { name: '外观', exact: true }).click()
+    await spelling.uncheck()
+  } finally { await stop(app) }
+})
