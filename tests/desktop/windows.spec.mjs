@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
@@ -46,7 +47,9 @@ async function launch(testInfo) {
 }
 
 async function install() {
-  expect(await runSetup(installer, installDir)).toBe(0)
+  const code = await runSetup(installer, installDir)
+  const details = code ? await readFile(join(tmpdir(), 'NewWorld-language-install.log'), 'utf8').catch(() => '') : ''
+  expect(code, details).toBe(0)
   expect((await stat(installedApp)).isFile()).toBe(true)
 }
 

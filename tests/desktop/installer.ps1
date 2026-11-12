@@ -113,6 +113,8 @@ if ($LASTEXITCODE -ne 0 -or (Get-Content (Join-Path $automaticRoot 'language.jso
     throw 'Installer helper did not select the system language'
 }
 if (@(Get-ChildItem -LiteralPath $automaticCache -Filter '*.json').Count -ne 1) { throw 'More than the selected language was installed' }
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File desktop/install-language.ps1 -Root $automaticRoot -Manifest $languageManifest
+if ($LASTEXITCODE -ne 0) { throw 'Installer helper did not reuse the saved language' }
 Remove-Item -LiteralPath $automaticRoot -Recurse -Force
 
 $languageRoot = Join-Path $env:APPDATA 'NewWorld-languages'

@@ -100,6 +100,7 @@ FunctionEnd
 !macroend
 
 !macro customInit
+  SetShellVarContext current
   System::Call 'kernel32::GetUserDefaultUILanguage() i.r0'
   IntOp $R0 $0 & 0x3ff
   ${If} $R0 == 4
@@ -126,6 +127,9 @@ FunctionEnd
   File /oname=$PLUGINSDIR\install-language.ps1 "${PROJECT_DIR}\desktop\install-language.ps1"
   File /oname=$PLUGINSDIR\language-manifest.json "${PROJECT_DIR}\public\locales\manifest.json"
   ${GetOptions} $CMDLINE "/APP_LANGUAGE=" $R8
+  ${If} ${Errors}
+    StrCpy $R8 ""
+  ${EndIf}
   StrCpy $R7 ""
   ${If} $R8 != ""
     StrCpy $R7 '-Locale "$R8"'
@@ -135,6 +139,9 @@ FunctionEnd
     Pop $R0
     Pop $R1
     ${If} $R0 != "0"
+      FileOpen $R2 "$TEMP\NewWorld-language-install.log" w
+      FileWrite $R2 "$R1"
+      FileClose $R2
       ${IfNot} ${Silent}
         MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(nwLanguageFailed)" /SD IDCANCEL IDRETRY downloadLanguage
       ${EndIf}
