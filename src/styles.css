@@ -45,9 +45,9 @@ h1, h2, h3, p { margin: 0; }
 .site-header { position: relative; color: var(--paper); background: var(--ink); }
 .site-header::after { content: ""; display: block; height: 6px; background: linear-gradient(90deg, var(--red) 0 34%, var(--yellow) 34% 67%, var(--blue) 67%); }
 .site-header :focus-visible { outline-color: var(--yellow); }
-.header-inner { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
-.brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
+.header-inner { container: header / inline-size; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; }
+.header-actions { display: flex; flex: none; align-items: center; gap: 12px; }
+.brand { display: inline-flex; flex: none; align-items: center; gap: 12px; white-space: nowrap; text-decoration: none; }
 .brand img { border-radius: 9px; }
 .brand-name { font-family: var(--display); font-size: 1.16rem; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
 .brand small { margin-inline-start: 8px; padding: 2px 7px; border: 1px solid #f4eee266; border-radius: 4px; font-family: var(--sans); font-size: .7rem; font-weight: 600; letter-spacing: .08em; }
@@ -267,10 +267,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 @media (max-width: 640px) {
   .shell { width: calc(100% - 32px); }
   .header-inner { min-height: 58px; gap: 8px; }
-  .header-actions { gap: 8px; }
   .brand img { width: 32px; height: 32px; }
-  .brand small, .header-actions .local-label, .trash-label { display: none; }
-  .site-header .button { padding-inline: 9px; }
   .main-content { padding-block: 24px 44px; }
   .home-intro { padding-bottom: 24px; }
   .shelf-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
@@ -286,6 +283,19 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .button-small { min-height: 44px; }
   .manage-form { padding: 20px 18px; }
   .manage-dialog { box-shadow: 6px 6px 0 var(--ink); }
+}
+
+/* Use the space remaining after native window controls, rather than the window width. */
+@container header (max-width: 704px) {
+  .brand small, .header-actions .local-label, .trash-label { display: none; }
+  .header-actions { gap: 8px; }
+  .site-header .button { padding-inline: 9px; }
+}
+
+@container header (max-width: 360px) {
+  .brand { gap: 8px; }
+  .brand img { width: 28px; height: 28px; }
+  .brand .brand-name { font-size: .9rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

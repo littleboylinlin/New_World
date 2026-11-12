@@ -5,6 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
+import { checkNativeHeader } from '../header-layout.mjs'
 
 const command = promisify(execFile)
 const { version } = JSON.parse(await readFile('package.json', 'utf8'))
@@ -75,6 +76,7 @@ test('从 DMG 安装后原生打开，标题栏、Command 保存、PDF 导出和
     const trash = await page.locator('#trash-link').boundingBox()
     expect(status.x + status.width).toBeLessThanOrEqual(trash.x)
     await page.screenshot({ path: info.outputPath('macos-home.png'), animations: 'disabled' })
+    await checkNativeHeader(app, page, info, 'macos')
     await page.getByRole('link', { name: '进入原创库', exact: true }).click()
     await page.getByRole('button', { name: '新建小说', exact: true }).click()
     await page.getByRole('textbox', { name: '作品名' }).fill('Mac 上的小说')
@@ -132,6 +134,8 @@ test('Mac 应用菜单可打开设置，语言切换和后台关闭后可恢复'
     await expect(settings).toBeVisible()
     await expect(settings).toContainText('macOS ' + (arch === 'arm64' ? 'Apple Silicon' : 'Intel'))
     await page.screenshot({ path: info.outputPath('macos-english-settings.png'), animations: 'disabled' })
+    await settings.getByRole('button', { name: 'Close', exact: true }).click()
+    await checkNativeHeader(app, page, info, 'macos')
     await stop(app)
     app = await launch()
     page = await app.firstWindow()

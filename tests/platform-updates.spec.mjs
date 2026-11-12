@@ -89,16 +89,19 @@ test('平台安装包要求名称、可信地址、架构和校验值全部匹�
   expect(isNewerTag(compatible[0].tag, '0.8.0')).toBe(false)
 })
 
-test('Mac 专用发布计划不包含任何 Windows 安装包', () => {
+test('发布计划区分 Mac 专用和 Windows、Mac 共同发行版', () => {
+  const mac = validatePlan({ version, platforms: ['macos'] }, version)
+  expect(releaseAssets(mac).filter((name) => name.endsWith('.exe'))).toHaveLength(0)
+  expect(releaseAssets(mac).filter((name) => name.endsWith('.dmg'))).toHaveLength(2)
   const plan = validatePlan(JSON.parse(readFileSync('release.json', 'utf8')), version)
-  expect(plan.platforms).toEqual(['macos'])
-  expect(releaseAssets(plan).filter((name) => name.endsWith('.exe'))).toHaveLength(0)
+  expect(plan.platforms).toEqual(['windows', 'macos'])
+  expect(releaseAssets(plan).filter((name) => name.endsWith('.exe'))).toHaveLength(1)
   expect(releaseAssets(plan).filter((name) => name.endsWith('.dmg'))).toHaveLength(2)
   expect(() => validatePlan({ version, platforms: ['unknown'] }, version)).toThrow()
   expect(() => validatePlan({ version: '0.8.0', platforms: ['windows'] }, version)).toThrow()
 })
 
-test('发布前拒绝夹带 Windows 文件或不匹配的语言包', async () => {
+test('发布前拒绝夹带其他平台文件或不匹配的语言包', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'nw-release-plan-'))
   const run = promisify(execFile)
   try {
@@ -108,8 +111,9 @@ test('发布前拒绝夹带 Windows 文件或不匹配的语言包', async () =>
       else await writeFile(join(directory, name), 'disk image fixture')
     }
     await run(process.execPath, ['desktop/release-plan.mjs', '--verify-artifacts', directory])
-    expect(await readFile(join(directory, 'SHA256SUMS.txt'), 'utf8')).not.toContain('.exe')
-    const unexpected = join(directory, `New-World-Setup-${version}-x64.exe`)
+    const sums = await readFile(join(directory, 'SHA256SUMS.txt'), 'utf8')
+    expect(sums.trim().split('\n').map((line) => line.split('  ')[1]).sort()).toEqual(releaseAssets(plan).sort())
+    const unexpected = join(directory, `New-World-${version}-linux-x64.AppImage`)
     await writeFile(unexpected, 'unexpected')
     await expect(run(process.execPath, ['desktop/release-plan.mjs', '--verify-artifacts', directory])).rejects.toThrow('selected platforms')
     await rm(unexpected)
