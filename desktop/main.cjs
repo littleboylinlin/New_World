@@ -6,6 +6,7 @@ const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:
 const storageLocation = require('./storage-location.cjs')
 const closeBehavior = require('./close-behavior.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
+const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { releasePages, windowsReleaseList } = require('./windows-release.mjs')
 
 const appId = 'com.littleboylinlin.newworld'
@@ -56,29 +57,29 @@ function trustedFrame(event) {
   return frame === event.sender.mainFrame && frame?.url.startsWith(appUrl)
 }
 
-let windowsUpdater
+let desktopUpdater
 let languages
 
 async function performUpdate(event, action) {
   if (!trustedFrame(event)) throw new Error(t('main.invalidUpdateRequest'))
-  if (!windowsUpdater) return { ok: false, message: t('main.inAppUpdatesRequireAnInstalledWindowsX64') }
+  if (!desktopUpdater) return { ok: false, message: t(process.platform === 'darwin' ? 'macUpdate.installedAppRequired' : 'main.inAppUpdatesRequireAnInstalledWindowsX64') }
   try {
-    await action()
-    return { ok: true }
+    const result = await action()
+    return result === false ? { ok: true, canceled: true } : { ok: true }
   } catch (error) {
-    return { ok: false, message: error instanceof UpdateError ? t(error.message) : t('update.theUpdateFailedTryAgainLater') }
+    return { ok: false, message: (error instanceof UpdateError || error instanceof MacUpdateError) ? t(error.message) : t('update.theUpdateFailedTryAgainLater') }
   }
 }
 
 ipcMain.handle('new-world:download-update', (event, tag) => performUpdate(event, () => (
-  windowsUpdater.download(tag, (received, total) => {
+  desktopUpdater.download(tag, (received, total) => {
     if (!event.sender.isDestroyed()) event.sender.send('new-world:update-progress', { tag, received, total })
   })
 )))
 
 ipcMain.handle('new-world:install-update', (event, tag) => performUpdate(event, async () => {
   await session.defaultSession.flushStorageData()
-  await windowsUpdater.install(tag)
+  await desktopUpdater.install(tag)
   setImmediate(() => app.quit())
 }))
 
@@ -117,7 +118,7 @@ ipcMain.handle('new-world:set-storage-location', async (event) => {
     properties: ['openDirectory', 'createDirectory'],
   })
   if (canceled || !filePaths[0]) return null
-  const result = storageLocation.setLocation(appData, filePaths[0], { programDir: resolve(app.getPath('exe'), '..') })
+  const result = storageLocation.setLocation(appData, filePaths[0], { programDir: process.platform === 'darwin' ? resolve(app.getPath('exe'), '../../..') : resolve(app.getPath('exe'), '..') })
   if (result.error) throw new Error(t(result.error))
   scheduleRestart()
   return { path: result.to, custom: result.to !== defaultProfile, restart: true }
@@ -186,7 +187,8 @@ function quitApp() {
 }
 
 function createTray() {
-  tray = new Tray(nativeImage.createFromPath(join(__dirname, 'tray.png')))
+  const image = nativeImage.createFromPath(join(__dirname, 'tray.png'))
+  tray = new Tray(process.platform === 'darwin' ? image.resize({ width: 18, height: 18 }) : image)
   tray.setToolTip('New World')
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: t('main.showNewWorld'), click: showWindow },
@@ -197,7 +199,19 @@ function createTray() {
 
 function refreshMenus() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ label: 'New World', submenu: [
+      { role: 'about', label: t('macMenu.about') },
+      { type: 'separator' },
+      { label: t('settings.title'), accelerator: 'Cmd+,', click: () => { showWindow(); mainWindow?.webContents.send('new-world:open-settings') } },
+      { type: 'separator' },
+      { role: 'hide', label: t('macMenu.hide') },
+      { role: 'hideOthers', label: t('macMenu.hideOthers') },
+      { role: 'unhide', label: t('macMenu.showAll') },
+      { type: 'separator' },
+      { label: t('macMenu.quit'), accelerator: 'Cmd+Q', click: quitApp },
+    ] }] : []),
     { label: t('main.edit'), submenu: [
+      ...(process.platform === 'darwin' ? [{ role: 'undo', label: t('editor.undo') }, { role: 'redo', label: t('editor.redo') }, { type: 'separator' }] : []),
       { role: 'cut', label: t('main.cut') }, { role: 'copy', label: t('main.copy') },
       { role: 'paste', label: t('main.paste') }, { role: 'selectAll', label: t('common.selectAll') },
     ] },
@@ -217,15 +231,16 @@ function openWindow() {
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
     backgroundColor: '#f4eee2',
     // The app header is the title bar. Windows draws only the window buttons over its right end.
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#16130f', symbolColor: '#f4eee2', height: 46 },
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 16 } }
+      : { titleBarOverlay: { color: '#16130f', symbolColor: '#f4eee2', height: 46 } }),
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false,
     },
   })
   // The menu stays registered for its shortcuts but is never shown.
-  mainWindow.setMenuBarVisibility(false)
+  if (process.platform !== 'darwin') mainWindow.setMenuBarVisibility(false)
   const contents = mainWindow.webContents
   contents.on('will-navigate', (event) => event.preventDefault())
   contents.setWindowOpenHandler(({ url }) => {
@@ -270,11 +285,24 @@ if (!app.requestSingleInstanceLock()) {
       done({ cancel: request.url !== windowsReleaseList || request.method !== 'GET' })
     })
     if (app.isPackaged && process.platform === 'win32' && process.arch === 'x64') {
-      windowsUpdater = createWindowsUpdater({
+      desktopUpdater = createWindowsUpdater({
         network: session.fromPartition('new-world-update'),
         cache: join(app.getPath('temp'), 'New World Updates'),
         installDir: dirname(app.getPath('exe')),
         version: app.getVersion(),
+      })
+    }
+    if (app.isPackaged && process.platform === 'darwin' && ['arm64', 'x64'].includes(process.arch)) {
+      desktopUpdater = await createMacUpdater({
+        network: session.fromPartition('new-world-update'), version: app.getVersion(), arch: process.arch,
+        chooseDestination: async (name) => {
+          const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+            title: t('macUpdate.saveInstaller'), defaultPath: join(app.getPath('downloads'), name),
+            filters: [{ name: 'macOS DMG', extensions: ['dmg'] }],
+          })
+          return canceled ? undefined : filePath
+        },
+        openPackage: (path) => shell.openPath(path),
       })
     }
     const languageNetwork = session.fromPartition('new-world-language-packs')

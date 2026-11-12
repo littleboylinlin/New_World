@@ -10,12 +10,15 @@ export function mountUpdateView(
   setBusy: (busy: boolean, allowClose?: boolean) => void,
 ) {
   const desktop = window.newWorldDesktop
+  const macos = desktop?.platform === 'darwin'
+  const macArch = desktop?.arch === 'arm64' ? 'Apple Silicon' : 'Intel'
+  const platformLabel = macos ? `macOS ${macArch}` : 'Windows x64'
   const settings = document.querySelector<HTMLButtonElement>('#settings')!
   const banner = document.querySelector<HTMLElement>('#update-banner')!
   document.querySelector('#app-version')!.textContent = runningVersion
 
-  const currentVersion = element('p', 'update-version', t('update.runningVersion', [runningVersion, desktop ? ' · Windows x64' : '']))
-  const state = element('p', 'update-state', desktop ? t('update.checksWindowsStableReleasesOnGithub') : t('update.checksStableReleasesOnGithub'))
+  const currentVersion = element('p', 'update-version', t('update.runningVersion', [runningVersion, desktop ? ` · ${platformLabel}` : '']))
+  const state = element('p', 'update-state', macos ? t('macUpdate.checkReleases') : desktop ? t('update.checksWindowsStableReleasesOnGithub') : t('update.checksStableReleasesOnGithub'))
   state.setAttribute('role', 'status')
   const check = button(t('update.checkForUpdates'), 'button button-primary')
   const controls = element('div', 'update-actions')
@@ -27,10 +30,10 @@ export function mountUpdateView(
   const releaseLink = element('a', 'button button-quiet', t('update.viewGithubRelease'))
   releaseLink.target = '_blank'
   releaseLink.rel = 'noopener noreferrer'
-  const update = button(desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
+  const update = button(macos ? t('macUpdate.downloadInstaller') : desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
   const releaseActions = element('div', 'update-actions')
   releaseActions.append(releaseLink, update)
-  const updateHint = element('p', 'update-hint', desktop
+  const updateHint = element('p', 'update-hint', macos ? t('macUpdate.installHint') : desktop
     ? t('update.youCanKeepWritingDuringTheDownloadAfter')
     : t('update.reloadingLoadsTheVersionCurrentlyDeployedToThis'))
   const updateError = element('p', 'field-error')
@@ -63,7 +66,7 @@ export function mountUpdateView(
     release.hidden = result.kind !== 'available'
     updateError.hidden = true
     offeredTag = result.kind === 'available' ? result.tag : undefined
-    installerTag = result.kind === 'available' && result.windows ? result.tag : undefined
+    installerTag = result.kind === 'available' && (result.windows || result.macos) ? result.tag : undefined
     banner.hidden = !offeredTag || offeredTag === ignoredTag
     switch (result.kind) {
       case 'available':
@@ -73,8 +76,8 @@ export function mountUpdateView(
         releaseLink.href = result.url
         break
       case 'current': state.textContent = t('update.youAreUsingTheLatestVersion'); break
-      case 'ahead': state.textContent = t('update.theRunningVersionIsNewerThanTheLatest', [desktop ? ' Windows ' : '', result.tag]); break
-      case 'unpublished': state.textContent = desktop ? t('update.noVerifiableWindowsX64StableInstallerIsAvailable') : t('update.noComparableStableReleaseIsAvailableOnGithub'); break
+      case 'ahead': state.textContent = t('update.theRunningVersionIsNewerThanTheLatest', [desktop ? ` ${macos ? 'macOS' : 'Windows'} ` : '', result.tag]); break
+      case 'unpublished': state.textContent = macos ? t('macUpdate.noInstaller', [macArch]) : desktop ? t('update.noVerifiableWindowsX64StableInstallerIsAvailable') : t('update.noComparableStableReleaseIsAvailableOnGithub'); break
       case 'failed': state.textContent = result.message; break
     }
   }
@@ -132,17 +135,18 @@ export function mountUpdateView(
       updateStatus(t('update.preparingToDownload', [tag]))
       const downloaded = await desktop.downloadUpdate(tag!)
       if (!downloaded.ok) throw new Error(downloaded.message)
+      if (downloaded.canceled) { updateStatus(t('update.newVersionAvailable', [tag])); return }
 
       applying = true
       setBusy(true)
       openHelp()
       progress.hidden = true
-      updateStatus(t('update.installerVerifiedSavingTextAndInstalling'))
+      updateStatus(t(macos ? 'macUpdate.verified' : 'update.installerVerifiedSavingTextAndInstalling'))
       if (!await saveBeforeLeaving()) throw new Error(t('update.theCurrentTextIsNotSavedTheInstaller'))
       const installed = await desktop.installUpdate(tag!)
       if (!installed.ok) throw new Error(installed.message)
       restarting = true
-      updateStatus(t('update.updatingAndRestartingNewWorld'))
+      updateStatus(t(macos ? 'macUpdate.ready' : 'update.updatingAndRestartingNewWorld'))
     } catch (error) {
       updateError.textContent = error instanceof Error ? error.message : t('update.theUpdateFailedTryAgainLater')
       updateError.hidden = false

@@ -1,8 +1,10 @@
 # New World
 
-New World v0.8.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.9.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
 ## Windows 桌面版
+
+Windows 当前正式版为 [v0.8.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.8.0)。v0.9.0 仅发布 macOS 安装包，Windows 检查更新会跳过这个 Mac 专用版本。
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 
@@ -12,9 +14,21 @@ New World v0.8.0 是一个本地小说管理器。原创库用于创作和管理
 
 「设置」统一列出语言、关闭窗口时、存储位置、帮助与更新。Web 版会说明关闭方式和存储位置由浏览器管理。
 
+## macOS 桌面版
+
+支持 macOS 13 Ventura 及更新版本，分别提供 Apple Silicon（arm64）和 Intel（x64）的 DMG。在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载匹配芯片的 `New-World-<版本>-macos-arm64.dmg` 或 `New-World-<版本>-macos-x64.dmg`，打开后将 New World 拖入 Applications。
+
+应用使用本地签名，尚未使用 Apple Developer ID 签名或公证，首次启动时 macOS 可能要求确认来源。可用 `shasum -a 256 <安装包>` 与同一发行版的 `SHA256SUMS.txt` 核对。
+
+书库默认保存在 `~/Library/Application Support/NewWorld`，语言选择和缓存保存在 `~/Library/Application Support/NewWorld-languages`。替换或删除应用不会删除书库。首次打开时按系统语言只获取对应语言包，此后可离线使用。
+
+标题栏为红黄绿窗口按钮留出空间。应用菜单的「设置」可用 `⌘ + ,` 打开，编辑和保存使用 `⌘` 快捷键。关闭方式、存储位置和中英文切换均在同一设置列表中；选择「留后台」后可从菜单栏图标或 Dock 重新打开。
+
+Mac 检查更新只匹配本机芯片的 DMG。点击「下载安装包」后选择保存位置，下载时仍可写作。校验通过后会再次保存正文并退出，打开 DMG 后将新版拖入 Applications 替换旧版。Windows 安装包和其他芯片的 DMG 都不会触发 Mac 更新。
+
 ## 界面语言
 
-支持简体中文和英语。首次安装需要联网，安装器按系统界面语言只下载一种语言包：中文系统使用简体中文，其他系统使用英语。语言包独立于安装包发布，安装器会验证大小和 SHA-256；下载失败可重试，验证通过后才继续安装。
+支持简体中文和英语。Windows 首次安装、Mac 首次打开时需要联网，按系统界面语言只下载一种语言包：中文系统使用简体中文，其他系统使用英语。语言包独立于安装包发布，安装器会验证大小和 SHA-256；下载失败可重试，验证通过后才继续安装。
 
 在「设置 → 语言」选择语言并应用。应用会先保存正文，再获取尚未下载的语言包；下载失败时保留当前语言。已下载的语言可离线使用，重新打开应用和升级时沿用已选语言。作品名、章节名和正文不会随界面语言改变。Web 版首次按浏览器语言选择，只请求当前所需的语言包。
 
@@ -81,7 +95,7 @@ npm run dev
 | DOC | 是 | — | — | — | 保存及下载旧版 Word 原件。 |
 | ODT | 是 | 正文文本 | 部分 | — | 可提取标题、段落、基本列表、表格、常见样式与包内图。页式布局、重复单元格和复杂样式可能简化。 |
 | EPUB | 是 | 按阅读顺序显示正文 | 部分 | — | 转换章节、常见样式和包内图。固定版式、外部资源和 DRM 内容留在原件。 |
-| PDF | 是 | 逐页渲染 | 部分 | Windows 直接保存 PDF，Web 通过打印另存 | 提取可读文字，顺序可能需要调整。扫描件需先做 OCR，加密件需先解锁。导出会重新分页。 |
+| PDF | 是 | 逐页渲染 | 部分 | 桌面版直接保存 PDF，Web 通过打印另存 | 提取可读文字，顺序可能需要调整。扫描件需先做 OCR，加密件需先解锁。导出会重新分页。 |
 | MOBI、AZW3 | 是 | — | — | — | 保存及下载电子书原件。 |
 
 单文件导入上限 128 MiB，PDF 预览和转换上限 64 MiB，常规文本及压缩文档单个正文部件上限 16 MiB，RTF 上限 8 MiB。单张内嵌 PNG、JPEG、GIF 或 WebP 图片上限 4 MiB，转换的图片总量上限 24 MiB。转换过大的书籍或损坏、加密的文件时，应用会提示限制并保留原件。
@@ -108,8 +122,8 @@ Playwright 使用生产构建，覆盖旧库迁移、格式转换与原件校验
 
 更新检查测试通过拦截 GitHub 接口注入可控的正式版、预发布版和故障响应。运行时读取实际 GitHub Releases 接口。
 
-桌面版使用 Electron 打开相同的生产构建。在 Windows 运行 `npm run desktop` 可启动开发构建，`npm run build:windows` 生成 `dist-windows/` 内的 x64 NSIS 安装包。CI 在 Windows 运行实际安装包，验证离线读写、PDF 导出、应用内更新、原目录覆盖及重启后数据保留。
+桌面版使用 Electron 打开相同的生产构建。在 Windows 运行 `npm run desktop` 可启动开发构建，`npm run build:windows` 生成 `dist-windows/` 内的 x64 NSIS 安装包。CI 在 Windows 运行实际安装包，验证离线读写、PDF 导出、应用内更新、原目录覆盖及重启后数据保留。Mac 使用 `npm run build:macos` 和 `npm run test:macos`，在 Apple Silicon 与 Intel 原生 runner 上从 DMG 安装并验证。
 
-发布 Windows 新版时，在同一 PR 更新 `package.json` 与锁文件的版本，新增 `docs/releases/v<版本>.md`。合并到 `main` 后，CI 在 Web 与 Windows 检查均通过时生成正式 Release，上传安装包和 SHA-256 校验文件。也可以在 `main` 上手动运行 Checks，填写匹配的正式版本标签重试发布。
+发布新版时，在 `release.json` 明确指定版本与 `windows`、`macos` 目标平台；Mac 专用发布不上传 Windows 安装包。在同一 PR 更新 `package.json` 与锁文件的版本，新增 `docs/releases/v<版本>.md`。合并到 `main` 后，CI 在 Web、Windows 和两种 Mac 芯片的检查均通过时生成正式 Release，上传安装包和 SHA-256 校验文件。也可以在 `main` 上手动运行 Checks，填写匹配的正式版本标签重试发布。发布前会校验产物清单，拒绝与目标平台不符的文件。
 
 界面文案集中在 `locales/zh-CN.json` 和 `locales/en.json`。构建时检查两者的键与插值参数，并生成独立语言包和校验清单。桌面安装包包含校验清单，不包含语言包；Release 同时提供两个语言文件，安装器和应用只取得所选语言。修改文案后应更新两个源文件并随新版一起发布。

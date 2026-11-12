@@ -12,7 +12,7 @@ interface StorageResult {
 
 type CloseBehavior = 'quit' | 'background'
 
-type DesktopUpdateResult = { ok: true } | { ok: false; message: string }
+type DesktopUpdateResult = { ok: true; canceled?: boolean } | { ok: false; message: string }
 
 interface DesktopUpdateProgress {
   tag: string
@@ -22,6 +22,9 @@ interface DesktopUpdateProgress {
 
 interface Window {
   newWorldDesktop?: {
+    platform: string
+    arch: string
+    onSettingsRequested: (listener: () => void) => void
     getLanguage: () => Promise<import('../shared/language-packs.mjs').LanguagePack>
     setLanguage: (locale: import('../shared/language-packs.mjs').Locale) => Promise<import('../shared/language-packs.mjs').LanguagePack>
     reloadForLanguage: () => Promise<void>

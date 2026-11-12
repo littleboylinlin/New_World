@@ -71,6 +71,9 @@ export async function initializeLanguage() {
   const saved = cached(preference)
   const selected = isLocale(saved) ? saved : systemLocale(navigator.language)
   usePack(await webPack(selected))
+  if (!isLocale(saved)) {
+    try { localStorage.setItem(preference, selected) } catch { /* The browser may disallow persistent storage. */ }
+  }
 }
 
 export async function changeLanguage(selected: Locale) {
