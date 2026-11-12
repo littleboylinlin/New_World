@@ -28,6 +28,12 @@ body {
   flex-direction: column;
   background-image: radial-gradient(#e3dac8 1.1px, transparent 1.2px);
   background-size: 22px 22px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+:is(input, textarea, [contenteditable="true"], .novel-body, .reading-text, .export-paper, .export-plain, .storage-path, .update-notes) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 a { color: inherit; }
 button, input, select { font: inherit; }
@@ -50,7 +56,6 @@ h1, h2, h3, p { margin: 0; }
 .brand { display: inline-flex; flex: none; align-items: center; gap: 12px; white-space: nowrap; text-decoration: none; }
 .brand img { border-radius: 9px; }
 .brand-name { font-family: var(--display); font-size: 1.16rem; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
-.brand small { margin-inline-start: 8px; padding: 2px 7px; border: 1px solid #f4eee266; border-radius: 4px; font-family: var(--sans); font-size: .7rem; font-weight: 600; letter-spacing: .08em; }
 .local-label { display: inline-flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
 .local-label > [aria-hidden] { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); }
 .site-header .button { border-color: var(--paper); color: var(--paper); background: transparent; box-shadow: none; }
@@ -250,7 +255,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 @media screen {
   .desktop body { height: 100vh; min-height: 0; overflow: hidden; }
   .desktop .page { min-height: 0; overflow-y: auto; }
-  .desktop .site-header { flex: none; user-select: none; -webkit-app-region: drag; }
+  .desktop .site-header { flex: none; -webkit-app-region: drag; }
   .desktop .site-header :is(a, button) { -webkit-app-region: no-drag; }
   .desktop .header-inner { width: auto; min-height: 46px; margin: 0; padding-inline: calc(env(titlebar-area-x, 0px) + 14px) calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 14px); }
   .desktop.macos .header-inner { padding-inline: 84px 14px; }
@@ -287,7 +292,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 
 /* Use the space remaining after native window controls, rather than the window width. */
 @container header (max-width: 704px) {
-  .brand small, .header-actions .local-label, .trash-label { display: none; }
+  .header-actions .local-label, .trash-label { display: none; }
   .header-actions { gap: 8px; }
   .site-header .button { padding-inline: 9px; }
 }
