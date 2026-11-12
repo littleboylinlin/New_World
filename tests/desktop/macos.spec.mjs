@@ -44,12 +44,19 @@ test.beforeAll(async () => {
 test.afterAll(async () => { if (directory) await rm(directory, { recursive: true, force: true }) })
 
 async function launch() {
-  return electron.launch({ executablePath: executable, args: ['--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
+  const app = await electron.launch({ executablePath: executable, args: ['--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
+  const page = await app.firstWindow()
+  page.setDefaultNavigationTimeout(30_000)
+  await page.waitForLoadState('load')
+  await expect(page.locator('#app-version')).toHaveText('v' + version)
+  return app
 }
 
 async function stop(app) {
   if (!app) return
-  await app.evaluate(({ app }) => { setTimeout(() => app.exit(), 0) }).catch(() => {})
+  const exited = app.waitForEvent('close', { timeout: 10_000 })
+  void app.evaluate(({ app }) => { setTimeout(() => app.exit(), 0) }).catch(() => {})
+  await exited.catch(() => app.process().kill('SIGKILL'))
   await app.close().catch(() => {})
 }
 
