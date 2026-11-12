@@ -52,7 +52,7 @@ h1, h2, h3, p { margin: 0; }
 .brand-name { font-family: var(--display); font-size: 1.16rem; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; }
 .brand small { margin-inline-start: 8px; padding: 2px 7px; border: 1px solid #f4eee266; border-radius: 4px; font-family: var(--sans); font-size: .7rem; font-weight: 600; letter-spacing: .08em; }
 .local-label { display: inline-flex; align-items: center; gap: 8px; font-size: .78rem; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
-.local-label span { width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); }
+.local-label > [aria-hidden] { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--yellow); }
 .site-header .button { border-color: var(--paper); color: var(--paper); background: transparent; box-shadow: none; }
 .site-header .button:hover { color: var(--ink); background: var(--yellow); border-color: var(--yellow); transform: none; }
 .trash-count { min-width: 1.5em; padding: 0 5px; border-radius: 20px; color: var(--ink); background: var(--yellow); font-size: .74rem; font-variant-numeric: tabular-nums; text-align: center; }
