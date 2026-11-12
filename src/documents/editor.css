@@ -64,18 +64,18 @@
 .match-count { min-width: 3.4em; color: var(--ink); text-align: center; }
 .found-text { color: var(--on-yellow); background: var(--yellow); box-shadow: 0 0 0 1px var(--ink); }
 .editor-paper { padding: clamp(14px, 3vw, 38px) clamp(11px, 2.4vw, 28px); border-radius: 0 0 10px 10px; background: var(--surface); }
-.novel-body { max-width: 44rem; min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: 1.95; overflow-wrap: anywhere; caret-color: var(--accent); }
+.novel-body { max-width: var(--text-width, 44rem); min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: var(--text-line-height, 1.95); overflow-wrap: anywhere; caret-color: var(--accent); }
 .novel-body::selection, .novel-body ::selection { background: var(--tint); }
 .novel-body[contenteditable="true"]:focus { outline: none; }
 .edition-reading .novel-body { cursor: text; }
 .edition-reading .editor-tools-row { justify-content: flex-end; }
-.novel-body p { margin-block: 0 1em; }
+.novel-body p { margin-block: 0 var(--paragraph-gap, 1em); text-indent: var(--first-indent, 0); }
 .novel-body h1, .novel-body h2, .novel-body h3, .novel-body h4, .novel-body h5, .novel-body h6 { margin-block: .7em .45em; font-family: inherit; font-weight: 900; line-height: 1.4; letter-spacing: 0; scroll-margin-top: 64px; }
 .novel-body h1 { font-size: 1.8em; }
 .novel-body h2 { font-size: 1.42em; }
 .novel-body h3 { font-size: 1.23em; }
 .novel-body ul, .novel-body ol { padding-inline-start: 1.6em; }
-.novel-body li p { margin-block: .25em; }
+.novel-body li p { margin-block: .25em; text-indent: 0; }
 .novel-body pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--code-bg); padding: .6em; }
 .novel-body blockquote { margin-inline: 0; padding-inline-start: 1em; border-inline-start: 5px solid var(--accent); }
 .novel-body hr { margin-block: 1.4em; border: 0; border-top: 3px solid var(--ink); }
@@ -133,4 +133,21 @@
   .find-toggle svg { width: 20px; height: 20px; }
   .edition-commands { gap: 8px; }
   .novel-body { font-size: var(--reading-size, 1.04rem); }
+}
+
+/* Focus mode: only the chapter text and a faded toolbar stay on the page. */
+.focus-toggle { flex: none; border-color: var(--ink); background: var(--sheet); }
+.focus-writing body { background-image: none; }
+.focus-writing :is(.breadcrumbs, .page-heading, .version-navigation, .edition-header, .conversion-info, .chapter-navigation, .site-footer, .update-banner) { display: none; }
+.focus-writing .main-content { padding-block: 14px 40px; }
+.focus-writing .edition-layout { grid-template-columns: minmax(0, 1fr); }
+.focus-writing .writing-panel { border-color: transparent; background: transparent; box-shadow: none; }
+.focus-writing .writing-header { border-bottom-color: transparent; }
+.focus-writing .editor-tools-row { border-bottom-color: transparent; background: var(--paper); opacity: .35; transition: opacity 160ms ease; }
+.focus-writing .editor-tools-row:is(:hover, :focus-within, :has([aria-expanded="true"])) { opacity: 1; }
+.focus-writing .editor-paper { border-radius: 10px; }
+
+@media (max-width: 779px) {
+  .focus-toggle { font-size: 0; gap: 0; }
+  .focus-toggle svg { width: 20px; height: 20px; }
 }

@@ -1,9 +1,9 @@
 import { t } from './i18n'
 import {
-  appearance, cjkFonts, latinFontNames, latinFonts, maxSize, minSize, onAppearanceChange, openAppearanceSettings,
-  shownSize, stepSize, themes, updateAppearance,
+  appearance, cjkFonts, latinFontNames, latinFonts, lineHeights, maxSize, minSize, onAppearanceChange, openAppearanceSettings,
+  paragraphSpacings, shownSize, stepSize, textWidths, themes, updateAppearance,
 } from './appearance'
-import type { Appearance, CjkFont, LatinFont, Theme } from './appearance'
+import type { Appearance, CjkFont, LatinFont, LineHeight, ParagraphSpacing, TextWidth, Theme } from './appearance'
 import { button, element } from './ui'
 
 let groups = 0
@@ -18,6 +18,20 @@ const latinLabel = (font: LatinFont) => font === 'system' ? t('appearance.system
 const cjkLabel = (font: CjkFont) => ({
   auto: t('appearance.cjkAuto'), song: t('appearance.cjkSong'), hei: t('appearance.cjkHei'), kai: t('appearance.cjkKai'),
 })[font]
+
+const lineHeightLabel = (value: LineHeight) => ({
+  compact: t('appearance.lineCompact'), standard: t('appearance.standard'), relaxed: t('appearance.lineRelaxed'),
+})[value]
+
+const paragraphLabel = (value: ParagraphSpacing) => ({
+  none: t('appearance.paragraphNone'), standard: t('appearance.standard'), wide: t('appearance.paragraphWide'),
+})[value]
+
+const widthLabel = (value: TextWidth) => ({
+  narrow: t('appearance.widthNarrow'), standard: t('appearance.standard'), wide: t('appearance.widthWide'),
+})[value]
+
+const switches = ['off', 'on'] as const
 
 /** Keeps a control in step with changes made elsewhere until the control leaves the page. */
 function follow(node: HTMLElement, paint: (value: Appearance) => void) {
@@ -109,6 +123,24 @@ export function mountAppearanceSettings(section: HTMLElement) {
     heading(t('appearance.latinFont')), latin,
     heading(t('appearance.cjkFont')), cjk,
     heading(t('appearance.textSize')), sizeControls(true),
+    heading(t('appearance.lineHeight')),
+    radioGroup(t('appearance.lineHeight'), 'settings-options choice-options', lineHeights,
+      (value) => [element('span', '', lineHeightLabel(value))], (value) => updateAppearance({ lineHeight: value }), (value) => value.lineHeight),
+    heading(t('appearance.paragraphSpacing')),
+    radioGroup(t('appearance.paragraphSpacing'), 'settings-options choice-options', paragraphSpacings,
+      (value) => [element('span', '', paragraphLabel(value))], (value) => updateAppearance({ paragraph: value }), (value) => value.paragraph),
+    heading(t('appearance.indent')),
+    radioGroup(t('appearance.indent'), 'settings-options', switches,
+      (value) => [element('span', '', value === 'on' ? t('appearance.indentOn') : t('appearance.indentOff'))],
+      (value) => updateAppearance({ indent: value === 'on' }), (value) => value.indent ? 'on' : 'off'),
+    heading(t('appearance.textWidth')),
+    radioGroup(t('appearance.textWidth'), 'settings-options choice-options', textWidths,
+      (value) => [element('span', '', widthLabel(value))], (value) => updateAppearance({ width: value }), (value) => value.width),
+    heading(t('appearance.spellcheck')),
+    radioGroup(t('appearance.spellcheck'), 'settings-options', switches,
+      (value) => [element('span', '', value === 'on' ? t('appearance.on') : t('appearance.off'))],
+      (value) => updateAppearance({ spellcheck: value === 'on' }), (value) => value.spellcheck ? 'on' : 'off'),
+    element('p', 'dialog-help', t('appearance.spellcheckHint')),
     element('p', 'dialog-help', t('appearance.hint')),
   )
 }
@@ -144,8 +176,15 @@ export function appearanceMenu() {
   follow(font, (value) => { font.value = value.latin })
   fontLabel.append(font)
 
+  const spelling = element('label', 'appearance-check')
+  const spellingBox = element('input')
+  spellingBox.type = 'checkbox'
+  spellingBox.addEventListener('change', () => updateAppearance({ spellcheck: spellingBox.checked }))
+  follow(spellingBox, (value) => { spellingBox.checked = value.spellcheck })
+  spelling.append(spellingBox, element('span', '', t('appearance.spellcheck')))
+
   const more = button(t('appearance.more'), 'appearance-more')
-  panel.append(themeRow, sizeControls(false), fontLabel, more)
+  panel.append(themeRow, sizeControls(false), fontLabel, spelling, more)
   menu.append(toggle, panel)
 
   function setOpen(open: boolean, returnFocus = false) {

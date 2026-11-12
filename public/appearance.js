@@ -8,5 +8,10 @@
   root.dataset.theme = pick(saved.theme, ['system', 'white', 'dark', 'beige'], 'system')
   root.dataset.latinFont = pick(saved.latin, ['times', 'georgia', 'lora', 'inter', 'system'], 'times')
   root.dataset.cjkFont = pick(saved.cjk, ['auto', 'song', 'hei', 'kai'], 'auto')
+  root.dataset.lineHeight = pick(saved.lineHeight, ['compact', 'standard', 'relaxed'], 'standard')
+  root.dataset.paragraph = pick(saved.paragraph, ['none', 'standard', 'wide'], 'standard')
+  root.dataset.indent = saved.indent === true ? 'on' : 'off'
+  root.dataset.width = pick(saved.width, ['narrow', 'standard', 'wide'], 'standard')
+  root.spellcheck = false
   if (typeof saved.size === 'number' && saved.size >= 14 && saved.size <= 28) root.style.setProperty('--reading-size', Math.round(saved.size) + 'px')
 })()

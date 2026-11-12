@@ -4,9 +4,15 @@
 export const themes = ['system', 'white', 'dark', 'beige'] as const
 export const latinFonts = ['times', 'georgia', 'lora', 'inter', 'system'] as const
 export const cjkFonts = ['auto', 'song', 'hei', 'kai'] as const
+export const lineHeights = ['compact', 'standard', 'relaxed'] as const
+export const paragraphSpacings = ['none', 'standard', 'wide'] as const
+export const textWidths = ['narrow', 'standard', 'wide'] as const
 export type Theme = typeof themes[number]
 export type LatinFont = typeof latinFonts[number]
 export type CjkFont = typeof cjkFonts[number]
+export type LineHeight = typeof lineHeights[number]
+export type ParagraphSpacing = typeof paragraphSpacings[number]
+export type TextWidth = typeof textWidths[number]
 
 export interface Appearance {
   theme: Theme
@@ -14,6 +20,13 @@ export interface Appearance {
   cjk: CjkFont
   /** Text size in pixels for reading and writing, or null for the built-in size. */
   size: number | null
+  lineHeight: LineHeight
+  paragraph: ParagraphSpacing
+  /** Indent the first line of each paragraph by two characters. */
+  indent: boolean
+  width: TextWidth
+  /** Underline misspelt English words while writing. */
+  spellcheck: boolean
 }
 
 export const minSize = 14
@@ -21,7 +34,10 @@ export const maxSize = 28
 export const defaultSize = 18
 const key = 'new-world:appearance'
 const changed = 'new-world:appearance-change'
-export const defaults: Appearance = { theme: 'system', latin: 'times', cjk: 'auto', size: null }
+export const defaults: Appearance = {
+  theme: 'system', latin: 'times', cjk: 'auto', size: null,
+  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false,
+}
 
 /** English names are the fonts' own names and are not translated. */
 export const latinFontNames: Record<LatinFont, string> = {
@@ -41,6 +57,11 @@ function normalize(value: unknown): Appearance {
     latin: pick(record.latin, latinFonts, defaults.latin),
     cjk: pick(record.cjk, cjkFonts, defaults.cjk),
     size,
+    lineHeight: pick(record.lineHeight, lineHeights, defaults.lineHeight),
+    paragraph: pick(record.paragraph, paragraphSpacings, defaults.paragraph),
+    indent: record.indent === true,
+    width: pick(record.width, textWidths, defaults.width),
+    spellcheck: record.spellcheck === true,
   }
 }
 
@@ -55,6 +76,12 @@ function apply(value: Appearance) {
   root.dataset.theme = value.theme
   root.dataset.latinFont = value.latin
   root.dataset.cjkFont = value.cjk
+  root.dataset.lineHeight = value.lineHeight
+  root.dataset.paragraph = value.paragraph
+  root.dataset.indent = value.indent ? 'on' : 'off'
+  root.dataset.width = value.width
+  // Only the chapter text is spell-checked, and only when asked for; titles and forms never are.
+  root.spellcheck = false
   if (value.size === null) root.style.removeProperty('--reading-size')
   else root.style.setProperty('--reading-size', `${value.size}px`)
   // The desktop app opens its next window with this theme's background.

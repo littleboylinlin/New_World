@@ -6,6 +6,7 @@ const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:
 const storageLocation = require('./storage-location.cjs')
 const closeBehavior = require('./close-behavior.cjs')
 const windowTheme = require('./window-theme.cjs')
+const spelling = require('./spelling.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
@@ -296,13 +297,22 @@ function openWindow() {
       : { titleBarOverlay: { color: '#16130f', symbolColor: '#f4eee2', height: 46 } }),
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
-      sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false,
+      sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: true,
     },
   })
   // The menu stays registered for its shortcuts but is never shown.
   if (process.platform !== 'darwin') mainWindow.setMenuBarVisibility(false)
   const contents = mainWindow.webContents
   contents.on('will-navigate', (event) => event.preventDefault())
+  // Spelling suggestions for the chapter text, which is only checked when the writer turns it on.
+  contents.on('context-menu', (_event, params) => {
+    const template = spelling.menuTemplate(params, {
+      replace: (word) => contents.replaceMisspelling(word),
+      learn: (word) => contents.session.addWordToSpellCheckerDictionary(word),
+      t,
+    })
+    if (template && mainWindow) Menu.buildFromTemplate(template).popup({ window: mainWindow })
+  })
   contents.setWindowOpenHandler(({ url }) => {
     // Only the app's own release pages may leave this window.
     if (url.startsWith(releasePages + 'tag/') && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice((releasePages + 'tag/').length))) {
@@ -344,6 +354,14 @@ if (!app.requestSingleInstanceLock()) {
     const local = session.defaultSession
     local.setPermissionRequestHandler((_contents, _permission, allow) => allow(false))
     local.setPermissionCheckHandler(() => false)
+    if (process.platform !== 'darwin') {
+      try {
+        spelling.installDictionaries(profile)
+        local.setSpellCheckerLanguages(spelling.languages)
+      } catch (error) {
+        console.warn('New World spelling:', error.code || error.message)
+      }
+    }
     local.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (request, done) => {
       done({ cancel: request.url !== windowsReleaseList || request.method !== 'GET' })
     })

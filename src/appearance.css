@@ -51,6 +51,15 @@
 .font-hei { font-family: var(--latin-font), var(--cjk-hei), sans-serif; }
 .font-kai { font-family: var(--latin-font), var(--cjk-kai), serif; }
 
+/* Text layout for reading and writing. "Standard" leaves each view's own values. */
+:root[data-line-height="compact"] { --text-line-height: 1.6; }
+:root[data-line-height="relaxed"] { --text-line-height: 2.3; }
+:root[data-paragraph="none"] { --paragraph-gap: 0; }
+:root[data-paragraph="wide"] { --paragraph-gap: 1.7em; }
+:root[data-indent="on"] { --first-indent: 2em; }
+:root[data-width="narrow"] { --text-width: 34rem; }
+:root[data-width="wide"] { --text-width: 58rem; }
+
 /*
  * Colours. White and dark share one list through light-dark(); "system" follows the
  * operating system. Beige replaces the light values with paper tones.
@@ -156,3 +165,8 @@
 @media print {
   :root.printing-edition { color-scheme: light; }
 }
+
+.settings-options.choice-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.choice-options .settings-option { min-height: 48px; }
+.appearance-check { display: flex; align-items: center; gap: 9px; font-size: .86rem; font-weight: 750; cursor: pointer; }
+.appearance-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
