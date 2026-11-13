@@ -1,4 +1,5 @@
 import { expect, test } from './app-test.mjs'
+import { bookAction } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const total = (page) => page.locator('.stat-total .stat-value')
@@ -138,7 +139,7 @@ test('删除作品后总字数归零，但全局写作历史保留', async ({ pa
   await expect(streak(page)).toHaveText('1')
 
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await bookAction(page, '删除', '短暂的手稿')
   await page.getByRole('dialog', { name: '删除作品？' }).getByRole('button', { name: '确认删除' }).click()
   await expect(page.getByText('还没有原创作品')).toBeVisible()
 
