@@ -297,3 +297,10 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
+
+.archive-entry { display: inline-flex; align-items: center; gap: 9px; margin-top: 22px; padding: 9px 16px; border: 2px solid var(--ink); border-radius: 10px; color: var(--ink); background: var(--sheet); box-shadow: 3px 3px 0 var(--edge); font-weight: 800; text-decoration: none; }
+.archive-entry svg { width: 20px; height: 20px; }
+.archive-entry:hover { color: var(--on-yellow); background: var(--yellow); }
+.archive-count:empty { display: none; }
+.archive-view-link { margin-inline-start: auto; color: var(--muted); font-size: .86rem; font-weight: 750; }
+.archive-view-link:hover { color: var(--ink); }

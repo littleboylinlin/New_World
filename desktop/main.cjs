@@ -1,5 +1,5 @@
 const { t, createLanguageStore } = require('./language.cjs')
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, session, shell, Tray } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, safeStorage, session, shell, Tray } = require('electron')
 const { mkdirSync, readFileSync } = require('node:fs')
 const { readFile, stat, writeFile } = require('node:fs/promises')
 const { basename, dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
@@ -7,6 +7,7 @@ const storageLocation = require('./storage-location.cjs')
 const closeBehavior = require('./close-behavior.cjs')
 const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
+const backups = require('./backup.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
@@ -307,6 +308,102 @@ ipcMain.handle('new-world:spelling-remove', async (event, language) => {
     await new Promise((resolve) => setTimeout(resolve, 150))
   }
   return spellingState()
+})
+
+// Library backups: the page builds each backup file; the main process keeps the settings, the
+// password (encrypted with the system keychain) and writes the files into the chosen folder.
+const maxBackupBytes = 2 * 1024 * 1024 * 1024
+
+function backupState() {
+  const config = backups.readConfig(appData)
+  const documents = app.getPath('documents')
+  return {
+    frequency: config.frequency, folder: backups.folderOf(config, documents), defaultFolder: backups.defaultFolder(documents),
+    custom: Boolean(config.folder), encrypt: config.encrypt, lastAutomatic: config.lastAutomatic,
+    // Asking the macOS keychain can show a prompt, so only Linux, where it may be missing, is checked up front.
+    due: backups.due(config), canEncrypt: process.platform !== 'linux' || safeStorage.isEncryptionAvailable(),
+  }
+}
+
+function updateBackups(change) {
+  backups.writeConfig(appData, { ...backups.readConfig(appData), ...change })
+  return backupState()
+}
+
+function backupRequest(event) {
+  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+}
+
+ipcMain.handle('new-world:backup-state', (event) => {
+  backupRequest(event)
+  return backupState()
+})
+
+ipcMain.handle('new-world:backup-set-frequency', (event, frequency) => {
+  backupRequest(event)
+  if (!backups.frequencies.includes(frequency)) throw new Error(t('main.invalidSettingsRequest'))
+  return updateBackups({ frequency })
+})
+
+ipcMain.handle('new-world:backup-choose-folder', async (event) => {
+  backupRequest(event)
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: t('backup.chooseFolderTitle'), defaultPath: backupState().folder, properties: ['openDirectory', 'createDirectory'],
+  })
+  if (picked.canceled || !picked.filePaths[0]) return null
+  return updateBackups({ folder: picked.filePaths[0] })
+})
+
+ipcMain.handle('new-world:backup-reset-folder', (event) => {
+  backupRequest(event)
+  return updateBackups({ folder: null })
+})
+
+ipcMain.handle('new-world:backup-set-encryption', (event, password) => {
+  backupRequest(event)
+  if (password === null) return updateBackups({ encrypt: false, password: null })
+  if (typeof password !== 'string' || !password || password.length > 256) throw new Error(t('main.invalidSettingsRequest'))
+  if (!safeStorage.isEncryptionAvailable()) throw new Error(t('backup.keychainUnavailable'))
+  return updateBackups({ encrypt: true, password: safeStorage.encryptString(password).toString('base64') })
+})
+
+ipcMain.handle('new-world:backup-password', (event) => {
+  backupRequest(event)
+  const config = backups.readConfig(appData)
+  if (!config.encrypt || !config.password) return null
+  return safeStorage.decryptString(Buffer.from(config.password, 'base64'))
+})
+
+ipcMain.handle('new-world:backup-save', (event, name, bytes, automatic) => {
+  backupRequest(event)
+  if (typeof name !== 'string' || !(bytes instanceof Uint8Array) || bytes.length > maxBackupBytes) throw new Error(t('main.invalidSettingsRequest'))
+  const folder = backupState().folder
+  const path = backups.saveBackup(folder, name, bytes)
+  if (automatic === true) {
+    backups.writeConfig(appData, { ...backups.readConfig(appData), lastAutomatic: Date.now() })
+    backups.pruneAutomatic(folder)
+  }
+  return { path, state: backupState() }
+})
+
+ipcMain.handle('new-world:backup-open', async (event) => {
+  backupRequest(event)
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: t('backup.openTitle'), defaultPath: backupState().folder, properties: ['openFile'],
+    filters: [{ name: t('backup.files'), extensions: ['zip'] }],
+  })
+  const path = picked.filePaths[0]
+  if (picked.canceled || !path) return null
+  if ((await stat(path)).size > maxBackupBytes) throw new Error(t('backup.tooLarge'))
+  return { name: basename(path), bytes: await readFile(path) }
+})
+
+ipcMain.handle('new-world:backup-show-folder', async (event) => {
+  backupRequest(event)
+  const folder = backupState().folder
+  mkdirSync(folder, { recursive: true })
+  const problem = await shell.openPath(folder)
+  if (problem) throw new Error(problem)
 })
 
 function windowBackground() {

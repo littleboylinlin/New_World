@@ -2,11 +2,11 @@ import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { createNovel } from './documents/store'
-import { deleteBook, libraryChanges, listBooks, maxTitleLength, renameBook, storageError } from './library'
+import { deleteBook, libraryChanges, listArchived, listShelf, maxTitleLength, renameBook, setArchived, storageError } from './library'
 import type { Book, LibraryId } from './library'
-import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
+import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
-import { offerUndo } from './undo'
+import { offerArchiveUndo, offerUndo } from './undo'
 
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
@@ -35,15 +35,23 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     cards.append(card)
   }
 
-  home.append(intro, stagger(cards))
+  // Archived works sit outside both libraries, so their entry is on the home page.
+  const archive = link('#/archive', '', 'archive-entry')
+  archive.setAttribute('aria-label', t('archive.title'))
+  const archiveCount = element('span', 'list-count archive-count')
+  archive.append(icon('archive'), element('span', '', t('archive.title')), archiveCount)
+  home.append(intro, stagger(cards), archive)
   root.append(home)
 
   async function refreshCounts() {
+    void listArchived().then((books) => {
+      if (!signal.aborted) archiveCount.textContent = books.length ? String(books.length) : ''
+    }, () => {})
     await Promise.all(libraryIds.map(async (id) => {
       const count = counts.get(id)!
       try {
-        const books = await listBooks(id)
-        if (!signal.aborted) count.textContent = t('shelf.workS', [books.filter((book) => !book.workId).length])
+        const books = await listShelf(id)
+        if (!signal.aborted) count.textContent = t('shelf.workS', [books.length])
       } catch {
         if (!signal.aborted) count.textContent = t('shelf.libraryUnavailable')
       }
@@ -144,10 +152,21 @@ function bookCard(root: HTMLElement, book: Book) {
     ? element('span', 'file-details', t('continuation.continuationProject')) : fileDetails(book))
   const controls = element('div', 'book-controls')
   const rename = button(t('shelf.rename'), 'button button-quiet button-small', 'edit')
+  const archive = button(t('archive.archive'), 'button button-quiet button-small', 'archive')
   const remove = button(t('shelf.delete'), 'button button-quiet button-small remove-button', 'trash')
   rename.addEventListener('click', () => manageBook(root, book, 'rename'))
+  archive.addEventListener('click', async () => {
+    archive.disabled = true
+    try {
+      await setArchived(book.library, book.id, true)
+      offerArchiveUndo(book.title, () => setArchived(book.library, book.id, false))
+    } catch (error) {
+      archive.disabled = false
+      row.append(notice(storageError(error), true))
+    }
+  })
   remove.addEventListener('click', () => manageBook(root, book, 'delete'))
-  controls.append(rename, remove)
+  controls.append(rename, archive, remove)
   row.append(open, controls)
   return row
 }
@@ -174,7 +193,8 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   const listHeader = element('div', 'list-heading')
   const listTitle = element('h2', '', id === 'reference' ? t('shelf.groupedBySourceWork') : t('shelf.allWorks'))
   const count = element('span', 'list-count')
-  listHeader.append(listTitle, count)
+  const archived = link('#/archive', t('archive.view'), 'archive-view-link')
+  listHeader.append(listTitle, count, archived)
   const content = element('div', 'shelf-content')
   content.append(notice(t('shelf.loadingLocalLibrary')))
   panel.append(breadcrumbs(id), header, progress, listHeader, content)
@@ -186,7 +206,7 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   async function refresh() {
     const current = ++requestNumber
     try {
-      const books = (await listBooks(id)).filter((book) => !book.workId)
+      const books = await listShelf(id)
       if (signal.aborted || current !== requestNumber) return
       count.textContent = t('shelf.workS308', [books.length])
       if (books.length) {

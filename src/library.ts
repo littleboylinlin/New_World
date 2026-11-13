@@ -11,6 +11,8 @@ interface BookIdentity {
   title: string
   importedAt: number
   workId?: string
+  /** Set while the work is archived: kept out of its library's shelf but otherwise unchanged. */
+  archivedAt?: number
 }
 
 export interface ImportedBook extends BookIdentity {
@@ -138,6 +140,35 @@ export async function announced<T>(change: Promise<T>) {
 
 export function trashEntry(kind: TrashEntry['kind'], library: LibraryId, bookId: string, title: string): TrashEntry {
   return { id: crypto.randomUUID(), kind, library, bookId, title, deletedAt: Date.now(), books: [], files: [], editions: [], chapters: [] }
+}
+
+/** Works on the shelf: every book except archived works (originals of a continuation project stay). */
+export async function listShelf(library: LibraryId): Promise<Book[]> {
+  return (await listBooks(library)).filter((book) => !book.workId && !book.archivedAt)
+}
+
+/** Archived works of both libraries, most recently archived first. */
+export async function listArchived(): Promise<Book[]> {
+  const db = await openDatabase()
+  const books: Book[] = await resultOf(db.transaction('books').objectStore('books').getAll())
+  return books.filter((book) => !book.workId && book.archivedAt).sort((a, b) => b.archivedAt! - a.archivedAt!)
+}
+
+export async function setArchived(library: LibraryId, id: string, archived: boolean) {
+  const db = await openDatabase()
+  const tx = db.transaction('books', 'readwrite', { durability: 'strict' })
+  const books = tx.objectStore('books')
+  const { step, done } = writing<Book>(tx)
+  const request = books.get([library, id])
+  request.onsuccess = step(() => {
+    const book: Book | undefined = request.result
+    if (!book || book.workId) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+    const { archivedAt: _previous, ...rest } = book
+    const next = (archived ? { ...rest, archivedAt: Date.now() } : rest) as Book
+    books.put(next)
+    return next
+  })
+  return announced(done())
 }
 
 export async function listBooks(library: LibraryId): Promise<Book[]> {

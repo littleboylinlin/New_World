@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.11.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.12.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.11.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.11.0). It adds appearance settings (themes, English and Chinese fonts, text size and layout), English word counts, English spell check, and focus mode. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.12.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.12.0). It adds archiving works, plus library backups that can be encrypted, automatic backups on the desktop, and restoring from a backup. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,7 +36,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.11.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.12.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -98,6 +98,21 @@ Deleting a work, a continuation project's source, an edited version, or a chapte
 - Trash keeps content for 30 days; expired items are cleaned up the next time the app opens. Trashed content still occupies local storage.
 - Restored chapters return to their original order. When restoring an edited version whose name already exists, "restored" is appended to the name.
 - If the owning work or version was also deleted, restore it first. If the same source file was re-imported after deletion, delete the newly imported copy first.
+
+## Archive
+
+Every work card on the shelves has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" on the home page and "View archive" beside each library list show all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
+
+## Backup and restore
+
+"Settings → Backups" packs both libraries, every edition, the original files and the trash into one `.zip` file.
+
+- Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
+- Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
+- Backup location (desktop): `New World Backups` in Documents by default; choose another folder, go back to the default, or open the folder.
+- Encryption: none, or a password (AES-256, which tools such as 7-Zip can open). The desktop app keeps the password encrypted with the system keychain, so automatic backups are encrypted too; the web version asks for a password with each backup. A forgotten password cannot be recovered.
+- Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
+- Device settings such as appearance, language and storage location are not part of a backup.
 
 ## Format support
 
