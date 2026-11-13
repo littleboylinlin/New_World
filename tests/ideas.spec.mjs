@@ -97,10 +97,16 @@ test('网页版 Ctrl+Alt+N 弹出记灵感，默认关联最近打开的作品',
 
 test('编辑器侧边的灵感可以插入正文，章节目录右键有章节操作', async ({ page }) => {
   await newNovel(page, '潮汐', '第一段。')
+  // The ideas sit under the chapter list, open where there is room, and the toolbar button folds them.
   const toggle = page.locator('.ideas-toggle')
-  await toggle.click()
   const panel = page.getByRole('region', { name: '这部作品的灵感' })
   await expect(panel).toContainText('这部作品还没有灵感。')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  await toggle.click()
+  await expect(panel).toBeHidden()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await toggle.click()
+  await expect(panel).toBeVisible()
   await panel.getByRole('button', { name: '记灵感' }).click()
   const dialog = page.getByRole('dialog', { name: '记灵感' })
   await expect(dialog.getByRole('combobox', { name: '关联作品' }).locator('option:checked')).toHaveText('潮汐')
@@ -109,10 +115,14 @@ test('编辑器侧边的灵感可以插入正文，章节目录右键有章节�
   await expect(dialog).toHaveCount(0)
   await expect(page.locator('.ideas-count')).toHaveText('1')
 
+  // Write a long chapter: the ideas stay in view at its end, and go in where the cursor is.
   await textArea(page).click()
   await page.keyboard.press('ControlOrMeta+End')
+  for (let line = 0; line < 40; line += 1) await page.keyboard.press('Enter')
+  await page.keyboard.type('结尾。')
+  await expect(panel.getByRole('button', { name: '插入' })).toBeInViewport()
   await panel.getByRole('button', { name: '插入' }).click()
-  await expect(textArea(page)).toContainText('月亮把海拉走了')
+  await expect(textArea(page)).toHaveText(/结尾。\s*月亮把海拉走了\s*$/)
   await expect(panel.getByRole('button', { name: '标为未用' })).toBeVisible()
   await expect(page.locator('.ideas-count')).toHaveText('')
 

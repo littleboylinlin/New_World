@@ -2,11 +2,11 @@
 
 [English](README.en.md)
 
-New World v0.14.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.14.1 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
 ## Windows 桌面版
 
-Windows 与 macOS 当前正式版均为 [v0.14.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.14.0)。作品卡片改为封面加下拉菜单，支持自定义封面；新增灵感速记、托盘菜单和右键菜单。检查更新时各自只选择本平台的安装包。
+Windows 与 macOS 当前正式版均为 [v0.14.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.14.1)。弹窗和菜单换了更轻、适配各主题的新样式，菜单统一向下展开；灵感面板移到章节目录下方，随正文固定在侧边。检查更新时各自只选择本平台的安装包。
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 
@@ -36,7 +36,7 @@ Mac 检查更新只匹配本机芯片的 DMG。点击「更新并重启」后，
 
 在「设置 → 语言」选择语言并应用。应用会先保存正文，再获取尚未下载的语言包；下载失败时保留当前语言。已下载的语言可离线使用，重新打开应用和升级时沿用已选语言。作品名、章节名和正文不会随界面语言改变。Web 版首次按浏览器语言选择，只请求当前所需的语言包。
 
-语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.14.0\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
+语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.14.1\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
 
 窗口顶部的应用栏同时是标题栏，可以拖动窗口。缩放用 `Ctrl` 加 `+`、`-`、`0`，全屏用 `F11`。桌面书库与浏览器书库分开保存，现有浏览器数据仍可在原浏览器和地址中访问。
 
@@ -106,7 +106,7 @@ npm run dev
 - 桌面版：在任何地方按全局快捷键（默认 `Ctrl + Alt + N`，Mac 为 `⌃⌥N`）弹出小窗，`Enter` 保存，`Shift + Enter` 换行，`Esc` 关闭。快捷键可在「设置 → 灵感速记」改为 `Ctrl + Shift + Space`、`Alt + Shift + N` 或关闭；被其他程序占用时会提示。也可以从托盘菜单、Windows 任务栏图标的右键菜单或 Mac 的 Dock 菜单打开。
 - Web 版：在 New World 页面里按 `Ctrl + Alt + N` 打开记灵感的弹窗。
 - 灵感默认关联最近打开的作品，也可以不关联。首页的「灵感」列出全部灵感，未用的排在前面，可以标记已用、改关联作品、复制或删除（可撤销）。
-- 编辑器侧边的「灵感」按钮显示这部作品还没用的灵感数量，展开后可以把灵感插入正文（同时标记为已用），也可以直接记一条新的。
+- 编辑器左侧章节目录下方是「这部作品的灵感」，和目录一起固定在侧边，正文写到哪里都能看到。点「插入」把灵感放到光标处并标记为已用，也可以直接记一条新的；工具栏的「灵感」按钮显示未用数量，并可展开或收起。
 - 桌面版选中文字后右键可「存为灵感」。灵感随备份一起保存和恢复。
 
 ## 桌面菜单

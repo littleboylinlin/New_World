@@ -23,6 +23,9 @@ test('作品卡片书名在封面下方，箭头和右键都能打开操作菜�
   const menu = page.getByRole('menu', { name: '「灯塔与雾」的操作' })
   await expect(menu.getByRole('menuitem')).toHaveText(['打开', '重命名', '更换封面…', '归档', '删除'])
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  // The list drops down from the arrow, even with little room below it.
+  const [arrow, list] = await Promise.all([toggle.boundingBox(), menu.boundingBox()])
+  expect(list.y).toBeGreaterThan(arrow.y + arrow.height - 1)
   await expect(menu.getByRole('menuitem', { name: '打开' })).toBeFocused()
   await page.keyboard.press('ArrowDown')
   await expect(menu.getByRole('menuitem', { name: '重命名' })).toBeFocused()

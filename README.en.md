@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.14.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.14.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.14.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.14.0). Work cards now have a cover with a drop-down menu and support custom covers; it adds quick notes, a tray menu and right-click menus. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.14.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.14.1). Dialogs and menus get a lighter look that fits every theme, menus always drop down, and the notes panel moves under the chapter list, staying beside the text. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,7 +36,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.14.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.14.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -106,7 +106,7 @@ Jot an idea down the moment it comes, and pick it up later while writing.
 - Desktop: press the global shortcut anywhere (`Ctrl + Alt + N` by default, `⌃⌥N` on a Mac) to open a small window. `Enter` saves, `Shift + Enter` adds a line, `Esc` closes. "Settings → Quick notes" switches it to `Ctrl + Shift + Space`, `Alt + Shift + N` or off, and warns when another app already uses it. The tray menu, the right-click menu of the Windows taskbar icon and the Mac Dock menu open it too.
 - Web: press `Ctrl + Alt + N` on a New World page to open the quick note dialog.
 - A note is linked to the work opened most recently, or to none. "Notes" on the home page lists every note with unused ones first; mark them used, link them to another work, copy them, or delete them (with undo).
-- The "Notes" button beside the editor shows how many unused notes this work has. Open it to insert a note into the text (which marks it used) or to write a new one.
+- "Notes for this work" sits under the chapter list and stays beside the text as it scrolls. "Insert" puts a note at the cursor and marks it used, and a new note can be written there too; the "Notes" toolbar button shows how many are unused and folds the list.
 - On the desktop, right-click selected text to "Save as Note". Notes are saved and restored with backups.
 
 ## Desktop menus

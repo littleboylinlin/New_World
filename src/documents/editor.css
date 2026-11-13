@@ -8,14 +8,16 @@
 .save-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .edition-workspace > .notice, .edition-workspace > .button { margin-bottom: 14px; }
 .conversion-info { margin: 0 0 16px; color: var(--muted); font-size: .85rem; line-height: 1.6; }
-.conversion-info summary, .chapter-navigation summary { cursor: pointer; }
+.conversion-info summary, .chapter-navigation summary, .ideas-card summary { cursor: pointer; }
 .conversion-info summary { font-weight: 700; }
 .conversion-info ul { margin: 5px 0 0; padding-inline-start: 1.4em; }
 .edition-layout { display: grid; grid-template-columns: minmax(190px, 248px) minmax(0, 1fr); gap: 22px; align-items: start; }
-.chapter-navigation, .writing-panel { min-width: 0; border: 2px solid var(--ink); border-radius: 12px; background: var(--sheet); box-shadow: var(--shadow); }
-.chapter-navigation { padding: 14px; }
-.chapter-navigation summary { min-height: 32px; font-size: .92rem; font-weight: 900; user-select: none; }
-.chapter-navigation[open] summary { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.chapter-navigation, .ideas-card, .writing-panel { min-width: 0; border: 2px solid var(--ink); border-radius: 12px; background: var(--sheet); box-shadow: var(--shadow); }
+.chapter-navigation, .ideas-card { padding: 14px; }
+.edition-side { display: grid; gap: 16px; min-width: 0; }
+.chapter-navigation summary, .ideas-card summary { min-height: 32px; font-size: .92rem; font-weight: 900; user-select: none; }
+.chapter-navigation[open] summary, .ideas-card[open] summary { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.ideas-card summary .trash-count { display: inline-block; margin-inline-start: 8px; vertical-align: 1px; }
 .chapter-list, .chapter-outline ul { padding: 0; margin: 0; list-style: none; }
 .chapter-list { display: grid; gap: 4px; max-height: min(52vh, 560px); overflow: auto; counter-reset: chapter; }
 .chapter-list li { position: relative; counter-increment: chapter; }
@@ -117,8 +119,9 @@
 }
 
 @media (min-width: 780px) {
-  .chapter-navigation { position: sticky; top: 14px; max-height: calc(100svh - 28px); overflow: auto; }
-  .desktop .chapter-navigation { max-height: calc(100svh - 80px); }
+  /* The chapter list and the ideas stay beside the text while it scrolls. */
+  .edition-side { position: sticky; top: 14px; max-height: calc(100svh - 28px); overflow: auto; padding: 2px 6px 6px 2px; margin: -2px -6px -6px -2px; scrollbar-width: thin; }
+  .desktop .edition-side { max-height: calc(100svh - 80px); }
 }
 
 @media (max-width: 779px) {
@@ -138,7 +141,7 @@
 /* Focus mode: only the chapter text and a faded toolbar stay on the page. */
 .focus-toggle { flex: none; border-color: var(--ink); background: var(--sheet); }
 .focus-writing body { background-image: none; }
-.focus-writing :is(.breadcrumbs, .page-heading, .version-navigation, .edition-header, .conversion-info, .chapter-navigation, .site-footer, .update-banner) { display: none; }
+.focus-writing :is(.breadcrumbs, .page-heading, .version-navigation, .edition-header, .conversion-info, .edition-side, .ideas-toggle, .site-footer, .update-banner) { display: none; }
 .focus-writing .main-content { padding-block: 14px 40px; }
 .focus-writing .edition-layout { grid-template-columns: minmax(0, 1fr); }
 .focus-writing .writing-panel { border-color: transparent; background: transparent; box-shadow: none; }
