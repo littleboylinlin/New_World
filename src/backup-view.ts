@@ -278,8 +278,10 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
         }
         await restoreBackup(contents)
         try { sessionStorage.setItem('new-world:restored', String(summary.works)) } catch { /* Only the notice is lost. */ }
-        window.location.hash = '#/'
-        window.location.reload()
+        // Start again from the home page without leaving through the current view, which no longer exists.
+        history.replaceState(null, '', '#/')
+        if (desktop?.reloadForLanguage) await desktop.reloadForLanguage()
+        else window.location.reload()
       } finally {
         setBusy(false)
       }
