@@ -639,6 +639,18 @@ test('可导入或从链接下载其他语言的拼写词典，与内置词典�
     await expect(list.getByRole('listitem')).toHaveCount(3)
     await expect.poll(languages).toEqual(['en-US', 'en-GB', 'en-AU'])
 
+    console.log('PROBE', JSON.stringify(await app.evaluate(async ({ session }) => {
+      const hops = []
+      let url = 'https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic'
+      for (let i = 0; i < 5 && url; i++) {
+        try {
+          const response = await session.fromPartition('probe').fetch(url, { redirect: 'manual' })
+          hops.push([url, response.status, response.headers.get('content-length')])
+          url = response.headers.get('location') ? new URL(response.headers.get('location'), url).href : ''
+        } catch (error) { hops.push([url, String(error)]); break }
+      }
+      return hops
+    })))
     await section.getByRole('textbox', { name: '或从链接下载' }).fill('https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic')
     await section.getByRole('button', { name: '下载', exact: true }).click()
     await expect(section.locator('.dictionary-box .settings-state')).toContainText('已添加', { timeout: 60_000 })
