@@ -753,3 +753,50 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     await expect(section.locator('.backup-location')).toContainText('默认位置')
   } finally { await stop(app) }
 })
+
+test('灵感速记：全局快捷键可在设置里更换，任务栏的速记任务打开小窗并存进书库', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  const shortcutFile = ({ app }) => {
+    const { readFileSync } = process.getBuiltinModule('node:fs')
+    const { join } = process.getBuiltinModule('node:path')
+    try { return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-capture.json'), 'utf8')).shortcut } catch { return null }
+  }
+  const registered = (shortcut) => app.evaluate(({ globalShortcut }, value) => globalShortcut.isRegistered(value), shortcut)
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    expect(await registered('Control+Alt+N')).toBe(true)
+
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '灵感速记', exact: true })
+    const shortcuts = section.getByRole('radiogroup', { name: '全局快捷键' })
+    await expect(shortcuts.getByRole('radio', { name: 'Ctrl + Alt + N' })).toBeChecked()
+    await shortcuts.getByRole('radio', { name: 'Alt + Shift + N' }).check()
+    await expect.poll(() => registered('Alt+Shift+N')).toBe(true)
+    expect(await registered('Control+Alt+N')).toBe(false)
+    expect(await app.evaluate(shortcutFile)).toBe('Alt+Shift+N')
+    await shortcuts.getByRole('radio', { name: '关闭' }).check()
+    await expect.poll(() => registered('Alt+Shift+N')).toBe(false)
+    // Leave the shared profile as it was for the other desktop tests.
+    await shortcuts.getByRole('radio', { name: 'Ctrl + Alt + N' }).check()
+    await expect.poll(() => registered('Control+Alt+N')).toBe(true)
+    expect(await app.evaluate(shortcutFile)).toBe('Control+Alt+N')
+    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '关闭', exact: true }).click()
+
+    // The taskbar task starts New World again with --quick-note.
+    const opened = app.waitForEvent('window')
+    await app.evaluate(({ app }) => { app.emit('second-instance', {}, [process.execPath, '--quick-note'], process.cwd()) })
+    const note = await opened
+    const box = note.getByRole('textbox', { name: '灵感' })
+    await expect(box).toBeVisible()
+    await note.screenshot({ path: testInfo.outputPath('windows-quick-note.png') })
+    await box.fill('桌面小窗记下的灵感')
+    await box.press('Enter')
+    await expect(note.getByRole('status')).toHaveText('已记下')
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().endsWith('#/capture'))?.isVisible())).toBe(false)
+
+    await page.evaluate(() => { location.hash = '#/ideas' })
+    await expect(page.getByRole('list', { name: '灵感列表' })).toContainText('桌面小窗记下的灵感')
+  } finally { await stop(app) }
+})

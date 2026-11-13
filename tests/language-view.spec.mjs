@@ -24,7 +24,7 @@ test('英语系统只获取英语，首页、导入错误和设置均为英文�
   await expect(page.locator('.import-notice')).toContainText('The file is empty.')
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   const settings = page.getByRole('dialog', { name: 'Settings' })
-  await expect(settings.getByRole('heading', { level: 3 })).toHaveText(['Language', 'Appearance', 'When closing the window', 'Storage location', 'Backups', 'Help and updates'])
+  await expect(settings.getByRole('heading', { level: 3 })).toHaveText(['Language', 'Appearance', 'Quick notes', 'When closing the window', 'Storage location', 'Backups', 'Help and updates'])
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('home-english-settings.png') })
   await settings.getByRole('button', { name: 'Close', exact: true }).click()

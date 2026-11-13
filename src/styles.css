@@ -350,3 +350,58 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .archive-count:empty { display: none; }
 .archive-view-link { margin-inline-start: auto; color: var(--muted); font-size: .86rem; font-weight: 750; }
 .archive-view-link:hover { color: var(--ink); }
+
+/* Shelf cards: the cover, then the title with a menu of actions. */
+.book-card { gap: 10px; }
+.book-cover-image { padding: 0; background: var(--sheet); }
+.book-cover-image::before, .book-cover-image::after { display: none; }
+.book-cover-image img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.book-meta { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.book-name { flex: 1; min-width: 0; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--ink); font-size: .98rem; font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; text-decoration: none; }
+.book-name:hover { color: var(--accent); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.book-menu-toggle { display: grid; flex: none; place-items: center; width: 30px; height: 30px; margin-top: -3px; padding: 0; border: 2px solid transparent; border-radius: 8px; color: var(--ink); background: transparent; cursor: pointer; }
+.book-menu-toggle svg { width: 18px; height: 18px; transition: transform 130ms ease; }
+.book-menu-toggle:hover, .book-menu-toggle[aria-expanded="true"] { border-color: var(--ink); color: var(--on-yellow); background: var(--yellow); }
+.book-menu-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.book-card > .file-details { margin-top: -6px; }
+
+.popup-menu { position: fixed; z-index: 50; display: grid; gap: 2px; min-width: 184px; padding: 6px; border: 2px solid var(--ink); border-radius: 10px; color: var(--ink); background: var(--sheet); box-shadow: 4px 4px 0 var(--edge); }
+.popup-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border: 0; border-radius: 7px; color: inherit; background: none; font-size: .9rem; font-weight: 700; text-align: start; cursor: pointer; }
+.popup-item svg { flex: none; width: 17px; height: 17px; }
+.popup-item:hover, .popup-item:focus-visible { outline: none; color: var(--on-yellow); background: var(--yellow); }
+.popup-danger { color: var(--danger-text); }
+.popup-danger:hover, .popup-danger:focus-visible { color: var(--on-accent); background: var(--red); }
+
+/* Quick notes */
+.home-entries { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+.home-entries .archive-entry { margin-top: 0; }
+.capture-form { display: grid; gap: 12px; }
+.capture-text { width: 100%; min-height: 6.5em; resize: vertical; font-size: 1rem; line-height: 1.6; }
+.capture-work { display: grid; gap: 6px; }
+.capture-state:empty { display: none; }
+.capture-hint { margin-top: 0; font-size: .82rem; }
+.capture-form .dialog-controls { margin-top: 0; }
+.ideas-capture { margin-block: 18px 26px; padding: 16px; border: 2px solid var(--ink); border-radius: 12px; background: var(--sheet); box-shadow: 4px 4px 0 var(--edge); }
+.idea-list { margin-top: 4px; }
+.idea-row { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 2px solid var(--ink); border-radius: 12px; background: var(--sheet); }
+.idea-body { flex: 1; min-width: 0; }
+.idea-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.idea-meta { margin-top: 8px; }
+.idea-used { background: var(--surface); }
+.idea-used .idea-text { color: var(--muted); }
+.ideas-toggle[aria-expanded="true"] { color: var(--on-yellow); background: var(--yellow); }
+.ideas-count { margin-inline-start: 6px; }
+.ideas-panel { margin-bottom: 14px; padding: 14px 16px; border: 2px solid var(--ink); border-radius: 12px; background: var(--sheet); }
+.ideas-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ideas-panel-head h4 { font-size: .95rem; font-weight: 800; }
+.ideas-panel-list { display: grid; gap: 8px; max-height: 260px; margin: 10px 0 0; padding: 0; overflow-y: auto; list-style: none; }
+.ideas-panel-list li { padding: 10px 12px; border: 1.5px solid var(--hair); border-radius: 8px; }
+.ideas-panel-list li.idea-used { opacity: .65; }
+.ideas-panel-list .idea-text { font-size: .92rem; }
+.ideas-panel-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* The desktop quick note window is small, frameless and has nothing else on it. */
+html.capture-window, html.capture-window body { min-height: 0; height: 100%; overflow: hidden; background: transparent; }
+.capture-panel { box-sizing: border-box; display: grid; align-content: start; gap: 12px; height: 100vh; padding: 18px 20px; border: 3px solid var(--ink); border-radius: 14px; color: var(--ink); background: var(--sheet); -webkit-app-region: drag; }
+.capture-panel :is(textarea, select, button, label) { -webkit-app-region: no-drag; }
+.capture-title { font-size: 1.05rem; font-weight: 900; }
+.capture-panel .capture-text { min-height: 0; height: 128px; resize: none; }

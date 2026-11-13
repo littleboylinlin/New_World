@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.13.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.14.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.13.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.13.0). It adds a home writing heatmap that records words per day, plus a day streak and a total word count. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.14.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.14.0). Work cards now have a cover with a drop-down menu and support custom covers; it adds quick notes, a tray menu and right-click menus. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,7 +36,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.13.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.14.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -89,7 +89,30 @@ After importing a source work into the continuation/imitation library, each work
 - `Ctrl / ⌘ + S` saves, `Ctrl / ⌘ + F` finds within the chapter, `Ctrl / ⌘ + B/I/U` toggles inline styles, `Ctrl / ⌘ + Z` undoes, `Ctrl / ⌘ + Shift + Z` redoes. Find matches literally and can replace one or all occurrences. Undo history belongs to the current chapter's editing session.
 - "Reading mode" keeps the table of contents and find; editing can be restored with "Edit text". At phone widths the chapter list can be expanded and the toolbar scrolls horizontally.
 - "Focus" hides the chapter list, the buttons around the text and the footer, leaving only the chapter; the toolbar fades until pointed at. Press `Esc` or click again to leave; leaving the page also ends it.
+- Right-click a chapter in the chapter list to add, rename, move or delete chapters.
 - Page navigation, chapter switching, dialogs, and notices have transition animations. Animations are skipped when the system's "reduce motion" is enabled.
+
+## Work cards
+
+Each work card on the shelves shows the cover with the title below it. Click the arrow next to the title, or right-click the card, to open, rename, change the cover, archive or delete the work.
+
+- The default cover is drawn from the title. "Change Cover…" uploads a PNG, JPEG, WebP, GIF, AVIF or BMP image (up to 32 MB), kept locally at full quality without compression; "Use Default Cover" switches back.
+- Custom covers are saved and restored with backups.
+
+## Quick notes
+
+Jot an idea down the moment it comes, and pick it up later while writing.
+
+- Desktop: press the global shortcut anywhere (`Ctrl + Alt + N` by default, `⌃⌥N` on a Mac) to open a small window. `Enter` saves, `Shift + Enter` adds a line, `Esc` closes. "Settings → Quick notes" switches it to `Ctrl + Shift + Space`, `Alt + Shift + N` or off, and warns when another app already uses it. The tray menu, the right-click menu of the Windows taskbar icon and the Mac Dock menu open it too.
+- Web: press `Ctrl + Alt + N` on a New World page to open the quick note dialog.
+- A note is linked to the work opened most recently, or to none. "Notes" on the home page lists every note with unused ones first; mark them used, link them to another work, copy them, or delete them (with undo).
+- The "Notes" button beside the editor shows how many unused notes this work has. Open it to insert a note into the text (which marks it used) or to write a new one.
+- On the desktop, right-click selected text to "Save as Note". Notes are saved and restored with backups.
+
+## Desktop menus
+
+- Tray menu: Quick note, New novel, Recent Works (up to 5), Notes, Back Up Now, Open Folder, Settings, Show New World and Quit completely.
+- Text right-click menu: spelling suggestions and Add to Dictionary, Cut, Copy, Paste, Select all, and Save as Note.
 
 ## Writing stats
 
@@ -110,11 +133,11 @@ Deleting a work, a continuation project's source, an edited version, or a chapte
 
 ## Archive
 
-Every work card on the shelves has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" on the home page and "View archive" beside each library list show all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
+Every work card's menu has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" on the home page and "View archive" beside each library list show all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
 
 ## Backup and restore
 
-"Settings → Backups" packs both libraries, every edition, the original files and the trash into one `.zip` file.
+"Settings → Backups" packs both libraries, every edition, the original files, custom covers, the trash, quick notes and writing stats into one `.zip` file.
 
 - Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
 - Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
