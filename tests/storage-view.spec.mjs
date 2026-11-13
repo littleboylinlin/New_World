@@ -10,6 +10,8 @@ const desktopState = () => {
     onUpdateProgress: () => {},
     savePdf: async () => {},
     onCloseRequested: () => {},
+    minimizeWindow: () => {}, toggleMaximizeWindow: () => {}, closeWindow: () => {},
+    isMaximized: async () => false, onMaximizeChange: () => {},
     getCloseBehavior: async () => 'quit',
     setCloseBehavior: async (mode) => mode,
     getStorageLocation: async () => ({ path: custom ? chosen : defaultPath, defaultPath, custom }),

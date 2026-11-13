@@ -10,6 +10,8 @@ for (const locale of ['zh-CN', 'en-US']) {
           await page.addInitScript((platform) => {
             window.newWorldDesktop = {
               platform, arch: 'x64', onCloseRequested: () => {}, onUpdateProgress: () => {},
+              minimizeWindow: () => {}, toggleMaximizeWindow: () => {}, closeWindow: () => {},
+              isMaximized: async () => false, onMaximizeChange: () => {},
               getStorageLocation: async () => ({ path: '/Library/NewWorld', custom: false }),
               getCloseBehavior: async () => 'quit',
             }
@@ -19,10 +21,6 @@ for (const locale of ['zh-CN', 'en-US']) {
         await page.goto('/')
         await expect(page.locator('html')).toHaveAttribute('lang', locale === 'en-US' ? 'en' : 'zh-CN')
         await expect(page.locator('#app-version')).not.toBeEmpty()
-        if (platform === 'win32') {
-          // Browser previews have no native controls; reserve the same space here.
-          await page.addStyleTag({ content: '.desktop .header-inner { padding-right: 152px; }' })
-        }
         const widths = platform === 'web' ? [1220, 820, 720, 641, 640, 480, 390, 320, 1220]
           : [1220, 1024, 820, 720, 641, 640, 480, 1220]
         for (const width of widths) {

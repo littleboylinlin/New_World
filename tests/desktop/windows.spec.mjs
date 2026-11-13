@@ -126,18 +126,33 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await expect(page).toHaveURL('new-world://app/')
     await expect(page.locator('#update-banner')).toBeHidden()
     expect(await page.evaluate(() => ({ secure: isSecureContext, node: typeof require }))).toEqual({ secure: true, node: 'undefined' })
-    // The app header replaces the system title bar and leaves room for the window buttons.
+    // The app header replaces the system title bar. Windows draws its own caption buttons instead of the native
+    // overlay, so they expose an accessible name but no system hover tooltip, and the header reserves room for them.
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMenuBarVisible())).toBe(false)
+    const english = await page.locator('html').getAttribute('lang') === 'en'
     const header = await page.evaluate(() => {
       const inner = document.querySelector('.header-inner')
       const settings = document.querySelector('#settings').getBoundingClientRect()
-      return { top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight), gap: innerWidth - settings.right }
+      const controls = document.querySelector('.window-controls').getBoundingClientRect()
+      const buttons = [...document.querySelectorAll('.window-controls button')].map((node) => ({
+        label: node.getAttribute('aria-label'), title: node.getAttribute('title'),
+      }))
+      return {
+        top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight),
+        gap: innerWidth - settings.right, viewport: innerWidth, buttons, right: controls.right, height: controls.height,
+      }
     })
     expect(header.top).toBe(0)
     expect(header.reserved).toBeGreaterThan(90)
     expect(header.gap).toBeGreaterThan(90)
+    expect(header.buttons).toEqual((english
+      ? ['Minimize', 'Maximize', 'Close window']
+      : ['最小化', '最大化', '关闭窗口']).map((label) => ({ label, title: null })))
+    expect(Math.abs(header.right - header.viewport)).toBeLessThanOrEqual(1)
+    expect(header.height).toBe(46)
     await page.screenshot({ path: testInfo.outputPath('windows-home.png') })
     await checkNativeHeader(app, page, testInfo, 'windows')
+    const controls = page.locator('.window-controls')
     await page.locator('a[href="#/reference"]').first().click()
     await page.locator('input[type=file]').setInputFiles(original)
     await page.getByRole('link', { name: '查看 桌面续写原文', exact: true }).click()
@@ -164,11 +179,11 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       await expect(editor(page)).toHaveText(savedText)
     }
 
-    // No manual save and no wait for the autosave debounce before closing.
+    // No manual save and no wait for the autosave debounce before closing via the custom caption button.
     const lastText = `${savedText} 保存后再关窗。`
     await editor(page).fill(lastText)
     const exited = app.waitForEvent('close')
-    await app.evaluate(({ BrowserWindow }) => { setTimeout(() => BrowserWindow.getAllWindows()[0].close(), 30) })
+    await controls.getByRole('button', { name: english ? 'Close window' : '关闭窗口', exact: true }).click()
     await exited
     if (installer) await install()
 
@@ -204,6 +219,28 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     })
     expect(marginsAreWhite).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('windows-reader.png') })
+  } finally {
+    await stop(app)
+  }
+})
+
+test('Windows 自绘窗口按钮可最大化、还原与最小化', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    const controls = page.locator('.window-controls')
+    await expect(controls).toBeVisible()
+    const english = await page.locator('html').getAttribute('lang') === 'en'
+    const maximized = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())
+    await controls.getByRole('button', { name: english ? 'Maximize' : '最大化', exact: true }).click()
+    await expect.poll(maximized).toBe(true)
+    const restore = controls.getByRole('button', { name: english ? 'Restore' : '还原', exact: true })
+    await expect(restore).toBeVisible()
+    await restore.click()
+    await expect.poll(maximized).toBe(false)
+    await expect(controls.getByRole('button', { name: english ? 'Maximize' : '最大化', exact: true })).toBeVisible()
+    await controls.getByRole('button', { name: english ? 'Minimize' : '最小化', exact: true }).click()
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized())).toBe(true)
   } finally {
     await stop(app)
   }

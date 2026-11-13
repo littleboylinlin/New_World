@@ -299,11 +299,20 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .desktop .page { min-height: 0; overflow-y: auto; }
   .desktop .site-header { flex: none; -webkit-app-region: drag; }
   .desktop .site-header :is(a, button) { -webkit-app-region: no-drag; }
-  .desktop .header-inner { width: auto; min-height: 46px; margin: 0; padding-inline: calc(env(titlebar-area-x, 0px) + 14px) calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 14px); }
+  .desktop .header-inner { width: auto; min-height: 46px; margin: 0; padding-inline: 14px; }
   .desktop.macos .header-inner { padding-inline: 84px 14px; }
+  .desktop:not(.macos) .header-inner { padding-inline-end: 150px; }
   .desktop .brand img { width: 28px; height: 28px; border-radius: 7px; }
   .desktop .brand-name { font-size: 1rem; }
   .desktop .site-header .button { min-height: 32px; padding-block: 2px; }
+  .window-controls { position: absolute; top: 0; right: 0; display: flex; height: 46px; -webkit-app-region: no-drag; }
+  .window-button { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 46px; padding: 0; border: 0; border-radius: 0; color: var(--bar-text); background: transparent; box-shadow: none; cursor: default; transition: background-color 110ms ease, color 110ms ease; }
+  .window-button svg { width: 16px; height: 16px; }
+  .window-button:hover { background: #f4eee21f; }
+  .window-button:active { background: #f4eee233; }
+  .window-button:focus-visible { outline: 2px solid var(--yellow); outline-offset: -3px; }
+  .window-close:hover { color: #fff; background: #e81123; }
+  .window-close:active { color: #fff; background: #f1707a; }
 }
 
 @media (max-width: 820px) {

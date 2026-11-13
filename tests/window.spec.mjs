@@ -8,6 +8,8 @@ test('桌面版页眉固定在窗口顶部，页面在页眉下方滚动', async
       onUpdateProgress: () => {},
       savePdf: async () => {},
       onCloseRequested: () => {},
+      minimizeWindow: () => {}, toggleMaximizeWindow: () => {}, closeWindow: () => {},
+      isMaximized: async () => false, onMaximizeChange: () => {},
       getStorageLocation: async () => ({ path: 'C:\\书库', defaultPath: 'C:\\书库', custom: false }),
       setStorageLocation: async () => null,
       resetStorageLocation: async () => null,
