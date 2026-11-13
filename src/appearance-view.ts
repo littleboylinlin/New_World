@@ -185,6 +185,7 @@ function dictionaryControls(): HTMLElement[] {
       status.classList.add('field-error')
     } else if (result.added.length) {
       status.textContent = t('spelling.added', [result.added.map(languageName).join('、')])
+        + (result.insecure ? ` ${t('spelling.insecure')}` : '')
     } else {
       status.textContent = ''
     }

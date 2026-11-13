@@ -25,6 +25,8 @@ interface SpellingResult {
   state: SpellingState
   added: string[]
   error?: SpellingError
+  /** The download was redirected to plain http on the way. */
+  insecure?: boolean
 }
 
 type DesktopUpdateResult = { ok: true; canceled?: boolean } | { ok: false; message: string }

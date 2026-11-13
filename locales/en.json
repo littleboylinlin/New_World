@@ -512,5 +512,6 @@
   "spelling.errorBusy": "A dictionary is already downloading. Please wait.",
   "spelling.importTitle": "Import Spelling Dictionary",
   "spelling.dictionaryFiles": "Spelling dictionaries",
-  "spelling.errorLocked": "This language's dictionary is still in use. Restart the app, then add it again."
+  "spelling.errorLocked": "This language's dictionary is still in use. Restart the app, then add it again.",
+  "spelling.insecure": "The download was redirected to an unencrypted http address; make sure you trust the source."
 }

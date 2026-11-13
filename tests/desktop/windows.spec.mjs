@@ -647,13 +647,16 @@ test('可导入或从链接下载其他语言的拼写词典，与内置词典�
       globalThis.testDictionaryRequests = []
       session.fromPartition('new-world-dictionaries').fetch = async (url) => {
         globalThis.testDictionaryRequests.push(url)
-        return url.endsWith('/fr-fr-3-0.bdic') ? new Response(body) : new Response(null, { status: 404 })
+        if (!url.endsWith('/fr-fr-3-0.bdic')) return new Response(null, { status: 404 })
+        // Like Chromium's download server, which can redirect to plain http.
+        return { ok: true, url: 'http://r1.example.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic', headers: new Headers(), arrayBuffer: async () => body }
       }
     })
     await section.getByRole('textbox', { name: '或从链接下载' }).fill('https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic')
     await section.getByRole('button', { name: '下载', exact: true }).click()
     await expect(section.locator('.dictionary-box .settings-state')).toContainText('已添加', { timeout: 60_000 })
     await expect(list).toContainText('fr-FR')
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('未加密的 http')
     await expect.poll(languages).toEqual(['en-US', 'en-GB', 'en-AU', 'fr-FR'])
     expect(await app.evaluate(() => globalThis.testDictionaryRequests)).toEqual(['https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic'])
     await page.screenshot({ path: testInfo.outputPath('windows-spelling-dictionaries.png') })
@@ -665,5 +668,11 @@ test('可导入或从链接下载其他语言的拼写词典，与内置词典�
     for (const code of ['en-AU', 'fr-FR']) await list.getByRole('listitem').filter({ hasText: code }).getByRole('button').click()
     await expect(list.getByRole('listitem')).toHaveCount(2)
     await expect.poll(languages).toEqual(['en-US', 'en-GB'])
+    // Removed dictionaries are deleted right away, not left for the next start.
+    expect(await app.evaluate(({ app }) => {
+      const { readdirSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return readdirSync(join(app.getPath('userData'), 'Dictionaries')).sort()
+    })).toEqual(['en-GB-10-2.bdic', 'en-US-10-2.bdic'])
   } finally { await stop(app) }
 })

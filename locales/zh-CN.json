@@ -512,5 +512,6 @@
   "spelling.errorBusy": "已有词典正在下载，请稍候。",
   "spelling.importTitle": "导入拼写词典",
   "spelling.dictionaryFiles": "拼写词典",
-  "spelling.errorLocked": "这个语言的词典正在使用中，请重启应用后再添加。"
+  "spelling.errorLocked": "这个语言的词典正在使用中，请重启应用后再添加。",
+  "spelling.insecure": "下载途中被跳转到了未加密的 http 地址，请确认来源可信。"
 }

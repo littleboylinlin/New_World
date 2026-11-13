@@ -87,7 +87,7 @@ function deleteFiles(profile, language) {
 function installDictionaries(profile, source = bundled) {
   const target = folder(profile)
   mkdirSync(target, { recursive: true })
-  savePendingRemovals(profile, pendingRemovals(profile).filter((language) => !deleteFiles(profile, language)))
+  deletePendingRemovals(profile)
   const copied = []
   for (const name of readdirSync(source)) {
     if (!name.endsWith('.bdic') || existsSync(join(target, name))) continue
@@ -132,12 +132,18 @@ function addedLanguages(profile) {
   return [...found].sort()
 }
 
-/** Stops using a dictionary the writer added and deletes it, at the next start if it is still in use. */
+/** Stops using a dictionary the writer added. Its files are deleted by deletePendingRemovals. */
 function removeDictionary(profile, language) {
   if (languages.includes(language) || !catalog[language]) throw new DictionaryError('bundled')
   mkdirSync(folder(profile), { recursive: true })
   savePendingRemovals(profile, [...pendingRemovals(profile), language])
-  if (deleteFiles(profile, language)) savePendingRemovals(profile, pendingRemovals(profile).filter((pending) => pending !== language))
+}
+
+/** Deletes the files of removed dictionaries; returns the languages Windows still has locked. */
+function deletePendingRemovals(profile) {
+  const left = pendingRemovals(profile).filter((language) => !deleteFiles(profile, language))
+  savePendingRemovals(profile, left)
+  return left
 }
 
 /** Chromium's code for a dictionary language: af-ZA is loaded as "af", fr-FR as "fr-FR". */
@@ -177,5 +183,5 @@ function menuTemplate(params, { replace, learn, t }) {
 
 module.exports = {
   languages, maxBytes, DictionaryError, languageOf, chromiumLanguage, installDictionaries, checkDictionary, addDictionary,
-  addedLanguages, removeDictionary, activeLanguages, downloadName, menuTemplate,
+  addedLanguages, removeDictionary, deletePendingRemovals, activeLanguages, downloadName, menuTemplate,
 }

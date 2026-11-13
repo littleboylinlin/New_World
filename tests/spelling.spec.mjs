@@ -73,6 +73,8 @@ test('自带词典之外，可添加文件名与 Chromium 一致的 .bdic 词典
 
   spelling.removeDictionary(profile, 'fr-FR')
   expect(spelling.addedLanguages(profile)).toEqual(['af-ZA', 'uk-UA'])
+  expect(spelling.deletePendingRemovals(profile)).toEqual([])
+  expect(readdirSync(join(profile, 'Dictionaries')).sort()).toEqual(['af-ZA-3-0.bdic', 'uk-UA-5-0.bdic'])
   expect(() => spelling.removeDictionary(profile, 'en-US')).toThrow(expect.objectContaining({ code: 'bundled' }))
 })
 

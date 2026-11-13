@@ -230,9 +230,9 @@ function useDictionaries() {
   local.setSpellCheckerLanguages(spelling.activeLanguages(profile, local.availableSpellCheckerLanguages))
 }
 
-function dictionaryResult(added, error) {
+function dictionaryResult(added, error, insecure = false) {
   if (added.length) useDictionaries()
-  return { state: spellingState(), added, ...(error ? { error } : {}) }
+  return { state: spellingState(), added, ...(error ? { error } : {}), ...(insecure ? { insecure } : {}) }
 }
 
 function dictionaryError(error) {
@@ -278,7 +278,9 @@ ipcMain.handle('new-world:spelling-download', async (event, link) => {
       dictionaryNetwork = session.fromPartition('new-world-dictionaries')
       dictionaryNetwork.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
         const target = new URL(request.url)
-        done({ cancel: !downloadingDictionary || request.method !== 'GET' || target.protocol !== 'https:' || Boolean(target.username || target.password) })
+        // The link itself must be https; some download servers redirect to plain http.
+        done({ cancel: !downloadingDictionary || request.method !== 'GET' || !['https:', 'http:'].includes(target.protocol)
+          || Boolean(target.username || target.password) })
       })
     }
     const response = await dictionaryNetwork.fetch(url, {
@@ -287,7 +289,8 @@ ipcMain.handle('new-world:spelling-download', async (event, link) => {
     if (!response.ok) throw new spelling.DictionaryError('download')
     if (Number(response.headers.get('content-length') || 0) > spelling.maxBytes) throw new spelling.DictionaryError('size')
     const bytes = Buffer.from(await response.arrayBuffer())
-    return dictionaryResult([spelling.addDictionary(profile, name, bytes)])
+    const insecure = Boolean(response.url) && new URL(response.url).protocol === 'http:'
+    return dictionaryResult([spelling.addDictionary(profile, name, bytes)], undefined, insecure)
   } catch (error) {
     return dictionaryResult([], dictionaryError(error))
   } finally {
@@ -295,10 +298,14 @@ ipcMain.handle('new-world:spelling-download', async (event, link) => {
   }
 })
 
-ipcMain.handle('new-world:spelling-remove', (event, language) => {
+ipcMain.handle('new-world:spelling-remove', async (event, language) => {
   if (!trustedFrame(event) || process.platform === 'darwin' || typeof language !== 'string') throw new Error(t('main.invalidSettingsRequest'))
   spelling.removeDictionary(profile, language)
+  // Chromium lets go of the file once the language is no longer used; Windows keeps it locked until then.
   useDictionaries()
+  for (let attempt = 0; attempt < 20 && spelling.deletePendingRemovals(profile).includes(language); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
   return spellingState()
 })
 
