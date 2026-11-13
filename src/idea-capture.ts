@@ -33,7 +33,13 @@ export function captureForm(done: () => void, cancel?: () => void) {
   controls.append(save)
   form.append(text, workLabel, hint, status, controls)
 
-  async function refresh(selected = lastWork()) {
+  // The list of works loads after the form opens; saving waits for it so a quick Enter keeps the work.
+  let loading: Promise<void> = Promise.resolve()
+  function refresh(selected = lastWork()) {
+    loading = fillWorks(selected)
+    return loading
+  }
+  async function fillWorks(selected: ReturnType<typeof lastWork>) {
     const options: HTMLOptionElement[] = []
     const none = element('option', '', t('ideas.noWork'))
     none.value = ''
@@ -62,6 +68,7 @@ export function captureForm(done: () => void, cancel?: () => void) {
     save.disabled = true
     status.classList.remove('field-error')
     try {
+      await loading.catch(() => {})
       const [library, bookId] = work.value ? work.value.split(':') as [LibraryId, string] : []
       await addIdea(text.value, library && bookId ? { library, bookId } : undefined)
       text.value = ''
