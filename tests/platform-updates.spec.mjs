@@ -25,6 +25,8 @@ async function desktop(page, platform, arch) {
   await page.addInitScript(({ platform, arch }) => {
     window.newWorldDesktop = {
       platform, arch, onCloseRequested: () => {}, onUpdateProgress: () => {},
+      minimizeWindow: () => {}, toggleMaximizeWindow: () => {}, closeWindow: () => {},
+      isMaximized: async () => false, onMaximizeChange: () => {},
       getCloseBehavior: async () => 'quit', setCloseBehavior: async (mode) => mode,
       getStorageLocation: async () => ({ path: '/Library/NewWorld', custom: false }),
       downloadUpdate: async () => ({ ok: true, canceled: true }),

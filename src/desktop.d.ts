@@ -71,6 +71,11 @@ interface Window {
     getCloseBehavior: () => Promise<CloseBehavior>
     setCloseBehavior: (mode: CloseBehavior) => Promise<CloseBehavior>
     setWindowTheme?: (theme: import('./appearance').Theme) => Promise<void>
+    minimizeWindow: () => void
+    toggleMaximizeWindow: () => void
+    closeWindow: () => void
+    isMaximized: () => Promise<boolean>
+    onMaximizeChange: (listener: (maximized: boolean) => void) => void
     getBackupState?: () => Promise<BackupState>
     setBackupFrequency?: (frequency: BackupFrequency) => Promise<BackupState>
     chooseBackupFolder?: () => Promise<BackupState | null>

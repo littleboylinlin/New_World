@@ -9,6 +9,7 @@ import { restoredNotice, startAutomaticBackups } from './backup-view'
 import { mountSettingsView } from './settings-view'
 import { changeView, pop } from './motion'
 import { libraries, notice } from './ui'
+import { mountWindowControls } from './window-controls'
 import { libraryChanges } from './library'
 import type { LibraryId } from './library'
 
@@ -23,6 +24,7 @@ if (window.newWorldDesktop) {
   document.documentElement.classList.add('desktop')
   if (window.newWorldDesktop.platform === 'darwin') document.documentElement.classList.add('macos')
 }
+mountWindowControls()
 let view: AbortController | undefined
 let leaveGuard: (() => Promise<boolean>) | undefined
 let activeHash = location.hash

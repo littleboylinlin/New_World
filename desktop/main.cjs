@@ -481,10 +481,10 @@ function openWindow() {
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
     backgroundColor: windowBackground(),
     icon: join(__dirname, 'icon.png'),
-    // The app header is the title bar. Windows draws only the window buttons over its right end.
+    // The app header is the title bar. macOS keeps its native traffic lights; Windows draws its own
+    // window buttons in the header so they carry no system hover tooltip.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 16 } }
-      : { titleBarOverlay: { color: '#16130f', symbolColor: '#f4eee2', height: 46 } }),
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 16 } } : {}),
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: true,
@@ -521,8 +521,29 @@ function openWindow() {
     mainWindow.hide()
   })
   mainWindow.on('closed', () => { mainWindow = undefined; closing = false })
+  if (process.platform !== 'darwin') {
+    const reportMaximized = () => { if (!contents.isDestroyed()) contents.send('new-world:window-maximized', mainWindow.isMaximized()) }
+    mainWindow.on('maximize', reportMaximized)
+    mainWindow.on('unmaximize', reportMaximized)
+  }
   return mainWindow.loadURL(appUrl)
 }
+
+// The custom Windows caption buttons. Close goes through the same save-before-close flow as the native button.
+function windowControl(event, action) {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !trustedFrame(event)) return
+  action(mainWindow)
+}
+
+ipcMain.on('new-world:window-minimize', (event) => windowControl(event, (window) => window.minimize()))
+ipcMain.on('new-world:window-maximize', (event) => windowControl(event, (window) => {
+  if (window.isMaximized()) window.unmaximize()
+  else window.maximize()
+}))
+ipcMain.on('new-world:window-close', (event) => windowControl(event, (window) => window.close()))
+ipcMain.handle('new-world:window-is-maximized', (event) => (
+  mainWindow && event.sender === mainWindow.webContents && trustedFrame(event) ? mainWindow.isMaximized() : false
+))
 
 ipcMain.on('new-world:close-result', (event, saved) => {
   if (!closing || !mainWindow || event.sender !== mainWindow.webContents || !trustedFrame(event)) return

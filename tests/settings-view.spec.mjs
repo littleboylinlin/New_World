@@ -8,6 +8,8 @@ const desktopState = () => {
     onUpdateProgress: () => {},
     savePdf: async () => {},
     onCloseRequested: () => {},
+    minimizeWindow: () => {}, toggleMaximizeWindow: () => {}, closeWindow: () => {},
+    isMaximized: async () => false, onMaximizeChange: () => {},
     getStorageLocation: async () => ({ path: 'C:\\书库', defaultPath: 'C:\\书库', custom: false }),
     setStorageLocation: async () => null,
     resetStorageLocation: async () => null,
