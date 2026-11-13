@@ -6,9 +6,11 @@ import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
 import { offerUndo } from '../undo'
+import { appearanceMenu } from '../appearance-view'
+import { appearance, onAppearanceChange } from '../appearance'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
-import { wordCount } from './model'
+import { countText, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './model'
 import { checkDocument, documentExtensions } from './schema'
 import { replaceMatches, revealMatch, SearchHighlight, searchState, setSearch } from './search'
@@ -92,6 +94,7 @@ export async function renderEdition(
   total.hidden = true
   const counts = element('div', 'word-counts')
   counts.append(count, total)
+  counts.title = t('editor.countRule')
   chapterHeader.append(chapterTitle, counts)
   const toolbar = element('div', 'format-toolbar')
   toolbar.setAttribute('role', 'group')
@@ -161,7 +164,14 @@ export async function renderEdition(
   const findButton = button(t('editor.findReplace'), 'format-button find-toggle', 'search')
   findButton.title = 'Ctrl / ⌘ + F'
   const toolsRow = element('div', 'editor-tools-row')
-  toolsRow.append(toolbar, findButton, imageInput)
+  const focusButton = button('', 'format-button focus-toggle', 'focus')
+  const focusLabel = element('span', '', t('editor.focusMode'))
+  focusButton.append(focusLabel)
+  focusButton.title = t('editor.focusHint')
+  focusButton.setAttribute('aria-pressed', 'false')
+  const sideTools = element('div', 'editor-side-tools')
+  sideTools.append(focusButton, appearanceMenu(), findButton)
+  toolsRow.append(toolbar, sideTools, imageInput)
 
   const searchBar = element('div', 'search-panel')
   searchBar.hidden = true
@@ -182,6 +192,8 @@ export async function renderEdition(
   const closeSearch = button(t('editor.closeFind'), 'format-button')
   searchBar.append(query, previousMatch, nextMatch, matchCount, replacement, replace, replaceAll, closeSearch)
   const paper = element('div', 'editor-paper')
+  // The text inherits spell checking from here; the rest of the page never checks spelling.
+  paper.spellcheck = appearance().spellcheck
   writing.append(chapterHeader, toolsRow, searchBar, paper)
   layout.append(navigation, writing)
   workspace.append(top, error, recover, information, layout)
@@ -233,7 +245,7 @@ export async function renderEdition(
     return edition.chapters.find((entry) => entry.id === chapter.id) ?? { id: chapter.id, title: chapterTitle.textContent || t('editor.chapterRemoved') }
   }
 
-  const liveCount = () => Array.from(editor.state.doc.textContent.replace(/\s/gu, '')).length
+  const liveCount = () => countText(editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n', '\n'))
 
   function refreshWords(everyChapter = true) {
     if (!words) return
@@ -327,7 +339,7 @@ export async function renderEdition(
     editor = new Editor({
       element: paper, extensions: [...documentExtensions, SearchHighlight], content: next.content, editable: editing,
       editorProps: {
-        attributes: { class: 'novel-body', 'aria-label': t('editor.chapterText'), 'aria-multiline': 'true', spellcheck: 'false', ...(turn ? { 'data-turn': turn } : {}) },
+        attributes: { class: 'novel-body', 'aria-label': t('editor.chapterText'), 'aria-multiline': 'true', ...(turn ? { 'data-turn': turn } : {}) },
         transformPastedHTML: (markup) => {
           if (markup.length <= 36 * 1024 * 1024) return cleanMarkup(inertMarkup(markup))
           report(new Error(t('editor.theRichTextOnTheClipboardIsToo')))
@@ -422,6 +434,24 @@ export async function renderEdition(
     if (editing && !overflow) { replaceMatches(editor, matches, replacement.value); refreshSearch() }
   })
 
+  // Focus mode hides everything around the text until it is turned off or the page changes.
+  let focused = false
+  function setFocus(on: boolean) {
+    focused = on
+    document.documentElement.classList.toggle('focus-writing', on)
+    focusButton.setAttribute('aria-pressed', String(on))
+    focusLabel.textContent = on ? t('editor.exitFocus') : t('editor.focusMode')
+  }
+  focusButton.addEventListener('mousedown', (event) => event.preventDefault())
+  focusButton.addEventListener('click', () => setFocus(!focused))
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !focused || event.isComposing || document.querySelector('dialog[open]')) return
+    // Escape first closes the find bar or the appearance panel.
+    if (event.target instanceof Element && event.target.closest('.search-panel, .appearance-menu')) return
+    event.preventDefault()
+    setFocus(false)
+  }, { signal })
+
   save.addEventListener('click', () => { void flush() })
   mode.addEventListener('click', async () => { if (await flush()) { editing = !editing; applyMode() } })
   add.addEventListener('click', () => formDialog(root, { title: t('editor.newChapter'), action: t('editor.createChapter'), fields: [nameField(t('editor.chapterTitle'))] },
@@ -471,7 +501,10 @@ export async function renderEdition(
   }, { signal })
   document.addEventListener('visibilitychange', () => { if (document.hidden) void flush() }, { signal })
   window.addEventListener('pagehide', () => { void flush() }, { signal })
+  const stopFollowing = onAppearanceChange((value) => { paper.spellcheck = value.spellcheck })
   signal.addEventListener('abort', () => {
+    stopFollowing()
+    setFocus(false)
     window.clearTimeout(timer)
     window.cancelAnimationFrame(refreshFrame)
     window.removeEventListener('beforeunload', unsaved)

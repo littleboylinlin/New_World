@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.10.4 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.13.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.10.4](https://github.com/littleboylinlin/New_World/releases/tag/v0.10.4). Interface controls no longer get selected when dragging; manuscripts, input fields, and text previews remain selectable and copyable, and the header keeps only the New World brand name. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.13.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.13.0). It adds a home writing heatmap that records words per day, plus a day streak and a total word count. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,9 +36,22 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.10.4\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.13.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
+
+## Appearance
+
+"Settings → Appearance" sets the theme, English font, Chinese font and text size. Changes apply right away. The "Aa" button in the reading and editor toolbars opens a small panel for the theme, text size and English font; "More settings…" opens the full settings.
+
+- Theme: Match system, White, Dark or Beige, applied to the whole app. The default follows the system's light or dark mode. The app bar doubles as the window title bar and stays dark in every theme.
+- English font: Times New Roman (default), Georgia, Lora, Inter or System Sans. Lora and Inter ship with the app and work offline; their licenses are in `src/fonts/` and in `licenses/` of the build.
+- Chinese font: Auto (default; Song with serif English fonts, otherwise Hei), Song, Hei or Kai, using the fonts installed on the system. Chinese characters, which the English fonts do not contain, use the chosen Chinese font.
+- Text size: shared by reading and writing, 14 to 28 px, with a reset to the default.
+- Layout: line spacing (compact, standard, relaxed), paragraph spacing (none, standard, wide), a two-character first-line indent, and text width (narrow, standard, wide).
+- Spell check: off by default. When on, only the English spelling of the chapter text is checked; titles and form fields are not. Right-click a marked word to pick a suggestion or add it to the dictionary. The Windows app ships US and UK English dictionaries, so it works offline and never downloads one on its own. Other Chromium `.bdic` dictionaries can be imported in the settings or downloaded from an https link you enter (the file name must match the one in Electron's `hunspell_dictionaries.zip`, such as `fr-FR-3-0.bdic`). The link itself must be https; if the server redirects to plain http the download still completes, with a warning to check the source. Added dictionaries are used together with the built-in ones and can be removed at any time, which deletes the file right away; macOS uses the system spell checker and the web version the browser's.
+
+Appearance is saved on this device. On the desktop it moves together with the library storage location, and the chosen theme is also kept in `NewWorld-appearance.json` so the window opens with the matching background instead of flashing light first. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style.
 
 ## Running
 
@@ -71,17 +84,21 @@ A work page in the original library switches between the **source file** and eac
 
 After importing a source work into the continuation/imitation library, each work gets a project. The project's "Continuations" list creates and opens independent continuation drafts; the "Sources" list reads, downloads, and adds files for the same source work. When needed, choose "Continue from this source" on the source reading page. Source works and manuscripts imported by older versions appear directly in the corresponding lists, and previously standalone drafts can add sources within their project.
 
-- The chapter table of contents supports creating, renaming, moving up/down, switching, and confirmed deletion, and shows each chapter's word count. Above the text, chapter and whole-book counts are shown. The chapter title can be used for navigation; counts use non-whitespace Unicode characters.
+- The chapter table of contents supports creating, renaming, moving up/down, switching, and confirmed deletion, and shows each chapter's word count. Above the text, chapter and whole-book counts are shown. The chapter title can be used for navigation; counts follow word processors: each Chinese character or Chinese punctuation mark counts as one, each English (or other space-separated) word counts as one, and mixed text adds both.
 - The editor provides paragraphs, headings, bold, italic, underline, lists, quotes, horizontal rules, and local images. Native browser selection, clipboard, and Chinese IME input are supported.
 - `Ctrl / ⌘ + S` saves, `Ctrl / ⌘ + F` finds within the chapter, `Ctrl / ⌘ + B/I/U` toggles inline styles, `Ctrl / ⌘ + Z` undoes, `Ctrl / ⌘ + Shift + Z` redoes. Find matches literally and can replace one or all occurrences. Undo history belongs to the current chapter's editing session.
 - "Reading mode" keeps the table of contents and find; editing can be restored with "Edit text". At phone widths the chapter list can be expanded and the toolbar scrolls horizontally.
+- "Focus" hides the chapter list, the buttons around the text and the footer, leaving only the chapter; the toolbar fades until pointed at. Press `Esc` or click again to leave; leaving the page also ends it.
 - Page navigation, chapter switching, dialogs, and notices have transition animations. Animations are skipped when the system's "reduce motion" is enabled.
 
 ## Writing stats
 
-The bottom of the home page shows a writing heatmap: a year of days laid out by week, shaded darker the more you wrote. Hovering or keyboard-focusing a day shows that day's character count, today is marked separately, and arrow keys move between cells. Two stat cards above the heatmap show your day streak and total characters.
+The home page shows writing stats below the library lists: a heatmap that records words per day, plus cards for the day streak and total words.
 
-Counts reuse the editor's non-whitespace Unicode character counting. Each day's count is recorded as a positive delta when a save commits; imports, conversions, and copies do not count. Writing history is global, so the streak and each day's count survive deleting a work, while the total reflects the current library. At phone widths the heatmap scrolls internally without widening the page.
+- The heatmap covers the past year; each square is one day, and darker means more written that day. Pointing at a square or focusing it with the arrow keys shows that day's date and word count; days with no writing show "No writing", and today is marked separately.
+- Counts follow the editor: each Chinese character or Chinese punctuation mark counts as one, and each English (or other space-separated) word counts as one. A day is credited only when a save increases the word count; deleting or editing text never subtracts.
+- The day streak counts back over consecutive days with writing, starting today (or yesterday if today has none yet); total words is the sum across every chapter currently in the library.
+- Writing days are global history stored separately, so deleting a work or emptying the trash never erases them. At phone widths the heatmap scrolls horizontally, colors follow the White, Dark and Beige themes, and animations are skipped when the system's "reduce motion" is enabled.
 
 ## Trash
 
@@ -90,6 +107,21 @@ Deleting a work, a continuation project's source, an edited version, or a chapte
 - Trash keeps content for 30 days; expired items are cleaned up the next time the app opens. Trashed content still occupies local storage.
 - Restored chapters return to their original order. When restoring an edited version whose name already exists, "restored" is appended to the name.
 - If the owning work or version was also deleted, restore it first. If the same source file was re-imported after deletion, delete the newly imported copy first.
+
+## Archive
+
+Every work card on the shelves has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" on the home page and "View archive" beside each library list show all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
+
+## Backup and restore
+
+"Settings → Backups" packs both libraries, every edition, the original files and the trash into one `.zip` file.
+
+- Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
+- Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
+- Backup location (desktop): `New World Backups` in Documents by default; choose another folder, go back to the default, or open the folder.
+- Encryption: none, or a password (AES-256, which tools such as 7-Zip can open). The desktop app keeps the password encrypted with the system keychain, so automatic backups are encrypted too; the web version asks for a password with each backup. A forgotten password cannot be recovered.
+- Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
+- Device settings such as appearance, language and storage location are not part of a backup.
 
 ## Format support
 

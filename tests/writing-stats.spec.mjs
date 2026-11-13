@@ -202,10 +202,20 @@ test('英文界面显示英文统计文案与提示', async ({ page }) => {
   await ready(page)
   await expect(page.locator('.writing-stats')).toHaveAttribute('aria-label', 'Writing stats')
   await expect(page.locator('.stat-streak .stat-label')).toHaveText('Day streak')
-  await expect(page.locator('.stat-total .stat-label')).toHaveText('Total characters')
+  await expect(page.locator('.stat-total .stat-label')).toHaveText('Total words')
   await expect(page.locator('.stats-hint')).toContainText('Start writing')
   await todayCell(page).hover()
   await expect(tooltip(page)).toContainText('Today · No writing')
+})
+
+test('英文正文按词计数，复用编辑器口径', async ({ page }) => {
+  await page.goto('/#/original')
+  await newNovel(page, 'English Draft')
+  await textArea(page).fill('The quick brown fox jumps')
+  await manualSave(page)
+  await goHome(page)
+  await expect(total(page)).toHaveText('5')
+  await expect(todayCell(page)).toHaveAttribute('data-words', '5')
 })
 
 test.describe('手机视口', () => {

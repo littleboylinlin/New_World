@@ -66,16 +66,43 @@ export function chapterText(content: DocumentContent, paragraphSeparator = '\n')
   return text(content)
 }
 
-// Count the same way as the editor: every non-blank character of the text.
-export function wordCount(content: JSONContent) {
+const ideographs = '\\p{sc=Han}\\p{sc=Hiragana}\\p{sc=Katakana}'
+const fullWidth = '\\u3000-\\u303f\\uff01-\\uff60\\uffe0-\\uffee'
+const letter = `(?:(?![${ideographs}])[\\p{L}\\p{N}\\p{M}])`
+const sharedMarks = '“”‘’—…·'
+// A word of letters or digits (joined by apostrophes, hyphens or dots), one Chinese or Japanese
+// character or full-width mark, or a run of quotes and dashes that both languages use.
+const tokens = new RegExp(`${letter}+(?:['’.\\-]${letter}+)*|[${ideographs}${fullWidth}]|[${sharedMarks}]+`, 'gu')
+const eastAsian = new RegExp(`[${ideographs}${fullWidth}]`, 'u')
+const shared = new RegExp(`^[${sharedMarks}]+$`, 'u')
+
+/**
+ * Counts like a word processor's Chinese word count: each Chinese character and Chinese
+ * punctuation mark is one, and each English (or other spaced-language) word is one.
+ * Quotes and dashes count as Chinese punctuation only next to Chinese text.
+ */
+export function countText(text: string) {
   let total = 0
-  const pending = [content]
-  while (pending.length) {
-    const node = pending.pop()!
-    if (node.text) total += Array.from(node.text.replace(/\s/gu, '')).length
-    if (node.content) pending.push(...node.content)
+  for (const match of text.matchAll(tokens)) {
+    const token = match[0]
+    if (!shared.test(token)) { total++; continue }
+    const before = text.slice(0, match.index).slice(-2)
+    const after = text.slice(match.index + token.length, match.index + token.length + 2)
+    if (eastAsian.test(Array.from(before).at(-1) ?? '') || eastAsian.test(Array.from(after)[0] ?? '')) total += Array.from(token).length
   }
   return total
+}
+
+/** The text of a document with each block on its own line, so words never join across blocks. */
+function plainText(node: JSONContent): string {
+  if (node.text) return node.text
+  if (node.type === 'hardBreak') return '\n'
+  if (!node.content) return ''
+  return node.content.map(plainText).join('') + '\n'
+}
+
+export function wordCount(content: JSONContent) {
+  return countText(plainText(content))
 }
 
 export function hasChapterHeading(chapter: ChapterInput) {

@@ -506,7 +506,7 @@ test('章节目录显示各章字数和全书字数', async ({ page }) => {
   await page.getByRole('button', { name: '创建章节' }).click()
   await expect(page.locator('.writing-header h3')).toHaveText('第二章')
   await expect(counts).toHaveText(['9', '0'])
-  await textArea(page).fill('雨 停 了。\nabc')
+  await textArea(page).fill('雨 停 了。\nThe rain’s stopped.')
   await expect(page.locator('.word-count')).toHaveText('本章 7 字')
   await expect(counts).toHaveText(['9', '7'])
   await expect(total).toHaveText('全书 16 字')

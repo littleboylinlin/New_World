@@ -1,0 +1,182 @@
+/*
+ * Appearance: colour themes, text fonts and the reading size.
+ * public/appearance.js sets the data attributes on <html> before the first paint;
+ * src/appearance.ts keeps them in step with the settings.
+ */
+
+@font-face { font-family: "New World Lora"; src: url("./fonts/Lora-Variable.ttf") format("truetype"); font-weight: 400 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "New World Lora"; src: url("./fonts/Lora-Italic-Variable.ttf") format("truetype"); font-weight: 400 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-Regular.woff") format("woff"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-Italic.woff") format("woff"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-SemiBold.woff") format("woff"); font-weight: 500 650; font-style: normal; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-SemiBoldItalic.woff") format("woff"); font-weight: 500 650; font-style: italic; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-Bold.woff") format("woff"); font-weight: 651 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-BoldItalic.woff") format("woff"); font-weight: 651 900; font-style: italic; font-display: swap; }
+@font-face { font-family: "New World Inter"; src: url("./fonts/Inter-Black.woff") format("woff"); font-weight: 801 900; font-style: normal; font-display: swap; }
+
+:root {
+  /* Each choice is one English font followed by a Chinese font and a generic family. */
+  --font-times: "Times New Roman", Times, "Liberation Serif", "Tinos";
+  --font-georgia: Georgia, "Gelasio";
+  --font-lora: "New World Lora";
+  --font-inter: "New World Inter";
+  --font-system: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  --cjk-song: "Songti SC", STSong, "Source Han Serif SC", "Noto Serif CJK SC", SimSun;
+  --cjk-hei: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", "Noto Sans CJK SC";
+  --cjk-kai: "Kaiti SC", STKaiti, KaiTi, "AR PL UKai CN";
+
+  --latin-font: var(--font-times);
+  --cjk-font: var(--cjk-song);
+  --generic-font: serif;
+  --text-font: var(--latin-font), var(--cjk-font), var(--generic-font);
+}
+:root[data-latin-font="georgia"] { --latin-font: var(--font-georgia); }
+:root[data-latin-font="lora"] { --latin-font: var(--font-lora); }
+:root[data-latin-font="inter"] { --latin-font: var(--font-inter); --generic-font: sans-serif; }
+:root[data-latin-font="system"] { --latin-font: var(--font-system); --generic-font: sans-serif; }
+/* "Auto" pairs Song with serif English fonts and Hei with sans-serif ones. */
+:root[data-cjk-font="hei"],
+:root[data-cjk-font="auto"]:is([data-latin-font="inter"], [data-latin-font="system"]) { --cjk-font: var(--cjk-hei); }
+:root[data-cjk-font="kai"] { --cjk-font: var(--cjk-kai); }
+
+/* Font previews in the settings use the same stacks as the text. */
+.font-times { font-family: var(--font-times), var(--cjk-font), serif; }
+.font-georgia { font-family: var(--font-georgia), var(--cjk-font), serif; }
+.font-lora { font-family: var(--font-lora), var(--cjk-font), serif; }
+.font-inter { font-family: var(--font-inter), var(--cjk-font), sans-serif; }
+.font-system { font-family: var(--font-system), var(--cjk-font), sans-serif; }
+.font-auto { font-family: var(--latin-font), var(--cjk-song), var(--generic-font); }
+:root:is([data-latin-font="inter"], [data-latin-font="system"]) .font-auto { font-family: var(--latin-font), var(--cjk-hei), var(--generic-font); }
+.font-song { font-family: var(--latin-font), var(--cjk-song), serif; }
+.font-hei { font-family: var(--latin-font), var(--cjk-hei), sans-serif; }
+.font-kai { font-family: var(--latin-font), var(--cjk-kai), serif; }
+
+/* Text layout for reading and writing. "Standard" leaves each view's own values. */
+:root[data-line-height="compact"] { --text-line-height: 1.6; }
+:root[data-line-height="relaxed"] { --text-line-height: 2.3; }
+:root[data-paragraph="none"] { --paragraph-gap: 0; }
+:root[data-paragraph="wide"] { --paragraph-gap: 1.7em; }
+:root[data-indent="on"] { --first-indent: 2em; }
+:root[data-width="narrow"] { --text-width: 34rem; }
+:root[data-width="wide"] { --text-width: 58rem; }
+
+/*
+ * Colours. White and dark share one list through light-dark(); "system" follows the
+ * operating system. Beige replaces the light values with paper tones.
+ */
+:root {
+  color-scheme: light;
+  --ink: light-dark(#16130f, #ece6da);
+  --paper: light-dark(#f4eee2, #131210);
+  --sheet: light-dark(#fffdf7, #1e1b18);
+  --surface: light-dark(#fff, #1a1816);
+  --field: light-dark(#fff, #262320);
+  --muted: light-dark(#5f574b, #a99f8f);
+  --hair: light-dark(#d8cfbd, #3c3730);
+  --dots: light-dark(#e3dac8, #24211d);
+  --edge: light-dark(#16130f, #6f6658);
+  --red: light-dark(#e5141a, #e8262c);
+  --blue: light-dark(#0b3ffb, #3f5dff);
+  --yellow: #ffd426;
+  --tint-red: light-dark(#ffe3dc, #46201d);
+  --tint-blue: light-dark(#dfe6ff, #1f2852);
+  --on-accent: #fff;
+  --on-yellow: #16130f;
+  --danger-text: light-dark(#a80f14, #ff8a85);
+  --danger-bg: light-dark(#fff1ee, #3a1816);
+  --focus-bg: light-dark(#fffbe3, #2f2b1d);
+  --find-bg: light-dark(#fff8d2, #2c2817);
+  --code-bg: light-dark(#f3efe4, #272420);
+  --cell-select: light-dark(#fff3b8, #4b4322);
+  --disabled-text: light-dark(#8a8174, #7a7265);
+  --disabled-border: light-dark(#a59c8d, #4d473f);
+  --disabled-bg: light-dark(#ece5d6, #24211e);
+  --empty-bg: light-dark(#fffdf7a8, #1e1b18a8);
+  --backdrop: light-dark(#16130f9e, #000000b3);
+  --bar: #16130f;
+  --bar-text: #f4eee2;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="system"] { color-scheme: light dark; }
+:root[data-theme="beige"] {
+  --ink: #2b2117;
+  --paper: #ebdfc5;
+  --sheet: #f7eedb;
+  --surface: #f8efdc;
+  --field: #fdf7ea;
+  --muted: #6b5d48;
+  --hair: #d5c4a2;
+  --dots: #dccbab;
+  --edge: #2b2117;
+  --tint-red: #f6d3c3;
+  --tint-blue: #d9dcf0;
+  --focus-bg: #fff6d6;
+  --find-bg: #f9edbf;
+  --code-bg: #efe3ca;
+  --disabled-bg: #e4d7bb;
+  --empty-bg: #f7eedba8;
+}
+
+/* Appearance controls */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.appearance-heading { margin-block: 18px 9px; color: var(--muted); font-size: .84rem; font-weight: 800; letter-spacing: .02em; }
+.settings-section > .appearance-heading:first-of-type { margin-top: 0; }
+.settings-options.theme-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.theme-options .settings-option { display: flex; flex-direction: column; justify-content: center; gap: 7px; text-align: center; }
+.theme-swatch { display: block; flex: none; width: 34px; height: 22px; border: 2px solid var(--ink); border-radius: 6px; background: #fff; }
+.theme-swatch-dark { background: #16130f; }
+.theme-swatch-beige { background: #f8efdc; }
+.theme-swatch-system { background: linear-gradient(135deg, #fff 0 50%, #16130f 50% 100%); }
+.font-options .settings-option { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 9px 13px; text-align: start; }
+.font-name { font-size: 1.02rem; font-weight: 700; }
+.font-sample { color: var(--muted); font-size: .84rem; font-weight: 400; }
+.settings-option:has(input:checked) .font-sample { color: inherit; opacity: .88; }
+.settings-option:has(input:enabled):not(:has(input:checked)):hover .font-sample { color: inherit; }
+.size-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.button.size-step { min-width: 58px; gap: 2px; }
+.size-glyph { font-family: Georgia, "Times New Roman", serif; font-size: 1.1rem; font-weight: 700; line-height: 1; }
+.size-glyph-small { font-size: .82rem; }
+.size-sign { font-weight: 900; }
+.size-value { min-width: 4.4em; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+
+.editor-side-tools, .preview-tools { display: flex; flex: none; align-items: center; gap: 8px; }
+.preview-tools { flex-wrap: wrap; gap: 10px; }
+.appearance-menu { position: relative; flex: none; }
+.format-button.appearance-toggle { border-color: var(--ink); background: var(--sheet); }
+.appearance-toggle .format-glyph { font-size: 1rem; }
+.appearance-toggle[aria-expanded="true"] { color: var(--on-yellow); background: var(--yellow); }
+.appearance-panel { position: absolute; z-index: 6; top: calc(100% + 8px); inset-inline-end: 0; display: grid; gap: 14px; width: min(290px, calc(100vw - 32px)); padding: 14px; border: 2px solid var(--ink); border-radius: 12px; color: var(--ink); background: var(--sheet); box-shadow: 5px 5px 0 var(--edge); font-size: .9rem; text-align: start; }
+.theme-swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.theme-swatches .settings-option { min-height: 44px; padding: 5px; }
+.theme-swatches .theme-swatch { width: 100%; height: 30px; }
+.appearance-panel .size-controls { flex-wrap: nowrap; }
+.appearance-panel .size-step { flex: 1; }
+.field-label.appearance-font { gap: 6px; font-size: .82rem; }
+.appearance-font .editor-select { width: 100%; }
+.appearance-more { justify-self: center; padding: 4px 8px; border: 0; border-radius: 6px; color: var(--muted); background: none; font-size: .84rem; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
+.appearance-more:hover { color: var(--ink); }
+
+@media (max-width: 520px) {
+  .settings-options.theme-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-options.font-options { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Printing an export always uses white paper, whatever the theme. */
+@media print {
+  :root.printing-edition { color-scheme: light; }
+}
+
+.settings-options.choice-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.choice-options .settings-option { min-height: 48px; }
+.appearance-check { display: flex; align-items: center; gap: 9px; font-size: .86rem; font-weight: 750; cursor: pointer; }
+.appearance-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+.dictionary-box { display: grid; gap: 10px; margin-top: 4px; padding: 14px; border: 2px solid var(--ink); border-radius: 10px; background: var(--field); }
+.dictionary-box[hidden] { display: none; }
+.dictionary-title { margin: 0; font-size: .9rem; font-weight: 800; }
+.dictionary-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.dictionary-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding-bottom: 6px; border-bottom: 1px solid var(--hair); font-size: .92rem; }
+.dictionary-box > .button { justify-self: start; }
+.dictionary-row { display: flex; align-items: flex-end; gap: 8px; }
+.dictionary-link { flex: 1; min-width: 0; }
+@media (max-width: 520px) { .dictionary-row { flex-direction: column; align-items: stretch; } }

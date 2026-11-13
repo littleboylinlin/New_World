@@ -529,3 +529,227 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
     expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['编辑', '视图'])
   } finally { await stop(app) }
 })
+
+test('黑色主题重开时窗口直接以深色底色打开，不先闪浅色', async ({}, testInfo) => {
+  const themeFile = ({ app }) => {
+    const { readFileSync } = process.getBuiltinModule('node:fs')
+    const { join } = process.getBuiltinModule('node:path')
+    try { return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-appearance.json'), 'utf8')).theme } catch { return null }
+  }
+  const windowState = ({ BrowserWindow, nativeTheme }) => ({
+    background: BrowserWindow.getAllWindows()[0]?.getBackgroundColor().toLowerCase(),
+    source: nativeTheme.themeSource,
+  })
+  let app = await launch(testInfo)
+  try {
+    let page = await app.firstWindow()
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    let section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    await section.getByRole('radio', { name: /黑色/ }).check()
+    await expect.poll(() => app.evaluate(themeFile)).toBe('dark')
+    await expect.poll(() => app.evaluate(windowState)).toEqual({ background: '#131210', source: 'dark' })
+    await stop(app)
+
+    app = await launch(testInfo)
+    page = await app.firstWindow()
+    // Checked as soon as the window exists: the background comes from the saved theme, not the page.
+    expect(await app.evaluate(windowState)).toEqual({ background: '#131210', source: 'dark' })
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await page.screenshot({ path: testInfo.outputPath('windows-dark-theme.png') })
+
+    // Leave the shared profile as it was for the other desktop tests.
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    await section.getByRole('radio', { name: /跟随系统/ }).check()
+    await expect.poll(() => app.evaluate(themeFile)).toBe('system')
+    await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
+  } finally { await stop(app) }
+})
+
+test('拼写检查使用随应用安装的英文词典，不需要联网下载', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    expect(await app.evaluate(({ app, session }) => {
+      const { readdirSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return {
+        files: readdirSync(join(app.getPath('userData'), 'Dictionaries')).filter((name) => name.endsWith('.bdic')).sort(),
+        languages: session.defaultSession.getSpellCheckerLanguages(),
+      }
+    })).toEqual({ files: ['en-GB-10-2.bdic', 'en-US-10-2.bdic'], languages: ['en-US', 'en-GB'] })
+    await app.evaluate(({ BrowserWindow, session }) => {
+      globalThis.dictionaryFailures = []
+      session.defaultSession.on('spellcheck-dictionary-download-failure', (_event, language) => globalThis.dictionaryFailures.push(language))
+      // Record the right click instead of opening the native menu, which would wait for input.
+      const contents = BrowserWindow.getAllWindows()[0].webContents
+      contents.removeAllListeners('context-menu')
+      contents.on('context-menu', (_event, params) => {
+        globalThis.spellingClick = { word: params.misspelledWord, suggestions: params.dictionarySuggestions }
+      })
+    })
+
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.getByRole('textbox', { name: '作品名' }).fill('Spelling')
+    await page.getByRole('button', { name: '创建小说' }).click()
+    await expect(editor(page)).toBeVisible()
+    await page.getByRole('button', { name: '外观', exact: true }).click()
+    const spelling = page.getByRole('group', { name: '外观' }).getByRole('checkbox', { name: '拼写检查' })
+    await spelling.check()
+    await page.keyboard.press('Escape')
+    await editor(page).click()
+    await page.keyboard.type('Teh lighthouse ')
+
+    await expect.poll(async () => {
+      await editor(page).locator('p').first().click({ button: 'right', position: { x: 8, y: 12 } })
+      return app.evaluate(() => globalThis.spellingClick?.word ?? '')
+    }, { timeout: 20_000 }).toBe('Teh')
+    expect((await app.evaluate(() => globalThis.spellingClick.suggestions)).length).toBeGreaterThan(0)
+    expect(await app.evaluate(() => globalThis.dictionaryFailures)).toEqual([])
+
+    // Leave the shared profile as it was for the other desktop tests.
+    await page.getByRole('button', { name: '外观', exact: true }).click()
+    await spelling.uncheck()
+  } finally { await stop(app) }
+})
+
+test('可导入或从链接下载其他语言的拼写词典，与内置词典一起使用并可移除', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    const languages = () => app.evaluate(({ session }) => session.defaultSession.getSpellCheckerLanguages())
+    // The file dialog is native, so it returns a prepared copy of an English dictionary instead.
+    await app.evaluate(({ app, dialog }) => {
+      const { copyFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      const file = join(app.getPath('temp'), 'en-AU-10-2.bdic')
+      copyFileSync(join(app.getPath('userData'), 'Dictionaries', 'en-US-10-2.bdic'), file)
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] })
+    })
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    const list = section.getByRole('list', { name: '拼写词典' })
+    await expect(list.getByRole('listitem')).toHaveCount(2)
+    await expect(list).toContainText('en-US')
+    await expect(list).toContainText('en-GB')
+
+    await section.getByRole('button', { name: '导入词典文件…' }).click()
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('已添加')
+    await expect(list.getByRole('listitem')).toHaveCount(3)
+    await expect.poll(languages).toEqual(['en-US', 'en-GB', 'en-AU'])
+
+    // The desktop tests run offline, so the dictionary session answers with a real dictionary file.
+    await app.evaluate(({ app, session }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      const body = readFileSync(join(app.getPath('userData'), 'Dictionaries', 'en-US-10-2.bdic'))
+      globalThis.testDictionaryRequests = []
+      session.fromPartition('new-world-dictionaries').fetch = async (url) => {
+        globalThis.testDictionaryRequests.push(url)
+        if (!url.endsWith('/fr-fr-3-0.bdic')) return new Response(null, { status: 404 })
+        // Like Chromium's download server, which can redirect to plain http.
+        return { ok: true, url: 'http://r1.example.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic', headers: new Headers(), arrayBuffer: async () => body }
+      }
+    })
+    await section.getByRole('textbox', { name: '或从链接下载' }).fill('https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic')
+    await section.getByRole('button', { name: '下载', exact: true }).click()
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('已添加', { timeout: 60_000 })
+    await expect(list).toContainText('fr-FR')
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('未加密的 http')
+    await expect.poll(languages).toEqual(['en-US', 'en-GB', 'en-AU', 'fr-FR'])
+    expect(await app.evaluate(() => globalThis.testDictionaryRequests)).toEqual(['https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic'])
+    await page.screenshot({ path: testInfo.outputPath('windows-spelling-dictionaries.png') })
+
+    await section.getByRole('textbox', { name: '或从链接下载' }).fill('https://example.com/french.bdic')
+    await section.getByRole('button', { name: '下载', exact: true }).click()
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('文件名不对')
+
+    for (const code of ['en-AU', 'fr-FR']) await list.getByRole('listitem').filter({ hasText: code }).getByRole('button').click()
+    await expect(list.getByRole('listitem')).toHaveCount(2)
+    await expect.poll(languages).toEqual(['en-US', 'en-GB'])
+    // Removed dictionaries are deleted right away, not left for the next start.
+    expect(await app.evaluate(({ app }) => {
+      const { readdirSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return readdirSync(join(app.getPath('userData'), 'Dictionaries')).sort()
+    })).toEqual(['en-GB-10-2.bdic', 'en-US-10-2.bdic'])
+  } finally { await stop(app) }
+})
+
+test('自动备份和立即备份写入自选文件夹，可加密，并能从备份恢复', async ({}, testInfo) => {
+  const folder = testInfo.outputPath('backups')
+  const backups = async () => (await readdir(folder).catch(() => [])).sort()
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    // Native file dialogs are replaced: folders resolve to the test folder, files to the chosen backup.
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async (_window, options) => ({
+        canceled: false, filePaths: [options.properties.includes('openDirectory') ? folder : globalThis.testRestorePath],
+      })
+    }, folder)
+
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.getByRole('textbox', { name: '作品名' }).fill('备份的灯塔')
+    await page.getByRole('button', { name: '创建小说' }).click()
+    await editor(page).fill('守夜人把灯点亮。')
+    await page.getByRole('button', { name: '手动保存' }).click()
+    await expect(page.locator('.save-status')).toHaveText('已保存')
+
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '备份', exact: true })
+    await expect(section.getByRole('radio', { name: '每天' })).toBeChecked()
+    await expect(section.locator('.backup-location')).toContainText('New World Backups')
+    await section.getByRole('button', { name: '选择文件夹…' }).click()
+    await expect(section.locator('.backup-location')).toContainText(folder)
+    await expect(section.locator('.backup-location')).toContainText('自选位置')
+
+    await section.getByRole('radio', { name: '用密码加密' }).check()
+    const ask = page.getByRole('dialog', { name: '设置备份密码' })
+    await ask.getByLabel('密码', { exact: true }).fill('harbour')
+    await ask.getByLabel('再次输入密码').fill('harbour')
+    await ask.getByRole('button', { name: '设置密码' }).click()
+    await expect(section.locator('.backup-state')).toHaveText('之后的备份都会加密。')
+    expect(JSON.stringify(await app.evaluate(({ app }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-backup.json'), 'utf8'))
+    }))).not.toContain('harbour')
+
+    await section.getByRole('button', { name: '立即备份' }).click()
+    await expect(section.locator('.backup-state')).toContainText(/已备份 \d+ 部作品到/)
+    const manual = (await backups()).find((name) => name.startsWith('New-World-backup-'))
+    expect(manual).toBeTruthy()
+    expect((await readFile(join(folder, manual)))[6] & 1).toBe(1)
+
+    // The first automatic backup is due right away and runs shortly after the start.
+    await expect(section.locator('.backup-last')).toContainText('上次自动备份', { timeout: 60_000 })
+
+    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '关闭', exact: true }).click()
+    await editor(page).fill('恢复前改过的正文。')
+    await page.getByRole('button', { name: '手动保存' }).click()
+    await expect(page.locator('.save-status')).toHaveText('已保存')
+
+    await app.evaluate((_electron, path) => { globalThis.testRestorePath = path }, join(folder, manual))
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await section.getByRole('button', { name: '从备份恢复…' }).click()
+    const password = page.getByRole('dialog', { name: '输入备份密码' })
+    await password.getByLabel('密码', { exact: true }).fill('harbour')
+    await password.getByRole('button', { name: '打开' }).click()
+    await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
+    await expect(page.getByText(/已从备份恢复 \d+ 部作品。/)).toBeVisible()
+    expect((await backups()).some((name) => name.startsWith('New-World-before-restore-'))).toBe(true)
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('link', { name: '查看 备份的灯塔', exact: true }).click()
+    await expect(editor(page)).toHaveText('守夜人把灯点亮。')
+
+    // Leave the shared profile as it was for the other desktop tests.
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await section.getByRole('radio', { name: '不加密' }).check()
+    await expect(section.locator('.backup-state')).toHaveText('之后的备份不加密。')
+    await section.getByRole('button', { name: '恢复默认位置' }).click()
+    await expect(section.locator('.backup-location')).toContainText('默认位置')
+  } finally { await stop(app) }
+})

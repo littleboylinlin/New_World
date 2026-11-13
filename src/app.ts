@@ -4,9 +4,11 @@ import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
 import { clearExpiredTrash, countTrash } from './trash'
 import { renderTrash } from './trash-view'
+import { renderArchive } from './archive-view'
+import { restoredNotice, startAutomaticBackups } from './backup-view'
 import { mountSettingsView } from './settings-view'
 import { changeView, pop } from './motion'
-import { libraries } from './ui'
+import { libraries, notice } from './ui'
 import { libraryChanges } from './library'
 import type { LibraryId } from './library'
 
@@ -43,6 +45,9 @@ function render(moveFocus = false) {
       if (view === scope) leaveGuard = guard
     })
     else renderShelf(main, library, view.signal)
+  } else if (/^#\/archive\/?$/.test(activeHash)) {
+    document.title = t('archive.pageTitle')
+    renderArchive(main, view.signal)
   } else if (/^#\/trash\/?$/.test(activeHash)) {
     document.title = t('main.trashNewWorld')
     renderTrash(main, view.signal)
@@ -76,6 +81,8 @@ window.addEventListener('hashchange', async () => {
   changeView(main, previous, target, () => render(true))
 })
 render()
+const restored = restoredNotice()
+if (restored) main.prepend(notice(restored))
 const trashCount = document.querySelector<HTMLElement>('#trash-count')!
 async function refreshTrashCount() {
   try {
@@ -95,3 +102,4 @@ if (window.newWorldDesktop) {
 }
 mountSettingsView(saveBeforeLeaving)
 window.newWorldDesktop?.reportReady?.()
+startAutomaticBackups()

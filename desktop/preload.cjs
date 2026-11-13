@@ -19,6 +19,20 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   resetStorageLocation: () => ipcRenderer.invoke('new-world:reset-storage-location'),
   getCloseBehavior: () => ipcRenderer.invoke('new-world:get-close-behavior'),
   setCloseBehavior: (mode) => ipcRenderer.invoke('new-world:set-close-behavior', mode),
+  setWindowTheme: (theme) => ipcRenderer.invoke('new-world:set-window-theme', theme),
+  getBackupState: () => ipcRenderer.invoke('new-world:backup-state'),
+  setBackupFrequency: (frequency) => ipcRenderer.invoke('new-world:backup-set-frequency', frequency),
+  chooseBackupFolder: () => ipcRenderer.invoke('new-world:backup-choose-folder'),
+  resetBackupFolder: () => ipcRenderer.invoke('new-world:backup-reset-folder'),
+  setBackupPassword: (password) => ipcRenderer.invoke('new-world:backup-set-encryption', password),
+  getBackupPassword: () => ipcRenderer.invoke('new-world:backup-password'),
+  saveBackup: (name, bytes, automatic) => ipcRenderer.invoke('new-world:backup-save', name, bytes, automatic),
+  openBackup: () => ipcRenderer.invoke('new-world:backup-open'),
+  showBackupFolder: () => ipcRenderer.invoke('new-world:backup-show-folder'),
+  getSpellingDictionaries: () => ipcRenderer.invoke('new-world:spelling-state'),
+  importSpellingDictionaries: () => ipcRenderer.invoke('new-world:spelling-import'),
+  downloadSpellingDictionary: (link) => ipcRenderer.invoke('new-world:spelling-download', link),
+  removeSpellingDictionary: (language) => ipcRenderer.invoke('new-world:spelling-remove', language),
   onCloseRequested: (save) => {
     ipcRenderer.on('new-world:save-before-close', async () => {
       const saved = await Promise.resolve().then(save).catch(() => false)
