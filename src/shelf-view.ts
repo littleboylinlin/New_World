@@ -7,6 +7,7 @@ import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
 import { stagger } from './motion'
 import { offerUndo } from './undo'
+import { renderWritingStats } from './writing-stats'
 
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
@@ -36,6 +37,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   }
 
   home.append(intro, stagger(cards))
+  renderWritingStats(home, signal)
   root.append(home)
 
   async function refreshCounts() {

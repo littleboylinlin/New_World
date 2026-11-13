@@ -445,5 +445,16 @@
   "macMenu.hideOthers": "Hide Others",
   "macMenu.showAll": "Show All",
   "macMenu.quit": "Quit New World",
-  "macUpdate.restoredOldVersion": "The update could not start successfully. The previous version has been restored. Your books and settings have been kept."
+  "macUpdate.restoredOldVersion": "The update could not start successfully. The previous version has been restored. Your books and settings have been kept.",
+  "writing.title": "Writing stats",
+  "writing.eyebrow": "STATS",
+  "writing.streakLabel": "Day streak",
+  "writing.totalLabel": "Total characters",
+  "writing.heatmapLabel": "Writing heatmap",
+  "writing.less": "Less",
+  "writing.more": "More",
+  "writing.emptyHint": "Start writing and your daily character counts will appear here.",
+  "writing.wroteWords": "{0} characters written",
+  "writing.noWriting": "No writing",
+  "writing.today": "Today"
 }

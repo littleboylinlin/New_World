@@ -445,5 +445,16 @@
   "macMenu.hideOthers": "隐藏其他应用",
   "macMenu.showAll": "显示全部",
   "macMenu.quit": "退出 New World",
-  "macUpdate.restoredOldVersion": "新版未能正常启动，已恢复原版本。书库、正文和设置已保留。"
+  "macUpdate.restoredOldVersion": "新版未能正常启动，已恢复原版本。书库、正文和设置已保留。",
+  "writing.title": "写作统计",
+  "writing.eyebrow": "统计",
+  "writing.streakLabel": "连续写作天数",
+  "writing.totalLabel": "总字数",
+  "writing.heatmapLabel": "写作热力图",
+  "writing.less": "少",
+  "writing.more": "多",
+  "writing.emptyHint": "开始写作后，这里会按天记录字数。",
+  "writing.wroteWords": "写了 {0} 字",
+  "writing.noWriting": "没有写作",
+  "writing.today": "今天"
 }

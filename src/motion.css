@@ -9,6 +9,7 @@
 @keyframes enter-forward { from { opacity: 0; transform: translateX(26px); } }
 @keyframes enter-back { from { opacity: 0; transform: translateX(-26px); } }
 @keyframes drop-in { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 6px)); } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 22px); } }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, 16px); } }
@@ -34,6 +35,9 @@
   .reader-panel, .continuation-list { animation: 360ms var(--ease-out) backwards rise; }
   .continuation-list + .continuation-list { animation-delay: 70ms; }
   .arrive { animation: 380ms var(--ease-out) backwards rise; }
+  .writing-stats { animation: 420ms var(--ease-out) 120ms backwards rise; }
+  .heat-cell:not(.future) { transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), border-color 140ms ease; }
+  .heat-tooltip:not([hidden]) { animation: 160ms var(--ease-out) backwards tip-in; }
 
   .manage-dialog[open] { animation: 260ms var(--ease-pop) backwards dialog-in; }
   .manage-dialog[open]::backdrop { animation: 220ms ease-out backwards fade-in; }

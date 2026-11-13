@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.10.3 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.10.4 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.10.3](https://github.com/littleboylinlin/New_World/releases/tag/v0.10.3). Interface controls no longer get selected when dragging; manuscripts, input fields, and text previews remain selectable and copyable, and the header keeps only the New World brand name. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.10.4](https://github.com/littleboylinlin/New_World/releases/tag/v0.10.4). Interface controls no longer get selected when dragging; manuscripts, input fields, and text previews remain selectable and copyable, and the header keeps only the New World brand name. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,7 +36,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.10.3\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.10.4\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -77,6 +77,12 @@ After importing a source work into the continuation/imitation library, each work
 - "Reading mode" keeps the table of contents and find; editing can be restored with "Edit text". At phone widths the chapter list can be expanded and the toolbar scrolls horizontally.
 - Page navigation, chapter switching, dialogs, and notices have transition animations. Animations are skipped when the system's "reduce motion" is enabled.
 
+## Writing stats
+
+The bottom of the home page shows a writing heatmap: a year of days laid out by week, shaded darker the more you wrote. Hovering or keyboard-focusing a day shows that day's character count, today is marked separately, and arrow keys move between cells. Two stat cards above the heatmap show your day streak and total characters.
+
+Counts reuse the editor's non-whitespace Unicode character counting. Each day's count is recorded as a positive delta when a save commits; imports, conversions, and copies do not count. Writing history is global, so the streak and each day's count survive deleting a work, while the total reflects the current library. At phone widths the heatmap scrolls internally without widening the page.
+
 ## Trash
 
 Deleting a work, a continuation project's source, an edited version, or a chapter moves the content to the trash. The notice at the bottom of the page right after deletion can undo it directly. "Trash" in the header lists deleted content, which can be restored to its original place, permanently deleted, or emptied all at once.
@@ -110,7 +116,7 @@ Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, i
 
 Text is auto-saved about 700 ms after changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
 
-IndexedDB v3 adds a trash store alongside the works, files, edited versions, and chapters stores. Upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
+IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
 
 Import, conversion, editing, and export all happen locally. Illustrations are stored in manuscripts; HTML import and rich-text paste strip executable content and remote addresses.
 

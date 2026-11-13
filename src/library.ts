@@ -56,7 +56,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 3)
+    const request = indexedDB.open('new-world-library', 4)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -75,6 +75,8 @@ export function openDatabase() {
         chapters.createIndex('byEdition', ['library', 'bookId', 'editionId'])
       }
       if (event.oldVersion < 3) db.createObjectStore('trash', { keyPath: 'id' })
+      // Daily writing activity is global history, so it stays out of libraryStores and survives book deletion.
+      if (event.oldVersion < 4) db.createObjectStore('writingDays', { keyPath: 'date' })
     }
     request.onsuccess = () => {
       const db = request.result
