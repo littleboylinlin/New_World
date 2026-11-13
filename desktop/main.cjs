@@ -320,7 +320,8 @@ function backupState() {
   return {
     frequency: config.frequency, folder: backups.folderOf(config, documents), defaultFolder: backups.defaultFolder(documents),
     custom: Boolean(config.folder), encrypt: config.encrypt, lastAutomatic: config.lastAutomatic,
-    due: backups.due(config), canEncrypt: safeStorage.isEncryptionAvailable(),
+    // Asking the macOS keychain can show a prompt, so only Linux, where it may be missing, is checked up front.
+    due: backups.due(config), canEncrypt: process.platform !== 'linux' || safeStorage.isEncryptionAvailable(),
   }
 }
 

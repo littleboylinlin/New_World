@@ -133,15 +133,11 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
   const error = element('p', 'field-error')
   error.setAttribute('role', 'alert')
   error.hidden = true
-  const fileInput = element('input')
-  fileInput.type = 'file'
-  fileInput.accept = '.zip,application/zip'
-  fileInput.hidden = true
 
   if (desktop) {
     section.append(heading(t('backup.automatic')), frequency.group, heading(t('backup.location')), location, folderActions)
   }
-  section.append(heading(t('backup.encryption')), encryption.group, changePassword, last, actions, status, error, fileInput,
+  section.append(heading(t('backup.encryption')), encryption.group, changePassword, last, actions, status, error,
     element('p', 'dialog-help', desktop ? t('backup.desktopHint', [10]) : t('backup.webHint')))
 
   function fail(cause: unknown) {
@@ -305,17 +301,28 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
     confirmRestore(await readBackup(file))
   }
 
+  // The web version picks the file with a file input that exists only while the picker is open.
+  function pickFile() {
+    const input = element('input')
+    input.type = 'file'
+    input.accept = '.zip,application/zip'
+    input.hidden = true
+    input.addEventListener('change', () => {
+      const file = input.files?.[0]
+      input.remove()
+      if (file) void task(() => open(file))
+    })
+    input.addEventListener('cancel', () => input.remove())
+    section.append(input)
+    input.click()
+  }
+
   restore.addEventListener('click', () => {
-    if (!desktop) return fileInput.click()
+    if (!desktop) return pickFile()
     void task(async () => {
       const picked = await desktop.openBackup!()
       if (picked) await open(new Blob([picked.bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' }))
     })
-  })
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0]
-    fileInput.value = ''
-    if (file) void task(() => open(file))
   })
 
   window.addEventListener('new-world:backup-change', () => void refresh())

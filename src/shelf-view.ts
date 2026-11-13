@@ -2,9 +2,9 @@ import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { createNovel } from './documents/store'
-import { deleteBook, libraryChanges, listShelf, maxTitleLength, renameBook, setArchived, storageError } from './library'
+import { deleteBook, libraryChanges, listArchived, listShelf, maxTitleLength, renameBook, setArchived, storageError } from './library'
 import type { Book, LibraryId } from './library'
-import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, notice } from './ui'
+import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
 
@@ -35,10 +35,18 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     cards.append(card)
   }
 
-  home.append(intro, stagger(cards))
+  // Archived works sit outside both libraries, so their entry is on the home page.
+  const archive = link('#/archive', '', 'archive-entry')
+  archive.setAttribute('aria-label', t('archive.title'))
+  const archiveCount = element('span', 'list-count archive-count')
+  archive.append(icon('archive'), element('span', '', t('archive.title')), archiveCount)
+  home.append(intro, stagger(cards), archive)
   root.append(home)
 
   async function refreshCounts() {
+    void listArchived().then((books) => {
+      if (!signal.aborted) archiveCount.textContent = books.length ? String(books.length) : ''
+    }, () => {})
     await Promise.all(libraryIds.map(async (id) => {
       const count = counts.get(id)!
       try {
@@ -185,7 +193,8 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   const listHeader = element('div', 'list-heading')
   const listTitle = element('h2', '', id === 'reference' ? t('shelf.groupedBySourceWork') : t('shelf.allWorks'))
   const count = element('span', 'list-count')
-  listHeader.append(listTitle, count)
+  const archived = link('#/archive', t('archive.view'), 'archive-view-link')
+  listHeader.append(listTitle, count, archived)
   const content = element('div', 'shelf-content')
   content.append(notice(t('shelf.loadingLocalLibrary')))
   panel.append(breadcrumbs(id), header, progress, listHeader, content)

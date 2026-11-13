@@ -578,5 +578,6 @@
   "backup.chooseFolderTitle": "Choose Backup Location",
   "backup.openTitle": "Choose a Backup File",
   "backup.files": "New World backups",
-  "backup.tooLarge": "The backup file is too large to open."
+  "backup.tooLarge": "The backup file is too large to open.",
+  "archive.view": "View archive"
 }

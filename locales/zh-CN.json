@@ -578,5 +578,6 @@
   "backup.chooseFolderTitle": "选择备份位置",
   "backup.openTitle": "选择备份文件",
   "backup.files": "New World 备份",
-  "backup.tooLarge": "备份文件太大，无法打开。"
+  "backup.tooLarge": "备份文件太大，无法打开。",
+  "archive.view": "查看归档"
 }

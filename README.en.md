@@ -101,7 +101,7 @@ Deleting a work, a continuation project's source, an edited version, or a chapte
 
 ## Archive
 
-Every work card on the shelves has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" in the header lists all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
+Every work card on the shelves has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" on the home page and "View archive" beside each library list show all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
 
 ## Backup and restore
 

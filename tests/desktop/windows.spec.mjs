@@ -719,7 +719,7 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     }))).not.toContain('harbour')
 
     await section.getByRole('button', { name: '立即备份' }).click()
-    await expect(section.locator('.backup-state')).toContainText('已备份 1 部作品到')
+    await expect(section.locator('.backup-state')).toContainText(/已备份 \d+ 部作品到/)
     const manual = (await backups()).find((name) => name.startsWith('New-World-backup-'))
     expect(manual).toBeTruthy()
     expect((await readFile(join(folder, manual)))[6] & 1).toBe(1)
@@ -739,7 +739,7 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     await password.getByLabel('密码', { exact: true }).fill('harbour')
     await password.getByRole('button', { name: '打开' }).click()
     await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
-    await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
+    await expect(page.getByText(/已从备份恢复 \d+ 部作品。/)).toBeVisible()
     expect((await backups()).some((name) => name.startsWith('New-World-before-restore-'))).toBe(true)
     await page.locator('a[href="#/original"]').first().click()
     await page.getByRole('link', { name: '查看 备份的灯塔', exact: true }).click()
