@@ -69,7 +69,9 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
   document.addEventListener('pointerdown', outside, true)
   window.addEventListener('blur', dismiss)
   window.addEventListener('resize', dismiss)
-  document.addEventListener('scroll', dismiss, true)
+  // Close when the reader scrolls the page, but not when the page scrolls itself to show something.
+  window.addEventListener('wheel', dismiss, { passive: true })
+  window.addEventListener('touchmove', dismiss, { passive: true })
 
   function close(returnFocus = false) {
     if (current?.menu !== menu) return
@@ -79,7 +81,8 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
     document.removeEventListener('pointerdown', outside, true)
     window.removeEventListener('blur', dismiss)
     window.removeEventListener('resize', dismiss)
-    document.removeEventListener('scroll', dismiss, true)
+    window.removeEventListener('wheel', dismiss)
+    window.removeEventListener('touchmove', dismiss)
     if (returnFocus) opener?.focus()
   }
   current = { menu, close }
