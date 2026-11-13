@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
 import { expect, test } from './app-test.mjs'
 import { bookAction } from './fixtures.mjs'
 
@@ -77,6 +78,12 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   expect(zip.subarray(0, 2).toString()).toBe('PK')
   // Bit 0 of the general purpose flags marks an encrypted entry.
   expect(zip[6] & 1).toBe(0)
+  const reader = new ZipReader(new Uint8ArrayReader(zip))
+  const entry = (await reader.getEntries()).find((item) => item.filename === 'new-world-backup.json')
+  const manifest = JSON.parse(await entry.getData(new TextWriter()))
+  await reader.close()
+  // The heatmap's writing history travels with the library.
+  expect(manifest.writingDays.reduce((sum, day) => sum + day.words, 0)).toBeGreaterThan(0)
 
   // Change the library, then restore.
   await page.goto('/#/archive')

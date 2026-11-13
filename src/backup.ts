@@ -8,6 +8,7 @@ import { committed, coverOf, libraryChanges, libraryStores, openDatabase, result
 import type { Book, BookFile, LibraryId, TrashEntry } from './library'
 import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
+import type { WritingDay } from './writing-stats'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
@@ -32,6 +33,8 @@ interface Manifest {
   editions: Edition[]
   chapters: ChapterRecord[]
   trash: StoredTrashEntry[]
+  /** Daily writing counts for the heatmap. Missing from backups made before v0.14.0. */
+  writingDays?: WritingDay[]
 }
 
 export interface BackupSummary {
@@ -49,6 +52,7 @@ export interface BackupContents {
   editions: Edition[]
   chapters: ChapterRecord[]
   trash: TrashEntry[]
+  writingDays: WritingDay[]
 }
 
 export type BackupProblem = 'password' | 'format' | 'newer'
@@ -83,13 +87,14 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction(libraryStores)
-  const [books, files, editions, chapters, trash]: [Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[]] = await Promise.all([
+  const tx = db.transaction([...libraryStores, 'writingDays'])
+  const [books, files, editions, chapters, trash, writingDays]: [Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[]] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
     resultOf(tx.objectStore('editions').getAll()),
     resultOf(tx.objectStore('chapters').getAll()),
     resultOf(tx.objectStore('trash').getAll()),
+    resultOf(tx.objectStore('writingDays').getAll()),
   ])
 
   const blobs: [string, Blob][] = []
@@ -109,7 +114,7 @@ export async function createBackup(password?: string) {
   }
   const manifest: Manifest = {
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
-    editions, chapters,
+    editions, chapters, writingDays,
     books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
     trash: trash.map((entry) => ({
@@ -211,6 +216,8 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
     return {
       summary: summarize(manifest),
       books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
+      writingDays: (Array.isArray(manifest.writingDays) ? manifest.writingDays : [])
+        .filter((day) => typeof day?.date === 'string' && Number.isFinite(day.words)),
     }
   } finally {
     await zip.close()
@@ -220,8 +227,17 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
   const db = await openDatabase()
-  const tx = db.transaction(libraryStores, 'readwrite', { durability: 'strict' })
+  const tx = db.transaction([...libraryStores, 'writingDays'], 'readwrite', { durability: 'strict' })
   for (const name of libraryStores) tx.objectStore(name).clear()
+  // Writing history is kept across restores: each day keeps the larger of the two counts.
+  const days = tx.objectStore('writingDays')
+  for (const day of contents.writingDays) {
+    const stored = days.get(day.date)
+    stored.onsuccess = () => {
+      const current = (stored.result as WritingDay | undefined)?.words ?? 0
+      if (day.words > current) days.put({ date: day.date, words: day.words })
+    }
+  }
   for (const book of contents.books) tx.objectStore('books').add(book)
   for (const file of contents.files) tx.objectStore('files').add(file)
   for (const edition of contents.editions) tx.objectStore('editions').add(edition)
