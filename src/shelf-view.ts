@@ -2,12 +2,14 @@ import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { createNovel } from './documents/store'
-import { deleteBook, libraryChanges, listArchived, listShelf, maxTitleLength, renameBook, setArchived, storageError } from './library'
+import { coverOf, deleteBook, libraryChanges, listArchived, listShelf, maxTitleLength, renameBook, setArchived, setCover, storageError } from './library'
 import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
 import { renderWritingStats } from './writing-stats'
+import { openMenu } from './menu'
+import type { MenuItem } from './menu'
 
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
@@ -141,35 +143,91 @@ function coverVariant(id: string) {
   return sum % 4
 }
 
-function bookCard(root: HTMLElement, book: Book) {
+/** Lets the writer pick a cover image; the file is kept exactly as chosen. */
+function chooseCover(root: HTMLElement, book: Book, report: (message: string) => void) {
+  const input = element('input')
+  input.type = 'file'
+  input.accept = 'image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp'
+  input.hidden = true
+  input.addEventListener('change', async () => {
+    const image = input.files?.[0]
+    input.remove()
+    if (!image) return
+    try {
+      await setCover(book.library, book.id, image)
+    } catch (error) {
+      report(storageError(error))
+    }
+  })
+  input.addEventListener('cancel', () => input.remove())
+  root.append(input)
+  input.click()
+}
+
+function bookCard(root: HTMLElement, book: Book, covers: string[], report: (message: string) => void) {
   const row = element('li', 'book-card')
   const open = element('a', 'book-link')
   open.href = bookPath(book.library, book.id)
   open.setAttribute('aria-label', t('shelf.view', [book.title]))
   open.title = book.title
-  const cover = element('span', `book-cover cover-${coverVariant(book.id)}`)
-  const length = Array.from(book.title).length
-  cover.append(element('strong', length > 14 ? 'book-title book-title-long' : length > 6 ? 'book-title book-title-medium' : 'book-title', book.title))
-  open.append(cover, book.library === 'reference'
-    ? element('span', 'file-details', t('continuation.continuationProject')) : fileDetails(book))
-  const controls = element('div', 'book-controls')
-  const rename = button(t('shelf.rename'), 'button button-quiet button-small', 'edit')
-  const archive = button(t('archive.archive'), 'button button-quiet button-small', 'archive')
-  const remove = button(t('shelf.delete'), 'button button-quiet button-small remove-button', 'trash')
-  rename.addEventListener('click', () => manageBook(root, book, 'rename'))
-  archive.addEventListener('click', async () => {
-    archive.disabled = true
-    try {
-      await setArchived(book.library, book.id, true)
-      offerArchiveUndo(book.title, () => setArchived(book.library, book.id, false))
-    } catch (error) {
-      archive.disabled = false
-      row.append(notice(storageError(error), true))
-    }
+  const image = coverOf(book)
+  const cover = element('span', image ? 'book-cover book-cover-image' : `book-cover cover-${coverVariant(book.id)}`)
+  if (image) {
+    const url = URL.createObjectURL(image)
+    covers.push(url)
+    const picture = element('img')
+    picture.src = url
+    picture.alt = ''
+    picture.decoding = 'async'
+    cover.append(picture)
+  } else {
+    const length = Array.from(book.title).length
+    cover.append(element('strong', length > 14 ? 'book-title book-title-long' : length > 6 ? 'book-title book-title-medium' : 'book-title', book.title))
+  }
+  open.append(cover)
+
+  const actions = (): MenuItem[] => [
+    { label: t('shelf.openWork'), icon: 'book', action: () => { location.hash = bookPath(book.library, book.id) } },
+    { label: t('shelf.rename'), icon: 'edit', action: () => manageBook(root, book, 'rename') },
+    { label: t('shelf.changeCover'), icon: 'image', action: () => chooseCover(root, book, report) },
+    ...(image ? [{ label: t('shelf.defaultCover'), icon: 'undo' as const, action: () => {
+      setCover(book.library, book.id, null).catch((error) => report(storageError(error)))
+    } }] : []),
+    { label: t('archive.archive'), icon: 'archive', action: async () => {
+      try {
+        await setArchived(book.library, book.id, true)
+        offerArchiveUndo(book.title, () => setArchived(book.library, book.id, false))
+      } catch (error) {
+        report(storageError(error))
+      }
+    } },
+    { label: t('shelf.delete'), icon: 'trash', danger: true, action: () => manageBook(root, book, 'delete') },
+  ]
+  const menuLabel = t('shelf.actionsFor', [book.title])
+
+  const meta = element('div', 'book-meta')
+  const name = element('a', 'book-name', book.title)
+  name.href = open.href
+  name.tabIndex = -1
+  name.title = book.title
+  const more = button('', 'book-menu-toggle', 'chevron')
+  more.setAttribute('aria-label', menuLabel)
+  more.setAttribute('aria-haspopup', 'menu')
+  more.setAttribute('aria-expanded', 'false')
+  more.addEventListener('click', () => openMenu(actions(), more, menuLabel, more))
+  meta.append(name, more)
+  const details = book.library === 'reference'
+    ? element('span', 'file-details', t('continuation.continuationProject')) : fileDetails(book)
+
+  // A right click, or the context menu key on the cover, opens the same actions.
+  row.addEventListener('contextmenu', (event) => {
+    event.preventDefault()
+    const point = event.button === -1 || (!event.clientX && !event.clientY)
+      ? (() => { const box = more.getBoundingClientRect(); return { x: box.left, y: box.bottom } })()
+      : { x: event.clientX, y: event.clientY }
+    openMenu(actions(), point, menuLabel, more)
   })
-  remove.addEventListener('click', () => manageBook(root, book, 'delete'))
-  controls.append(rename, archive, remove)
-  row.append(open, controls)
+  row.append(open, meta, details)
   return row
 }
 
@@ -205,6 +263,11 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   let requestNumber = 0
   // Only the first render animates in. Later refreshes swap the list quietly.
   let arriving = true
+  // Cover images are shown through object URLs, released when the list is redrawn or the page left.
+  let covers: string[] = []
+  const releaseCovers = () => { for (const url of covers.splice(0)) URL.revokeObjectURL(url) }
+  signal.addEventListener('abort', releaseCovers)
+  const report = (message: string) => { content.prepend(notice(message, true)) }
   async function refresh() {
     const current = ++requestNumber
     try {
@@ -214,7 +277,10 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
       if (books.length) {
         const list = element('ul', 'book-list book-grid')
         list.setAttribute('aria-label', t('shelf.allWorks'))
-        list.append(...books.map((book) => bookCard(root, book)))
+        const shown: string[] = []
+        list.append(...books.map((book) => bookCard(root, book, shown, report)))
+        releaseCovers()
+        covers = shown
         content.replaceChildren(arriving ? stagger(list) : list)
       } else {
         const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')

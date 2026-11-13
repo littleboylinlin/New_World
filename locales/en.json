@@ -590,5 +590,11 @@
   "writing.emptyHint": "Start writing and your daily word counts will appear here.",
   "writing.wroteWords": "{0} words written",
   "writing.noWriting": "No writing",
-  "writing.today": "Today"
+  "writing.today": "Today",
+  "shelf.openWork": "Open",
+  "shelf.changeCover": "Change Cover…",
+  "shelf.defaultCover": "Use Default Cover",
+  "shelf.actionsFor": "Actions for “{0}”",
+  "shelf.coverType": "Covers can be PNG, JPEG, WebP, GIF, AVIF or BMP images.",
+  "shelf.coverSize": "Cover images can be up to {0} MB."
 }

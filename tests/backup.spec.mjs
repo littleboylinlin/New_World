@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { expect, test } from './app-test.mjs'
+import { bookAction } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const settings = (page) => page.getByRole('dialog', { name: '设置' })
@@ -45,12 +46,12 @@ async function chooseBackup(page, path) {
 test('作品可以归档、撤销归档，在归档页打开和放回书库', async ({ page }) => {
   await newNovel(page, '旧港口', '码头上的灯一盏盏灭了。')
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await bookAction(page, '归档')
   await expect(page.getByText('还没有原创作品')).toBeVisible()
   await page.getByRole('status').filter({ hasText: '已归档「旧港口」' }).getByRole('button', { name: '撤销' }).click()
   await expect(page.getByRole('link', { name: '查看 旧港口', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await bookAction(page, '归档')
   await page.goto('/#/')
   await expect(page.locator('.shelf-original .card-count')).toHaveText('0 部作品')
   await page.getByRole('link', { name: '归档', exact: true }).click()
@@ -70,7 +71,7 @@ test('作品可以归档、撤销归档，在归档页打开和放回书库', as
 test('立即备份后可从备份恢复整个书库，包括归档和回收站', async ({ page }, testInfo) => {
   await newNovel(page, '雾中灯塔', 'The keeper climbed the stairs. 灯塔守望者。')
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '归档', exact: true }).click()
+  await bookAction(page, '归档')
   const path = await backUp(page, testInfo, 'plain-backup.zip')
   const zip = await readFile(path)
   expect(zip.subarray(0, 2).toString()).toBe('PK')
@@ -114,7 +115,7 @@ test('加密备份需要正确密码才能恢复，损坏的文件会被拒绝',
   expect((await readFile(path))[6] & 1).toBe(1)
 
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await bookAction(page, '删除')
   await page.getByRole('button', { name: '确认删除' }).click()
   await expect(page.getByText('还没有原创作品')).toBeVisible()
 

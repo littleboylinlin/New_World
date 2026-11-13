@@ -4,7 +4,7 @@
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { t } from './i18n'
-import { committed, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
+import { committed, coverOf, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
 import type { Book, BookFile, LibraryId, TrashEntry } from './library'
 import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
@@ -98,11 +98,25 @@ export async function createBackup(password?: string) {
     blobs.push([path, file.blob])
     return { library: file.library, id: file.id, path, type: file.blob.type }
   }
+  // Cover images are blobs on the work records; they go beside the manifest like the original files.
+  const pack = (book: Book, folder: string): Book => {
+    const { cover: _stored, ...rest } = book
+    const cover = coverOf(book)
+    if (!cover) return rest as Book
+    const path = `${folder}/${book.library}/${book.id}`
+    blobs.push([path, cover])
+    return { ...rest, cover: { path, type: cover.type } as unknown as Blob } as Book
+  }
   const manifest: Manifest = {
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
-    books, editions, chapters,
+    editions, chapters,
+    books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
-    trash: trash.map((entry) => ({ ...entry, files: entry.files.map((file) => store(file, `trash/${entry.id}`)) })),
+    trash: trash.map((entry) => ({
+      ...entry,
+      books: entry.books.map((book) => pack(book, `trash/${entry.id}/covers`)),
+      files: entry.files.map((file) => store(file, `trash/${entry.id}`)),
+    })),
   }
 
   const options = password ? { password, encryptionStrength: 3 as const } : {}
@@ -176,17 +190,27 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       if (typeof stored?.path !== 'string') throw new BackupError('format')
       return { library: stored.library, id: stored.id, blob: await read(stored.path, stored.type) }
     }
+    const unpack = async (book: Book): Promise<Book> => {
+      const cover = book.cover as unknown as { path?: unknown; type?: unknown } | undefined
+      const { cover: _stored, ...rest } = book
+      if (!cover || typeof cover.path !== 'string') return rest as Book
+      return { ...rest, cover: await read(cover.path, typeof cover.type === 'string' ? cover.type : '') } as Book
+    }
+    const books: Book[] = []
+    for (const book of manifest.books) books.push(await unpack(book))
     const files: BookFile[] = []
     for (const stored of manifest.files) files.push(await restore(stored))
     const trash: TrashEntry[] = []
     for (const entry of manifest.trash) {
       const entryFiles: BookFile[] = []
       for (const stored of list(entry.files) as unknown as StoredFile[]) entryFiles.push(await restore(stored))
-      trash.push({ ...entry, files: entryFiles })
+      const entryBooks: Book[] = []
+      for (const book of list(entry.books) as unknown as Book[]) entryBooks.push(await unpack(book))
+      trash.push({ ...entry, books: entryBooks, files: entryFiles })
     }
     return {
       summary: summarize(manifest),
-      books: manifest.books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
+      books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
     }
   } finally {
     await zip.close()

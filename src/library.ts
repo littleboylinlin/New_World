@@ -13,6 +13,8 @@ interface BookIdentity {
   workId?: string
   /** Set while the work is archived: kept out of its library's shelf but otherwise unchanged. */
   archivedAt?: number
+  /** A cover image the writer chose, stored exactly as uploaded. Without one the shelf draws the default cover. */
+  cover?: Blob
 }
 
 export interface ImportedBook extends BookIdentity {
@@ -167,6 +169,36 @@ export async function setArchived(library: LibraryId, id: string, archived: bool
     if (!book || book.workId) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
     const { archivedAt: _previous, ...rest } = book
     const next = (archived ? { ...rest, archivedAt: Date.now() } : rest) as Book
+    books.put(next)
+    return next
+  })
+  return announced(done())
+}
+
+export const maxCoverSize = 32 * 1024 * 1024
+const coverTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif', 'image/bmp']
+
+/** A cover from storage, or nothing when the record holds something other than an image. */
+export function coverOf(book: Book) {
+  return book.cover instanceof Blob && book.cover.size ? book.cover : undefined
+}
+
+/** Sets a work's cover image as uploaded, without resizing, or goes back to the default with null. */
+export async function setCover(library: LibraryId, id: string, image: Blob | null) {
+  if (image) {
+    if (!coverTypes.includes(image.type)) throw new Error(t('shelf.coverType'))
+    if (!image.size || image.size > maxCoverSize) throw new Error(t('shelf.coverSize', [maxCoverSize / 1024 / 1024]))
+  }
+  const db = await openDatabase()
+  const tx = db.transaction('books', 'readwrite', { durability: 'strict' })
+  const books = tx.objectStore('books')
+  const { step, done } = writing<Book>(tx)
+  const request = books.get([library, id])
+  request.onsuccess = step(() => {
+    const book: Book | undefined = request.result
+    if (!book || book.workId) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+    const { cover: _previous, ...rest } = book
+    const next = (image ? { ...rest, cover: image } : rest) as Book
     books.put(next)
     return next
   })

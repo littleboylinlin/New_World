@@ -1,5 +1,5 @@
 import { expect, test } from './app-test.mjs'
-import { file } from './fixtures.mjs'
+import { bookAction, file } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const chapters = (page) => page.getByRole('list', { name: '章节' }).getByRole('button')
@@ -30,7 +30,7 @@ async function addChapter(page, title, text) {
 
 async function deleteBook(page) {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await bookAction(page, '删除')
   await page.getByRole('button', { name: '确认删除' }).click()
   await expect(page.getByText('还没有原创作品')).toBeVisible()
 }

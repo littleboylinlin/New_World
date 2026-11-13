@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
-import { docx, epub, file, odt, pdf } from './fixtures.mjs'
+import { bookAction, docx, epub, file, odt, pdf } from './fixtures.mjs'
 
 async function importFiles(page, files, count = files.length) {
   await page.locator('input[type=file]').setInputFiles(files)
@@ -42,7 +42,7 @@ test('首页、两个独立书库、原件下载、去重、重命名与删除',
   await importFiles(page, [file('另一份文件.txt', novel.buffer)], 0)
   await expect(page.getByText('已导入 0 部，跳过 1 部重复文件。')).toBeVisible()
 
-  await page.getByRole('button', { name: '重命名' }).click()
+  await bookAction(page, '重命名')
   const dialog = page.getByRole('dialog', { name: '重命名作品' })
   await dialog.getByRole('textbox', { name: '作品名' }).fill('  ')
   await dialog.getByRole('button', { name: '保存名称' }).click()
@@ -65,11 +65,11 @@ test('首页、两个独立书库、原件下载、去重、重命名与删除',
   await expect(page.getByRole('alert')).toHaveText('这个书库中没有找到该作品。')
 
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await bookAction(page, '删除')
   const confirmation = page.getByRole('dialog', { name: '删除作品？' })
   await confirmation.getByRole('button', { name: '取消' }).click()
   await expect(page.getByRole('link', { name: '查看 星光初稿' })).toBeVisible()
-  await page.getByRole('button', { name: '删除', exact: true }).click()
+  await bookAction(page, '删除')
   await confirmation.getByRole('button', { name: '确认删除' }).click()
   await expect(page.getByText('还没有原创作品')).toBeVisible()
   await page.goto(originalDetail)
@@ -91,7 +91,7 @@ test('关闭整个浏览器后用同一配置重新打开，作品名、正文�
     const page = first.pages()[0]
     await page.goto('/#/original')
     await importFiles(page, [novel])
-    await page.getByRole('button', { name: '重命名' }).click()
+    await bookAction(page, '重命名')
     await page.getByRole('textbox', { name: '作品名' }).fill('夜航手稿')
     await page.getByRole('button', { name: '保存名称' }).click()
     await expect(page.getByRole('link', { name: '查看 夜航手稿' })).toBeVisible()

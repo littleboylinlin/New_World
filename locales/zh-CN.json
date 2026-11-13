@@ -590,5 +590,11 @@
   "writing.emptyHint": "开始写作后，这里会按天记录字数。",
   "writing.wroteWords": "写了 {0} 字",
   "writing.noWriting": "没有写作",
-  "writing.today": "今天"
+  "writing.today": "今天",
+  "shelf.openWork": "打开",
+  "shelf.changeCover": "更换封面…",
+  "shelf.defaultCover": "恢复默认封面",
+  "shelf.actionsFor": "「{0}」的操作",
+  "shelf.coverType": "封面只支持 PNG、JPEG、WebP、GIF、AVIF 或 BMP 图片。",
+  "shelf.coverSize": "封面图片不能超过 {0} MB。"
 }
