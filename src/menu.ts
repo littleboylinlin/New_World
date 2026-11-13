@@ -34,24 +34,29 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
   })
   document.body.append(menu)
 
-  // Keep the whole menu inside the window.
   const box = menu.getBoundingClientRect()
-  let left: number
-  let top: number
   if (at instanceof HTMLElement) {
+    // A menu button's list always drops down, lined up with the button's right edge. It sits in the
+    // page, so it scrolls with it; when it would run past the bottom, the page scrolls to show it.
     const anchor = at.getBoundingClientRect()
-    left = anchor.right - box.width
-    top = anchor.bottom + 6
-    if (top + box.height > innerHeight - 8) top = anchor.top - box.height - 6
+    menu.classList.add('popup-anchored')
+    const left = Math.max(8, Math.min(anchor.right - box.width, innerWidth - box.width - 8))
+    menu.style.left = `${left + scrollX}px`
+    menu.style.top = `${anchor.bottom + 8 + scrollY}px`
+    const overflow = anchor.bottom + 8 + box.height + 12 - innerHeight
+    if (overflow > 0) {
+      const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+      window.scrollBy({ top: overflow, behavior: smooth ? 'smooth' : 'instant' })
+    }
   } else {
-    left = at.x
-    top = at.y
-    if (top + box.height > innerHeight - 8) top = at.y - box.height
+    // A right-click menu opens at the pointer and turns back at the window edges, like the system's.
+    const left = at.x + box.width > innerWidth - 8 ? at.x - box.width : at.x
+    const top = at.y + box.height > innerHeight - 8 ? at.y - box.height : at.y
+    menu.style.left = `${Math.max(8, Math.min(left, innerWidth - box.width - 8))}px`
+    menu.style.top = `${Math.max(8, Math.min(top, innerHeight - box.height - 8))}px`
   }
-  menu.style.left = `${Math.max(8, Math.min(left, innerWidth - box.width - 8))}px`
-  menu.style.top = `${Math.max(8, Math.min(top, innerHeight - box.height - 8))}px`
 
-  const focus = (index: number) => buttons[(index + buttons.length) % buttons.length]?.focus()
+  const focus = (index: number) => buttons[(index + buttons.length) % buttons.length]?.focus({ preventScroll: true })
   menu.addEventListener('keydown', (event) => {
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
     if (event.key === 'ArrowDown') focus(index + 1)

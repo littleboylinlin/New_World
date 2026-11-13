@@ -106,7 +106,7 @@ Jot an idea down the moment it comes, and pick it up later while writing.
 - Desktop: press the global shortcut anywhere (`Ctrl + Alt + N` by default, `⌃⌥N` on a Mac) to open a small window. `Enter` saves, `Shift + Enter` adds a line, `Esc` closes. "Settings → Quick notes" switches it to `Ctrl + Shift + Space`, `Alt + Shift + N` or off, and warns when another app already uses it. The tray menu, the right-click menu of the Windows taskbar icon and the Mac Dock menu open it too.
 - Web: press `Ctrl + Alt + N` on a New World page to open the quick note dialog.
 - A note is linked to the work opened most recently, or to none. "Notes" on the home page lists every note with unused ones first; mark them used, link them to another work, copy them, or delete them (with undo).
-- The "Notes" button beside the editor shows how many unused notes this work has. Open it to insert a note into the text (which marks it used) or to write a new one.
+- "Notes for this work" sits under the chapter list and stays beside the text as it scrolls. "Insert" puts a note at the cursor and marks it used, and a new note can be written there too; the "Notes" toolbar button shows how many are unused and folds the list.
 - On the desktop, right-click selected text to "Save as Note". Notes are saved and restored with backups.
 
 ## Desktop menus

@@ -178,7 +178,7 @@ export async function renderEdition(
   const ideasCount = element('span', 'trash-count ideas-count')
   ideasButton.append(ideasLabel, ideasCount)
   ideasButton.setAttribute('aria-expanded', 'false')
-  ideasButton.setAttribute('aria-controls', `ideas-panel-${edition.id}`)
+  ideasButton.setAttribute('aria-controls', `ideas-card-${edition.id}`)
   ideasButton.addEventListener('mousedown', (event) => event.preventDefault())
   const sideTools = element('div', 'editor-side-tools')
   sideTools.append(ideasButton, focusButton, appearanceMenu(), findButton)
@@ -205,13 +205,21 @@ export async function renderEdition(
   const paper = element('div', 'editor-paper')
   // The text inherits spell checking from here; the rest of the page never checks spelling.
   paper.spellcheck = appearance().spellcheck
-  // Ideas noted for this work, ready to drop into the text.
+  // Ideas noted for this work sit under the chapter list, which stays beside the text while it
+  // scrolls, so a note can go in wherever the cursor is.
+  const ideasCard = element('details', 'ideas-card')
+  ideasCard.id = `ideas-card-${edition.id}`
+  ideasCard.open = readIdeasOpen()
+  const ideasSummary = element('summary')
+  const ideasSummaryCount = element('span', 'trash-count')
+  ideasSummary.append(element('span', '', t('ideas.forWork')), ideasSummaryCount)
   const ideasPanel = element('section', 'ideas-panel')
-  ideasPanel.id = `ideas-panel-${edition.id}`
   ideasPanel.setAttribute('aria-label', t('ideas.forWork'))
-  ideasPanel.hidden = true
-  writing.append(chapterHeader, toolsRow, searchBar, ideasPanel, paper)
-  layout.append(navigation, writing)
+  ideasCard.append(ideasSummary, ideasPanel)
+  const side = element('div', 'edition-side')
+  side.append(navigation, ideasCard)
+  writing.append(chapterHeader, toolsRow, searchBar, paper)
+  layout.append(side, writing)
   workspace.append(top, error, recover, information, layout)
   host.replaceChildren(workspace)
 
@@ -478,11 +486,9 @@ export async function renderEdition(
   }
   function paintIdeas() {
     const waiting = ideas.filter((idea) => !idea.usedAt)
-    ideasCount.textContent = waiting.length ? String(waiting.length) : ''
-    const capture = button(t('ideas.capture'), 'button button-quiet button-small', 'plus')
+    ideasCount.textContent = ideasSummaryCount.textContent = waiting.length ? String(waiting.length) : ''
+    const capture = button(t('ideas.capture'), 'button button-quiet button-small ideas-capture-button', 'plus')
     capture.addEventListener('click', () => openCaptureDialog({ library: edition.library, bookId: edition.bookId }))
-    const head = element('div', 'ideas-panel-head')
-    head.append(element('h4', '', t('ideas.forWork')), capture)
     const list = element('ul', 'ideas-panel-list')
     for (const idea of [...waiting, ...ideas.filter((item) => item.usedAt)]) {
       const item = element('li', idea.usedAt ? 'idea-used' : '')
@@ -497,7 +503,7 @@ export async function renderEdition(
       item.append(text, actions)
       list.append(item)
     }
-    ideasPanel.replaceChildren(head, ideas.length ? list : element('p', 'dialog-help', t('ideas.noneForWork')))
+    ideasPanel.replaceChildren(ideas.length ? list : element('p', 'dialog-help', t('ideas.noneForWork')), capture)
   }
   async function refreshIdeas() {
     try {
@@ -506,10 +512,15 @@ export async function renderEdition(
     } catch { /* The panel keeps what it showed. */ }
   }
   ideasButton.addEventListener('click', () => {
-    ideasPanel.hidden = !ideasPanel.hidden
-    ideasButton.setAttribute('aria-expanded', String(!ideasPanel.hidden))
-    if (!ideasPanel.hidden) void refreshIdeas()
+    ideasCard.open = !ideasCard.open
+    // On a phone the list sits above the text, so bring it into view.
+    if (ideasCard.open && !matchMedia('(min-width: 780px)').matches) ideasCard.scrollIntoView({ block: 'nearest' })
   })
+  ideasCard.addEventListener('toggle', () => {
+    ideasButton.setAttribute('aria-expanded', String(ideasCard.open))
+    try { localStorage.setItem(ideasOpenKey, ideasCard.open ? '1' : '0') } catch { /* Only a convenience. */ }
+  })
+  ideasButton.setAttribute('aria-expanded', String(ideasCard.open))
   libraryChanges.addEventListener('update', () => { void refreshIdeas() }, { signal })
   void refreshIdeas()
 
@@ -600,4 +611,14 @@ export async function renderEdition(
     words = stored
     refreshWords()
   }, () => {})
+}
+
+const ideasOpenKey = 'new-world:ideas-open'
+/** Whether the ideas beside the editor were left open; open by default where there is room. */
+function readIdeasOpen() {
+  try {
+    const stored = localStorage.getItem(ideasOpenKey)
+    if (stored) return stored === '1'
+  } catch { /* Falls back to the default. */ }
+  return matchMedia('(min-width: 780px)').matches
 }
