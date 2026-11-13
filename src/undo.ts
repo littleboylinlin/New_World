@@ -28,10 +28,22 @@ function shortTitle(title: string) {
 
 // Offer one undo at a time. The item stays in the trash after the notice goes away.
 export function offerUndo(entry: TrashEntry, restored?: (result: Restored) => void) {
+  showUndo(t('undo.movedToTrash', [trashKinds[entry.kind], shortTitle(entry.title)]), async () => {
+    const result = await restoreTrash(entry.id)
+    restored?.(result)
+  })
+}
+
+/** Archiving can be undone from the same notice as deleting. */
+export function offerArchiveUndo(title: string, unarchive: () => Promise<unknown>) {
+  showUndo(t('undo.archived', [shortTitle(title)]), async () => { await unarchive() })
+}
+
+function showUndo(text: string, revert: () => Promise<void>) {
   dismiss(true)
   const toast = element('div', 'undo-toast')
   toast.setAttribute('role', 'status')
-  const message = element('p', '', t('undo.movedToTrash', [trashKinds[entry.kind], shortTitle(entry.title)]))
+  const message = element('p', '', text)
   const undo = button(t('editor.undo'), 'button button-small', 'undo')
   const close = button('', 'undo-close', 'close')
   close.setAttribute('aria-label', t('undo.dismissNotification'))
@@ -41,9 +53,8 @@ export function offerUndo(entry: TrashEntry, restored?: (result: Restored) => vo
     undo.disabled = true
     window.clearTimeout(timer)
     try {
-      const result = await restoreTrash(entry.id)
+      await revert()
       if (shown === toast) dismiss()
-      restored?.(result)
     } catch (error) {
       message.textContent = storageError(error)
       undo.remove()

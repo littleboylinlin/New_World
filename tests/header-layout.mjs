@@ -9,7 +9,7 @@ export function headerProblems(page) {
     const right = bounds.right - parseFloat(style.paddingRight)
     const problems = []
     let previousRight = left
-    for (const selector of ['.brand', '.local-label', '#trash-link', '#settings']) {
+    for (const selector of ['.brand', '.local-label', '#archive-link', '#trash-link', '#settings']) {
       const node = header.querySelector(selector)
       if (!node.getClientRects().length) continue
       const box = node.getBoundingClientRect()

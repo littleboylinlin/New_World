@@ -282,7 +282,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 }
 
 /* Use the space remaining after native window controls, rather than the window width. */
-@container header (max-width: 704px) {
+@container header (max-width: 780px) {
   .header-actions .local-label, .trash-label { display: none; }
   .header-actions { gap: 8px; }
   .site-header .button { padding-inline: 9px; }
