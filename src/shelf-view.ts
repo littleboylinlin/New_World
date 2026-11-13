@@ -9,6 +9,7 @@ import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
 import { renderWritingStats } from './writing-stats'
 import { openMenu } from './menu'
+import { listIdeas } from './ideas'
 import type { MenuItem } from './menu'
 
 const changes = libraryChanges
@@ -43,11 +44,21 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   archive.setAttribute('aria-label', t('archive.title'))
   const archiveCount = element('span', 'list-count archive-count')
   archive.append(icon('archive'), element('span', '', t('archive.title')), archiveCount)
-  home.append(intro, stagger(cards), archive)
+  const ideas = link('#/ideas', '', 'archive-entry')
+  ideas.setAttribute('aria-label', t('ideas.title'))
+  const ideaCount = element('span', 'list-count archive-count')
+  ideas.append(icon('idea'), element('span', '', t('ideas.title')), ideaCount)
+  const entries = element('div', 'home-entries')
+  entries.append(ideas, archive)
+  home.append(intro, stagger(cards), entries)
   renderWritingStats(home, signal)
   root.append(home)
 
   async function refreshCounts() {
+    void listIdeas().then((items) => {
+      const waiting = items.filter((idea) => !idea.usedAt).length
+      if (!signal.aborted) ideaCount.textContent = waiting ? String(waiting) : ''
+    }, () => {})
     void listArchived().then((books) => {
       if (!signal.aborted) archiveCount.textContent = books.length ? String(books.length) : ''
     }, () => {})
@@ -247,6 +258,13 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
     location.hash = bookPath(id, book.id, edition.id)
   }))
   if (id === 'original') controls.append(create)
+  // The tray's "New Novel" opens the library with this dialog.
+  try {
+    if (id === 'original' && sessionStorage.getItem('new-world:new-novel') === '1') {
+      sessionStorage.removeItem('new-world:new-novel')
+      window.setTimeout(() => create.click())
+    }
+  } catch { /* Nothing to open. */ }
   controls.append(choose, input)
   header.append(heading, controls)
 

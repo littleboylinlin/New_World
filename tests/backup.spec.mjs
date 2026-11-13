@@ -37,6 +37,13 @@ async function backUp(page, testInfo, name, password) {
   return path
 }
 
+async function keepIdea(page, text) {
+  await page.goto('/#/ideas')
+  await page.getByRole('textbox', { name: '灵感' }).fill(text)
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByRole('list', { name: '灵感列表' })).toContainText(text)
+}
+
 async function chooseBackup(page, path) {
   await page.getByRole('button', { name: '设置', exact: true }).click()
   const chooser = page.waitForEvent('filechooser')
@@ -73,6 +80,7 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   await newNovel(page, '雾中灯塔', 'The keeper climbed the stairs. 灯塔守望者。')
   await page.goto('/#/original')
   await bookAction(page, '归档')
+  await keepIdea(page, '灯塔下埋着一封信')
   const path = await backUp(page, testInfo, 'plain-backup.zip')
   const zip = await readFile(path)
   expect(zip.subarray(0, 2).toString()).toBe('PK')
@@ -84,11 +92,13 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   await reader.close()
   // The heatmap's writing history travels with the library.
   expect(manifest.writingDays.reduce((sum, day) => sum + day.words, 0)).toBeGreaterThan(0)
+  expect(manifest.ideas.map((idea) => idea.text)).toEqual(['灯塔下埋着一封信'])
 
   // Change the library, then restore.
   await page.goto('/#/archive')
   await page.getByRole('button', { name: '取消归档' }).click()
   await newNovel(page, '备份之后', '这部不在备份里。')
+  await keepIdea(page, '备份之后的灵感')
   await chooseBackup(page, path)
   const confirm = page.getByRole('dialog', { name: '从备份恢复' })
   await expect(confirm).toContainText('1 部作品')
@@ -98,6 +108,8 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   await page.goto('/#/archive')
   await page.getByRole('link', { name: '雾中灯塔' }).click()
   await expect(textArea(page)).toHaveText('The keeper climbed the stairs. 灯塔守望者。')
+  await page.goto('/#/ideas')
+  await expect(page.getByRole('list', { name: '灵感列表' }).locator('.idea-text')).toHaveText(['灯塔下埋着一封信'])
 })
 
 test('加密备份需要正确密码才能恢复，损坏的文件会被拒绝', async ({ page }, testInfo) => {

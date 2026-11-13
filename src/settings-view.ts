@@ -5,6 +5,7 @@ import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
 import { mountBackupView } from './backup-view'
+import { mountCaptureSettings } from './idea-capture'
 
 const choices: { value: CloseBehavior; label: string }[] = [
   { value: 'quit', label: t('settings.quit') },
@@ -61,6 +62,8 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
   languageSection.append(languageLabel, element('p', 'dialog-help', t('settings.languageHint')), languageActions, languageState, languageError)
   const appearanceSection = section(t('appearance.title'), 'appearance-settings-title')
   mountAppearanceSettings(appearanceSection)
+  const captureSection = section(t('ideas.settingsTitle'), 'capture-settings-title')
+  const refreshCapture = mountCaptureSettings(captureSection)
   const windowSection = section(t('settings.closeBehavior'), 'window-settings-title')
   const storageSection = section(t('settings.storage'), 'storage-settings-title')
   const backupSection = section(t('backup.title'), 'backup-settings-title')
@@ -135,6 +138,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
       void refresh()
       void refreshStorage()
       void refreshBackups()
+      void refreshCapture()
     }
     if (!dialog.open) dialog.showModal()
     if (section) {

@@ -1,5 +1,5 @@
 const { t, createLanguageStore } = require('./language.cjs')
-const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, safeStorage, session, shell, Tray } = require('electron')
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, protocol, safeStorage, screen, session, shell, Tray } = require('electron')
 const { mkdirSync, readFileSync } = require('node:fs')
 const { readFile, stat, writeFile } = require('node:fs/promises')
 const { basename, dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
@@ -8,6 +8,7 @@ const closeBehavior = require('./close-behavior.cjs')
 const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
 const backups = require('./backup.cjs')
+const capture = require('./capture.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
@@ -81,6 +82,7 @@ function languageNetworkFor(manifest, partition) {
 }
 
 ipcMain.on('new-world:ready', (event) => {
+  if (trustedFrame(event) && event.sender === mainWindow?.webContents) flushCommands()
   if (!trustedFrame(event) || !languages || maintenanceStarted) return
   maintenanceStarted = true
   const token = process.env.NEW_WORLD_UPDATE_TOKEN
@@ -415,6 +417,122 @@ function applyWindowTheme() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
 }
 
+// Quick notes: a global shortcut opens a small window that writes straight into the library.
+let captureShortcut = capture.readShortcut(appData)
+let captureRegistered = false
+let captureWindow
+let recentWorks = []
+let pendingCommands = []
+
+function registerCapture() {
+  if (captureRegistered) globalShortcut.unregisterAll()
+  captureRegistered = false
+  if (captureShortcut === 'off') return
+  try { captureRegistered = globalShortcut.register(captureShortcut, openCapture) } catch { captureRegistered = false }
+}
+
+function captureState() {
+  return { shortcut: captureShortcut, options: capture.shortcuts, registered: captureShortcut === 'off' || captureRegistered,
+    labels: Object.fromEntries(capture.shortcuts.map((shortcut) => [shortcut, capture.shortcutLabel(shortcut)])) }
+}
+
+const quickNoteFlag = '--quick-note'
+
+function openCapture() {
+  if (!captureWindow || captureWindow.isDestroyed()) {
+    captureWindow = new BrowserWindow({
+      width: 520, height: 360, show: false, frame: false, resizable: false, minimizable: false, maximizable: false,
+      fullscreenable: false, alwaysOnTop: true, skipTaskbar: true, backgroundColor: windowBackground(),
+      icon: join(__dirname, 'icon.png'),
+      webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: true },
+    })
+    harden(captureWindow.webContents, captureWindow, false)
+    // Like a spotlight panel, it steps aside when another window takes the focus; the text stays.
+    captureWindow.on('blur', () => { if (captureWindow && !captureWindow.isDestroyed()) captureWindow.hide() })
+    captureWindow.on('closed', () => { captureWindow = undefined })
+    void captureWindow.loadURL(`${appUrl}#/capture`).catch(() => {})
+  }
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+  const [width, height] = captureWindow.getSize()
+  captureWindow.setPosition(Math.round(area.x + (area.width - width) / 2), Math.round(area.y + area.height * 0.28))
+  // On a Mac the shortcut fires while another app is in front; the panel has to take the focus.
+  if (process.platform === 'darwin') app.focus({ steal: true })
+  captureWindow.show()
+  captureWindow.focus()
+  captureWindow.webContents.send('new-world:capture-shown')
+}
+
+/** Runs a page command in the main window, opening it first when needed. */
+function command(value, show = true) {
+  if (show || !mainWindow) showWindow()
+  if (mainWindow && !mainWindow.webContents.isLoading()) mainWindow.webContents.send('new-world:command', value)
+  else pendingCommands.push(value)
+}
+
+function flushCommands() {
+  const queued = pendingCommands
+  pendingCommands = []
+  for (const value of queued) mainWindow?.webContents.send('new-world:command', value)
+}
+
+function trayMenu() {
+  return Menu.buildFromTemplate(capture.trayTemplate({
+    t, shortcut: captureShortcut, recent: recentWorks, capture: openCapture, command,
+    showFolder: () => {
+      const folder = backupState().folder
+      try { mkdirSync(folder, { recursive: true }) } catch { /* shell reports a missing folder */ }
+      void shell.openPath(folder)
+    },
+    settings: () => { showWindow(); mainWindow?.webContents.send('new-world:open-settings') },
+    show: showWindow, quit: quitApp,
+  }))
+}
+
+ipcMain.handle('new-world:capture-state', (event) => {
+  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  return captureState()
+})
+
+ipcMain.handle('new-world:set-capture-shortcut', (event, shortcut) => {
+  if (!trustedFrame(event) || !capture.shortcuts.includes(shortcut)) throw new Error(t('main.invalidSettingsRequest'))
+  captureShortcut = capture.writeShortcut(appData, shortcut)
+  registerCapture()
+  refreshMenus()
+  return captureState()
+})
+
+ipcMain.handle('new-world:hide-capture', (event) => {
+  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (captureWindow && !captureWindow.isDestroyed()) captureWindow.hide()
+})
+
+ipcMain.handle('new-world:set-recent-works', (event, works) => {
+  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  recentWorks = capture.recentWorks(works)
+  if (tray) tray.setContextMenu(trayMenu())
+})
+
+/** The same safeguards for every window: no navigation, no new windows, the text right-click menu. */
+function harden(contents, window, ideas) {
+  contents.on('will-navigate', (event) => event.preventDefault())
+  contents.on('context-menu', (_event, params) => {
+    const template = capture.contextTemplate(params, {
+      t,
+      replace: (word) => contents.replaceMisspelling(word),
+      learn: (word) => contents.session.addWordToSpellCheckerDictionary(word),
+      saveIdea: ideas ? (text) => contents.send('new-world:command', { type: 'idea', text }) : undefined,
+    })
+    if (template && !window.isDestroyed()) Menu.buildFromTemplate(template).popup({ window })
+  })
+  contents.setWindowOpenHandler(({ url }) => {
+    // Only the app's own release pages may leave this window.
+    if (url.startsWith(releasePages + 'tag/') && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice((releasePages + 'tag/').length))) {
+      void shell.openExternal(url).catch(() => {})
+    }
+    return { action: 'deny' }
+  })
+}
+
 let mainWindow
 let closing = false
 let forceQuit = false
@@ -439,10 +557,7 @@ function createTray() {
   const image = nativeImage.createFromPath(join(__dirname, 'tray.png'))
   tray = new Tray(process.platform === 'darwin' ? image.resize({ width: 18, height: 18 }) : image)
   tray.setToolTip('New World')
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: t('main.showNewWorld'), click: showWindow },
-    { label: t('settings.quit'), click: quitApp },
-  ]))
+  tray.setContextMenu(trayMenu())
   tray.on('click', showWindow)
 }
 
@@ -469,10 +584,20 @@ function refreshMenus() {
       { role: 'resetZoom', label: t('main.resetZoom') }, { role: 'togglefullscreen', label: t('main.fullScreen') },
     ] },
   ]))
-  if (tray) tray.setContextMenu(Menu.buildFromTemplate([
-    { label: t('main.showNewWorld'), click: showWindow },
-    { label: t('settings.quit'), click: quitApp },
-  ]))
+  if (tray) tray.setContextMenu(trayMenu())
+  // The right-click list of the taskbar icon on Windows, and the Dock menu on a Mac.
+  if (process.platform === 'win32') {
+    app.setUserTasks([{
+      program: process.execPath, arguments: app.isPackaged ? quickNoteFlag : `"${app.getAppPath()}" ${quickNoteFlag}`,
+      iconPath: process.execPath, iconIndex: 0, title: t('ideas.capture'), description: t('ideas.shortcutHint'),
+    }])
+  } else if (process.platform === 'darwin' && app.dock) {
+    app.dock.setMenu(Menu.buildFromTemplate([
+      { label: t('ideas.capture'), click: openCapture },
+      { label: t('shelf.newNovel'), click: () => command({ type: 'new-novel' }) },
+      { label: t('ideas.title'), click: () => command({ type: 'ideas' }) },
+    ]))
+  }
 }
 
 function openWindow() {
@@ -493,23 +618,7 @@ function openWindow() {
   // The menu stays registered for its shortcuts but is never shown.
   if (process.platform !== 'darwin') mainWindow.setMenuBarVisibility(false)
   const contents = mainWindow.webContents
-  contents.on('will-navigate', (event) => event.preventDefault())
-  // Spelling suggestions for the chapter text, which is only checked when the writer turns it on.
-  contents.on('context-menu', (_event, params) => {
-    const template = spelling.menuTemplate(params, {
-      replace: (word) => contents.replaceMisspelling(word),
-      learn: (word) => contents.session.addWordToSpellCheckerDictionary(word),
-      t,
-    })
-    if (template && mainWindow) Menu.buildFromTemplate(template).popup({ window: mainWindow })
-  })
-  contents.setWindowOpenHandler(({ url }) => {
-    // Only the app's own release pages may leave this window.
-    if (url.startsWith(releasePages + 'tag/') && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice((releasePages + 'tag/').length))) {
-      void shell.openExternal(url).catch(() => {})
-    }
-    return { action: 'deny' }
-  })
+  harden(contents, mainWindow, true)
   contents.on('will-prevent-unload', () => {
     if (closing) return
     closing = true
@@ -520,7 +629,12 @@ function openWindow() {
     event.preventDefault()
     mainWindow.hide()
   })
-  mainWindow.on('closed', () => { mainWindow = undefined; closing = false })
+  mainWindow.on('closed', () => {
+    mainWindow = undefined
+    closing = false
+    // A hidden quick note window must not keep the app running once the main window is gone.
+    if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
+  })
   return mainWindow.loadURL(appUrl)
 }
 
@@ -533,10 +647,12 @@ ipcMain.on('new-world:close-result', (event, saved) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', showWindow)
+  // Starting New World again shows the open window; the taskbar's quick note task opens the note window.
+  app.on('second-instance', (_event, argv) => { if (argv.includes(quickNoteFlag)) openCapture(); else showWindow() })
   app.on('activate', showWindow)
   app.on('before-quit', () => { forceQuit = true })
   app.on('window-all-closed', () => app.quit())
+  app.on('will-quit', () => globalShortcut.unregisterAll())
   app.whenReady().then(async () => {
     nativeTheme.on('updated', () => {
       if (theme === 'system' && mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
@@ -603,7 +719,10 @@ if (!app.requestSingleInstanceLock()) {
     protocol.handle('new-world', serveApp)
     refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
-    return openWindow()
+    registerCapture()
+    const opened = openWindow()
+    if (process.argv.includes(quickNoteFlag)) openCapture()
+    return opened
   }).catch(() => {
     dialog.showErrorBox('New World', t('main.theLocalApplicationFilesCouldNotBeOpened'))
     app.exit(1)

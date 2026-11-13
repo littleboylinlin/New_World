@@ -39,7 +39,7 @@ async function seedDays(page, offsets) {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     }
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('new-world-library', 4)
+      const request = indexedDB.open('new-world-library')
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
@@ -149,7 +149,7 @@ test('删除作品后总字数归零，但全局写作历史保留', async ({ pa
   await expect(todayCell(page)).toHaveAttribute('data-words', '5')
 })
 
-test('v3 老库升级到 v4 后总字数保留并新增 writingDays 存储', async ({ page }) => {
+test('v3 老库升级后总字数保留并新增 writingDays 与 ideas 存储', async ({ page }) => {
   await page.route('**/fixture-v3', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>V3 fixture</title>' }))
   await page.goto('/fixture-v3')
   await page.evaluate(async () => {
@@ -185,7 +185,7 @@ test('v3 老库升级到 v4 后总字数保留并新增 writingDays 存储', asy
   await expect(total(page)).toHaveText('8')
   const stores = await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('new-world-library', 4)
+      const request = indexedDB.open('new-world-library')
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
     })
@@ -194,6 +194,7 @@ test('v3 老库升级到 v4 后总字数保留并新增 writingDays 存储', asy
     return names
   })
   expect(stores).toContain('writingDays')
+  expect(stores).toContain('ideas')
 })
 
 test('英文界面显示英文统计文案与提示', async ({ page }) => {

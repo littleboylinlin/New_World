@@ -1,13 +1,17 @@
 import { t } from '../i18n'
 import { Editor } from '@tiptap/core'
 import { formDialog, nameField } from '../dialogs'
-import { storageError } from '../library'
+import { libraryChanges, storageError } from '../library'
 import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
 import { offerUndo } from '../undo'
 import { appearanceMenu } from '../appearance-view'
 import { appearance, onAppearanceChange } from '../appearance'
+import { listIdeas, setIdeaUsed } from '../ideas'
+import type { Idea } from '../ideas'
+import { openCaptureDialog } from '../idea-capture'
+import { openMenu } from '../menu'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
 import { countText, wordCount } from './model'
@@ -169,8 +173,15 @@ export async function renderEdition(
   focusButton.append(focusLabel)
   focusButton.title = t('editor.focusHint')
   focusButton.setAttribute('aria-pressed', 'false')
+  const ideasButton = button('', 'format-button ideas-toggle', 'idea')
+  const ideasLabel = element('span', '', t('ideas.title'))
+  const ideasCount = element('span', 'trash-count ideas-count')
+  ideasButton.append(ideasLabel, ideasCount)
+  ideasButton.setAttribute('aria-expanded', 'false')
+  ideasButton.setAttribute('aria-controls', `ideas-panel-${edition.id}`)
+  ideasButton.addEventListener('mousedown', (event) => event.preventDefault())
   const sideTools = element('div', 'editor-side-tools')
-  sideTools.append(focusButton, appearanceMenu(), findButton)
+  sideTools.append(ideasButton, focusButton, appearanceMenu(), findButton)
   toolsRow.append(toolbar, sideTools, imageInput)
 
   const searchBar = element('div', 'search-panel')
@@ -194,7 +205,12 @@ export async function renderEdition(
   const paper = element('div', 'editor-paper')
   // The text inherits spell checking from here; the rest of the page never checks spelling.
   paper.spellcheck = appearance().spellcheck
-  writing.append(chapterHeader, toolsRow, searchBar, paper)
+  // Ideas noted for this work, ready to drop into the text.
+  const ideasPanel = element('section', 'ideas-panel')
+  ideasPanel.id = `ideas-panel-${edition.id}`
+  ideasPanel.setAttribute('aria-label', t('ideas.forWork'))
+  ideasPanel.hidden = true
+  writing.append(chapterHeader, toolsRow, searchBar, ideasPanel, paper)
   layout.append(navigation, writing)
   workspace.append(top, error, recover, information, layout)
   host.replaceChildren(workspace)
@@ -451,6 +467,72 @@ export async function renderEdition(
     event.preventDefault()
     setFocus(false)
   }, { signal })
+
+  let ideas: Idea[] = []
+  function insertIdea(idea: Idea) {
+    if (!editing) return
+    const paragraphs = idea.text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+      .map((line) => ({ type: 'paragraph', content: [{ type: 'text', text: line }] }))
+    editor.chain().focus().insertContent(paragraphs).run()
+    void setIdeaUsed(idea, true).catch(report)
+  }
+  function paintIdeas() {
+    const waiting = ideas.filter((idea) => !idea.usedAt)
+    ideasCount.textContent = waiting.length ? String(waiting.length) : ''
+    const capture = button(t('ideas.capture'), 'button button-quiet button-small', 'plus')
+    capture.addEventListener('click', () => openCaptureDialog({ library: edition.library, bookId: edition.bookId }))
+    const head = element('div', 'ideas-panel-head')
+    head.append(element('h4', '', t('ideas.forWork')), capture)
+    const list = element('ul', 'ideas-panel-list')
+    for (const idea of [...waiting, ...ideas.filter((item) => item.usedAt)]) {
+      const item = element('li', idea.usedAt ? 'idea-used' : '')
+      const text = element('p', 'idea-text', idea.text)
+      const insert = button(t('ideas.insert'), 'button button-quiet button-small')
+      insert.addEventListener('mousedown', (event) => event.preventDefault())
+      insert.addEventListener('click', () => insertIdea(idea))
+      const used = button(idea.usedAt ? t('ideas.markUnused') : t('ideas.markUsed'), 'button button-quiet button-small')
+      used.addEventListener('click', () => { void setIdeaUsed(idea, !idea.usedAt).catch(report) })
+      const actions = element('div', 'ideas-panel-actions')
+      actions.append(insert, used)
+      item.append(text, actions)
+      list.append(item)
+    }
+    ideasPanel.replaceChildren(head, ideas.length ? list : element('p', 'dialog-help', t('ideas.noneForWork')))
+  }
+  async function refreshIdeas() {
+    try {
+      ideas = (await listIdeas()).filter((idea) => idea.library === edition.library && idea.bookId === edition.bookId)
+      if (!signal.aborted) paintIdeas()
+    } catch { /* The panel keeps what it showed. */ }
+  }
+  ideasButton.addEventListener('click', () => {
+    ideasPanel.hidden = !ideasPanel.hidden
+    ideasButton.setAttribute('aria-expanded', String(!ideasPanel.hidden))
+    if (!ideasPanel.hidden) void refreshIdeas()
+  })
+  libraryChanges.addEventListener('update', () => { void refreshIdeas() }, { signal })
+  void refreshIdeas()
+
+  // A right click on a chapter selects it and offers the chapter actions.
+  chapterList.addEventListener('contextmenu', async (event) => {
+    const jump = (event.target as Element).closest<HTMLButtonElement>('.chapter-jump')
+    if (!jump || !editing) return
+    event.preventDefault()
+    const index = [...chapterList.querySelectorAll('.chapter-jump')].indexOf(jump)
+    const target = edition.chapters[index]
+    if (!target) return
+    await switchChapter(target.id)
+    if (chapter.id !== target.id || signal.aborted) return
+    const items = [
+      { label: t('editor.newChapter'), icon: 'plus' as const, action: () => add.click() },
+      { label: t('editor.renameChapter'), icon: 'edit' as const, action: () => rename.click() },
+      ...(up.disabled ? [] : [{ label: t('editor.moveUp'), icon: 'up' as const, action: () => up.click() }]),
+      ...(down.disabled ? [] : [{ label: t('editor.moveDown'), icon: 'down' as const, action: () => down.click() }]),
+      { label: t('editor.deleteChapter'), icon: 'trash' as const, danger: true, action: () => remove.click() },
+    ]
+    const current = chapterList.querySelector<HTMLElement>('[aria-current="true"]') ?? undefined
+    openMenu(items, { x: event.clientX, y: event.clientY }, chapterInfo().title, current)
+  })
 
   save.addEventListener('click', () => { void flush() })
   mode.addEventListener('click', async () => { if (await flush()) { editing = !editing; applyMode() } })
