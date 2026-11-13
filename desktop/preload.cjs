@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   resetStorageLocation: () => ipcRenderer.invoke('new-world:reset-storage-location'),
   getCloseBehavior: () => ipcRenderer.invoke('new-world:get-close-behavior'),
   setCloseBehavior: (mode) => ipcRenderer.invoke('new-world:set-close-behavior', mode),
+  setWindowTheme: (theme) => ipcRenderer.invoke('new-world:set-window-theme', theme),
+  getSpellingDictionaries: () => ipcRenderer.invoke('new-world:spelling-state'),
+  importSpellingDictionaries: () => ipcRenderer.invoke('new-world:spelling-import'),
+  downloadSpellingDictionary: (link) => ipcRenderer.invoke('new-world:spelling-download', link),
+  removeSpellingDictionary: (language) => ipcRenderer.invoke('new-world:spelling-remove', language),
   onCloseRequested: (save) => {
     ipcRenderer.on('new-world:save-before-close', async () => {
       const saved = await Promise.resolve().then(save).catch(() => false)

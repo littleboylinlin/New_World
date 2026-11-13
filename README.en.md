@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.10.4 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.11.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.10.4](https://github.com/littleboylinlin/New_World/releases/tag/v0.10.4). Interface controls no longer get selected when dragging; manuscripts, input fields, and text previews remain selectable and copyable, and the header keeps only the New World brand name. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.11.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.11.0). It adds appearance settings (themes, English and Chinese fonts, text size and layout), English word counts, English spell check, and focus mode. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,9 +36,22 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.10.4\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.11.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
+
+## Appearance
+
+"Settings → Appearance" sets the theme, English font, Chinese font and text size. Changes apply right away. The "Aa" button in the reading and editor toolbars opens a small panel for the theme, text size and English font; "More settings…" opens the full settings.
+
+- Theme: Match system, White, Dark or Beige, applied to the whole app. The default follows the system's light or dark mode. The app bar doubles as the window title bar and stays dark in every theme.
+- English font: Times New Roman (default), Georgia, Lora, Inter or System Sans. Lora and Inter ship with the app and work offline; their licenses are in `src/fonts/` and in `licenses/` of the build.
+- Chinese font: Auto (default; Song with serif English fonts, otherwise Hei), Song, Hei or Kai, using the fonts installed on the system. Chinese characters, which the English fonts do not contain, use the chosen Chinese font.
+- Text size: shared by reading and writing, 14 to 28 px, with a reset to the default.
+- Layout: line spacing (compact, standard, relaxed), paragraph spacing (none, standard, wide), a two-character first-line indent, and text width (narrow, standard, wide).
+- Spell check: off by default. When on, only the English spelling of the chapter text is checked; titles and form fields are not. Right-click a marked word to pick a suggestion or add it to the dictionary. The Windows app ships US and UK English dictionaries, so it works offline and never downloads one on its own. Other Chromium `.bdic` dictionaries can be imported in the settings or downloaded from an https link you enter (the file name must match the one in Electron's `hunspell_dictionaries.zip`, such as `fr-FR-3-0.bdic`). The link itself must be https; if the server redirects to plain http the download still completes, with a warning to check the source. Added dictionaries are used together with the built-in ones and can be removed at any time, which deletes the file right away; macOS uses the system spell checker and the web version the browser's.
+
+Appearance is saved on this device. On the desktop it moves together with the library storage location, and the chosen theme is also kept in `NewWorld-appearance.json` so the window opens with the matching background instead of flashing light first. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style.
 
 ## Running
 
@@ -71,10 +84,11 @@ A work page in the original library switches between the **source file** and eac
 
 After importing a source work into the continuation/imitation library, each work gets a project. The project's "Continuations" list creates and opens independent continuation drafts; the "Sources" list reads, downloads, and adds files for the same source work. When needed, choose "Continue from this source" on the source reading page. Source works and manuscripts imported by older versions appear directly in the corresponding lists, and previously standalone drafts can add sources within their project.
 
-- The chapter table of contents supports creating, renaming, moving up/down, switching, and confirmed deletion, and shows each chapter's word count. Above the text, chapter and whole-book counts are shown. The chapter title can be used for navigation; counts use non-whitespace Unicode characters.
+- The chapter table of contents supports creating, renaming, moving up/down, switching, and confirmed deletion, and shows each chapter's word count. Above the text, chapter and whole-book counts are shown. The chapter title can be used for navigation; counts follow word processors: each Chinese character or Chinese punctuation mark counts as one, each English (or other space-separated) word counts as one, and mixed text adds both.
 - The editor provides paragraphs, headings, bold, italic, underline, lists, quotes, horizontal rules, and local images. Native browser selection, clipboard, and Chinese IME input are supported.
 - `Ctrl / ⌘ + S` saves, `Ctrl / ⌘ + F` finds within the chapter, `Ctrl / ⌘ + B/I/U` toggles inline styles, `Ctrl / ⌘ + Z` undoes, `Ctrl / ⌘ + Shift + Z` redoes. Find matches literally and can replace one or all occurrences. Undo history belongs to the current chapter's editing session.
 - "Reading mode" keeps the table of contents and find; editing can be restored with "Edit text". At phone widths the chapter list can be expanded and the toolbar scrolls horizontally.
+- "Focus" hides the chapter list, the buttons around the text and the footer, leaving only the chapter; the toolbar fades until pointed at. Press `Esc` or click again to leave; leaving the page also ends it.
 - Page navigation, chapter switching, dialogs, and notices have transition animations. Animations are skipped when the system's "reduce motion" is enabled.
 
 ## Trash

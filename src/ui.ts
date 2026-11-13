@@ -35,6 +35,7 @@ const paths = {
   undo: 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
   redo: 'm15 14 5-5-5-5m5 5H10a6 6 0 0 0 0 12h3',
   image: 'M4 5h16v14H4zm0 11 5-5 4 4 3-3 4 4M15 9.5h.01',
+  focus: 'M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5',
 } as const
 
 export type IconName = keyof typeof paths

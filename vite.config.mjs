@@ -24,6 +24,7 @@ export default defineConfig({
           rename: { stripBase: 2 },
         },
         ...dependencyNotices(),
+        { src: 'src/fonts/*-OFL.txt', dest: 'licenses' },
       ],
     }),
   ],

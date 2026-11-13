@@ -1,4 +1,5 @@
 import './styles.css'
+import './appearance'
 import { initializeLanguage } from './i18n'
 
 async function start() {
