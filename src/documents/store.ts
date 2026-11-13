@@ -3,6 +3,7 @@ import { announced, committed, maxTitleLength, openDatabase, resultOf, trashEntr
 import type { Book, LibraryId, TrashEntry, WrittenBook } from '../library'
 import { emptyChapter, maxChapters, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition, EditionBundle, EditionKey } from './model'
+import { recordWriting } from '../writing-stats'
 
 const editionKey = (edition: EditionKey) => [edition.library, edition.bookId, edition.id]
 const chapterKey = (edition: EditionKey, id: string) => [...editionKey(edition), id]
@@ -90,13 +91,15 @@ export async function readChapter(edition: EditionKey, id: string): Promise<Chap
 
 export async function saveChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent) {
   const db = await openDatabase()
-  const tx = db.transaction('chapters', 'readwrite', { durability: 'strict' })
+  const tx = db.transaction(['chapters', 'writingDays'], 'readwrite', { durability: 'strict' })
   const chapters = tx.objectStore('chapters')
   return updateRecord(tx, chapters.get(chapterKey(edition, chapter.id)), (stored: ChapterRecord | undefined) => {
     if (!stored) throw new Error(t('store.thisChapterHasBeenRemovedTheCurrentText'))
     if (stored.revision !== chapter.revision) throw new Error(t('store.thisChapterWasUpdatedInAnotherPageSave'))
     const next = { ...stored, content, revision: stored.revision + 1 }
     chapters.put(next)
+    const delta = wordCount(content) - wordCount(stored.content)
+    if (delta > 0) recordWriting(tx.objectStore('writingDays'), delta)
     return next
   })
 }

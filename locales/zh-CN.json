@@ -579,5 +579,16 @@
   "backup.openTitle": "选择备份文件",
   "backup.files": "New World 备份",
   "backup.tooLarge": "备份文件太大，无法打开。",
-  "archive.view": "查看归档"
+  "archive.view": "查看归档",
+  "writing.title": "写作统计",
+  "writing.eyebrow": "统计",
+  "writing.streakLabel": "连续写作天数",
+  "writing.totalLabel": "总字数",
+  "writing.heatmapLabel": "写作热力图",
+  "writing.less": "少",
+  "writing.more": "多",
+  "writing.emptyHint": "开始写作后，这里会按天记录字数。",
+  "writing.wroteWords": "写了 {0} 字",
+  "writing.noWriting": "没有写作",
+  "writing.today": "今天"
 }

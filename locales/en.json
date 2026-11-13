@@ -579,5 +579,16 @@
   "backup.openTitle": "Choose a Backup File",
   "backup.files": "New World backups",
   "backup.tooLarge": "The backup file is too large to open.",
-  "archive.view": "View archive"
+  "archive.view": "View archive",
+  "writing.title": "Writing stats",
+  "writing.eyebrow": "STATS",
+  "writing.streakLabel": "Day streak",
+  "writing.totalLabel": "Total words",
+  "writing.heatmapLabel": "Writing heatmap",
+  "writing.less": "Less",
+  "writing.more": "More",
+  "writing.emptyHint": "Start writing and your daily word counts will appear here.",
+  "writing.wroteWords": "{0} words written",
+  "writing.noWriting": "No writing",
+  "writing.today": "Today"
 }

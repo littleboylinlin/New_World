@@ -7,6 +7,7 @@ import type { Book, LibraryId } from './library'
 import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
+import { renderWritingStats } from './writing-stats'
 
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
@@ -41,6 +42,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const archiveCount = element('span', 'list-count archive-count')
   archive.append(icon('archive'), element('span', '', t('archive.title')), archiveCount)
   home.append(intro, stagger(cards), archive)
+  renderWritingStats(home, signal)
   root.append(home)
 
   async function refreshCounts() {
