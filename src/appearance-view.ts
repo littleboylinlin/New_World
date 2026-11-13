@@ -105,6 +105,107 @@ function heading(text: string) {
   return element('h4', 'appearance-heading', text)
 }
 
+const spellingErrors: Record<SpellingError, string> = {
+  name: 'spelling.errorName', bundled: 'spelling.errorBundled', size: 'spelling.errorSize', format: 'spelling.errorFormat',
+  link: 'spelling.errorLink', download: 'spelling.errorDownload', busy: 'spelling.errorBusy',
+}
+
+function languageName(language: string) {
+  try {
+    const name = new Intl.DisplayNames([document.documentElement.lang || 'zh-CN'], { type: 'language' }).of(language)
+    return name && name !== language ? `${name} (${language})` : language
+  } catch {
+    return language
+  }
+}
+
+/** Desktop only: the dictionaries in use, and ways to add one from a file or a link. */
+function dictionaryControls(): HTMLElement[] {
+  const desktop = window.newWorldDesktop
+  if (!desktop?.getSpellingDictionaries) return []
+  const box = element('div', 'dictionary-box')
+  box.hidden = true
+  const title = element('h5', 'dictionary-title', t('spelling.dictionaries'))
+  const list = element('ul', 'dictionary-list')
+  list.setAttribute('aria-label', t('spelling.dictionaries'))
+  const importButton = button(t('spelling.import'), 'button button-quiet button-small')
+  const linkLabel = element('label', 'field-label dictionary-link')
+  const link = element('input', 'title-input')
+  link.type = 'url'
+  link.inputMode = 'url'
+  link.placeholder = 'https://…/fr-FR-3-0.bdic'
+  link.spellcheck = false
+  linkLabel.append(element('span', '', t('spelling.link')), link)
+  const download = button(t('spelling.download'), 'button button-quiet button-small')
+  const linkRow = element('div', 'dictionary-row')
+  linkRow.append(linkLabel, download)
+  const status = element('p', 'settings-state')
+  status.setAttribute('aria-live', 'polite')
+  box.append(title, list, importButton, linkRow, status, element('p', 'dialog-help', t('spelling.dictionaryHint')))
+
+  function render(state: SpellingState) {
+    box.hidden = !state.supported
+    list.replaceChildren()
+    for (const language of state.bundled) {
+      const item = element('li', 'dictionary-item')
+      item.append(element('span', '', languageName(language)), element('span', 'settings-badge', t('spelling.builtIn')))
+      list.append(item)
+    }
+    for (const language of state.added) {
+      const item = element('li', 'dictionary-item')
+      const remove = button(t('spelling.remove'), 'button button-quiet button-small remove-button')
+      remove.setAttribute('aria-label', t('spelling.removeNamed', [languageName(language)]))
+      remove.addEventListener('click', () => void run(async () => {
+        render(await desktop!.removeSpellingDictionary!(language))
+        status.textContent = t('spelling.removed', [languageName(language)])
+      }))
+      item.append(element('span', '', languageName(language)), remove)
+      list.append(item)
+    }
+  }
+
+  async function run(task: () => Promise<void>) {
+    const controls = box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')
+    for (const control of controls) control.disabled = true
+    status.classList.remove('field-error')
+    try {
+      await task()
+    } catch {
+      status.textContent = t('spelling.errorDownload')
+      status.classList.add('field-error')
+    } finally {
+      for (const control of box.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')) control.disabled = false
+    }
+  }
+
+  function show(result: SpellingResult) {
+    render(result.state)
+    if (result.error) {
+      status.textContent = t(spellingErrors[result.error] ?? 'spelling.errorDownload')
+      status.classList.add('field-error')
+    } else if (result.added.length) {
+      status.textContent = t('spelling.added', [result.added.map(languageName).join('、')])
+    } else {
+      status.textContent = ''
+    }
+  }
+
+  importButton.addEventListener('click', () => void run(async () => show(await desktop.importSpellingDictionaries!())))
+  const startDownload = () => void run(async () => {
+    if (!link.value.trim()) { link.focus(); return }
+    status.textContent = t('spelling.downloading')
+    const result = await desktop.downloadSpellingDictionary!(link.value)
+    show(result)
+    if (!result.error) link.value = ''
+  })
+  download.addEventListener('click', startDownload)
+  link.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); startDownload() }
+  })
+  void desktop.getSpellingDictionaries().then(render, () => { box.hidden = true })
+  return [box]
+}
+
 /** The appearance section of the settings dialog. */
 export function mountAppearanceSettings(section: HTMLElement) {
   const theme = radioGroup(t('appearance.theme'), 'settings-options theme-options', themes,
@@ -141,6 +242,7 @@ export function mountAppearanceSettings(section: HTMLElement) {
       (value) => [element('span', '', value === 'on' ? t('appearance.on') : t('appearance.off'))],
       (value) => updateAppearance({ spellcheck: value === 'on' }), (value) => value.spellcheck ? 'on' : 'off'),
     element('p', 'dialog-help', t('appearance.spellcheckHint')),
+    ...dictionaryControls(),
     element('p', 'dialog-help', t('appearance.hint')),
   )
 }

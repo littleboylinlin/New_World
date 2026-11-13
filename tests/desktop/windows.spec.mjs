@@ -613,3 +613,45 @@ test('拼写检查使用随应用安装的英文词典，不需要联网下载',
     await spelling.uncheck()
   } finally { await stop(app) }
 })
+
+test('可导入或从链接下载其他语言的拼写词典，与内置词典一起使用并可移除', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    const languages = () => app.evaluate(({ session }) => session.defaultSession.getSpellCheckerLanguages())
+    // The file dialog is native, so it returns a prepared copy of an English dictionary instead.
+    await app.evaluate(({ app, dialog }) => {
+      const { copyFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      const file = join(app.getPath('temp'), 'en-AU-10-2.bdic')
+      copyFileSync(join(app.getPath('userData'), 'Dictionaries', 'en-US-10-2.bdic'), file)
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] })
+    })
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    const list = section.getByRole('list', { name: '拼写词典' })
+    await expect(list.getByRole('listitem')).toHaveCount(2)
+    await expect(list).toContainText('en-US')
+    await expect(list).toContainText('en-GB')
+
+    await section.getByRole('button', { name: '导入词典文件…' }).click()
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('已添加')
+    await expect(list.getByRole('listitem')).toHaveCount(3)
+    await expect.poll(languages).toEqual(['en-US', 'en-GB', 'en-AU'])
+
+    await section.getByRole('textbox', { name: '或从链接下载' }).fill('https://redirector.gvt1.com/edgedl/chrome/dict/fr-fr-3-0.bdic')
+    await section.getByRole('button', { name: '下载', exact: true }).click()
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('已添加', { timeout: 60_000 })
+    await expect(list).toContainText('fr-FR')
+    await expect.poll(languages).toEqual(['en-US', 'en-GB', 'en-AU', 'fr-FR'])
+    await page.screenshot({ path: testInfo.outputPath('windows-spelling-dictionaries.png') })
+
+    await section.getByRole('textbox', { name: '或从链接下载' }).fill('https://example.com/french.bdic')
+    await section.getByRole('button', { name: '下载', exact: true }).click()
+    await expect(section.locator('.dictionary-box .settings-state')).toContainText('文件名不对')
+
+    for (const code of ['en-AU', 'fr-FR']) await list.getByRole('listitem').filter({ hasText: code }).getByRole('button').click()
+    await expect(list.getByRole('listitem')).toHaveCount(2)
+    await expect.poll(languages).toEqual(['en-US', 'en-GB'])
+  } finally { await stop(app) }
+})

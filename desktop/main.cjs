@@ -1,8 +1,8 @@
 const { t, createLanguageStore } = require('./language.cjs')
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, protocol, session, shell, Tray } = require('electron')
 const { mkdirSync, readFileSync } = require('node:fs')
-const { readFile, writeFile } = require('node:fs/promises')
-const { dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
+const { readFile, stat, writeFile } = require('node:fs/promises')
+const { basename, dirname, extname, isAbsolute, join, relative, resolve } = require('node:path')
 const storageLocation = require('./storage-location.cjs')
 const closeBehavior = require('./close-behavior.cjs')
 const windowTheme = require('./window-theme.cjs')
@@ -216,6 +216,92 @@ ipcMain.handle('new-world:set-window-theme', (event, next) => {
   applyWindowTheme()
 })
 
+// Spelling dictionaries the writer adds from a file or a link, on top of the bundled English ones.
+let dictionaryNetwork
+let downloadingDictionary = false
+
+function spellingState() {
+  if (process.platform === 'darwin') return { supported: false, bundled: [], added: [] }
+  return { supported: true, bundled: spelling.languages, added: spelling.addedLanguages(profile) }
+}
+
+function useDictionaries() {
+  const local = session.defaultSession
+  local.setSpellCheckerLanguages(spelling.activeLanguages(profile, local.availableSpellCheckerLanguages))
+}
+
+function dictionaryResult(added, error) {
+  if (added.length) useDictionaries()
+  return { state: spellingState(), added, ...(error ? { error } : {}) }
+}
+
+function dictionaryError(error) {
+  if (error instanceof spelling.DictionaryError) return error.code
+  console.warn('New World dictionary:', error.code || error.message)
+  return 'download'
+}
+
+ipcMain.handle('new-world:spelling-state', (event) => {
+  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  return spellingState()
+})
+
+ipcMain.handle('new-world:spelling-import', async (event) => {
+  if (!trustedFrame(event) || process.platform === 'darwin') throw new Error(t('main.invalidSettingsRequest'))
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: t('spelling.importTitle'), properties: ['openFile', 'multiSelections'],
+    filters: [{ name: t('spelling.dictionaryFiles'), extensions: ['bdic'] }],
+  })
+  const added = []
+  if (picked.canceled) return dictionaryResult(added)
+  for (const path of picked.filePaths) {
+    try {
+      if ((await stat(path)).size > spelling.maxBytes) throw new spelling.DictionaryError('size')
+      added.push(spelling.addDictionary(profile, basename(path), await readFile(path)))
+    } catch (error) {
+      return dictionaryResult(added, dictionaryError(error))
+    }
+  }
+  return dictionaryResult(added)
+})
+
+ipcMain.handle('new-world:spelling-download', async (event, link) => {
+  if (!trustedFrame(event) || process.platform === 'darwin' || typeof link !== 'string' || link.length > 2048) {
+    throw new Error(t('main.invalidSettingsRequest'))
+  }
+  if (downloadingDictionary) return dictionaryResult([], 'busy')
+  downloadingDictionary = true
+  try {
+    const { url, name } = spelling.downloadName(link.trim())
+    if (!dictionaryNetwork) {
+      // A separate session that only lets through the download the writer asked for.
+      dictionaryNetwork = session.fromPartition('new-world-dictionaries')
+      dictionaryNetwork.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
+        const target = new URL(request.url)
+        done({ cancel: !downloadingDictionary || request.method !== 'GET' || target.protocol !== 'https:' || Boolean(target.username || target.password) })
+      })
+    }
+    const response = await dictionaryNetwork.fetch(url, {
+      redirect: 'follow', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(60_000),
+    })
+    if (!response.ok) throw new spelling.DictionaryError('download')
+    if (Number(response.headers.get('content-length') || 0) > spelling.maxBytes) throw new spelling.DictionaryError('size')
+    const bytes = Buffer.from(await response.arrayBuffer())
+    return dictionaryResult([spelling.addDictionary(profile, name, bytes)])
+  } catch (error) {
+    return dictionaryResult([], dictionaryError(error))
+  } finally {
+    downloadingDictionary = false
+  }
+})
+
+ipcMain.handle('new-world:spelling-remove', (event, language) => {
+  if (!trustedFrame(event) || process.platform === 'darwin' || typeof language !== 'string') throw new Error(t('main.invalidSettingsRequest'))
+  spelling.removeDictionary(profile, language)
+  useDictionaries()
+  return spellingState()
+})
+
 function windowBackground() {
   return windowTheme.backgroundColor(theme, nativeTheme.shouldUseDarkColors)
 }
@@ -357,7 +443,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') {
       try {
         spelling.installDictionaries(profile)
-        local.setSpellCheckerLanguages(spelling.languages)
+        useDictionaries()
       } catch (error) {
         console.warn('New World spelling:', error.code || error.message)
       }

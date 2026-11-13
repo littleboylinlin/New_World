@@ -1,0 +1,149 @@
+{
+  "source": "hunspell_dictionaries.zip of Electron v45.2.3",
+  "files": {
+    "af-ZA": [
+      "af-ZA-3-0.bdic"
+    ],
+    "bg-BG": [
+      "bg-BG-3-0.bdic"
+    ],
+    "ca-ES": [
+      "ca-ES-3-0.bdic"
+    ],
+    "cs-CZ": [
+      "cs-CZ-3-0.bdic"
+    ],
+    "cy-GB": [
+      "cy-GB-1-0.bdic"
+    ],
+    "da-DK": [
+      "da-DK-3-0.bdic"
+    ],
+    "de-DE": [
+      "de-DE-3-0.bdic"
+    ],
+    "el-GR": [
+      "el-GR-3-0.bdic"
+    ],
+    "en-AU": [
+      "en-AU-10-2.bdic"
+    ],
+    "en-CA": [
+      "en-CA-10-2.bdic"
+    ],
+    "en-GB": [
+      "en-GB-10-2.bdic"
+    ],
+    "en-GB-oxendict": [
+      "en-GB-oxendict-10-2.bdic"
+    ],
+    "en-US": [
+      "en-US-10-2.bdic"
+    ],
+    "es-ES": [
+      "es-ES-3-0.bdic"
+    ],
+    "et-EE": [
+      "et-EE-3-0.bdic"
+    ],
+    "fa-IR": [
+      "fa-IR-9-0.bdic"
+    ],
+    "fo-FO": [
+      "fo-FO-3-0.bdic"
+    ],
+    "fr-FR": [
+      "fr-FR-3-0.bdic"
+    ],
+    "gl": [
+      "gl-1-0.bdic"
+    ],
+    "he-IL": [
+      "he-IL-3-0.bdic"
+    ],
+    "hi-IN": [
+      "hi-IN-3-0.bdic"
+    ],
+    "hr-HR": [
+      "hr-HR-3-0.bdic"
+    ],
+    "hu-HU": [
+      "hu-HU-3-0.bdic"
+    ],
+    "hy": [
+      "hy-1-0.bdic"
+    ],
+    "id-ID": [
+      "id-ID-3-0.bdic"
+    ],
+    "it-IT": [
+      "it-IT-3-0.bdic"
+    ],
+    "ko": [
+      "ko-3-0.bdic"
+    ],
+    "lt-LT": [
+      "lt-LT-3-0.bdic"
+    ],
+    "lv-LV": [
+      "lv-LV-3-0.bdic"
+    ],
+    "nb-NO": [
+      "nb-NO-3-0.bdic"
+    ],
+    "nl-NL": [
+      "nl-NL-3-0.bdic"
+    ],
+    "pl-PL": [
+      "pl-PL-3-0.bdic"
+    ],
+    "pt-BR": [
+      "pt-BR-3-0.bdic"
+    ],
+    "pt-PT": [
+      "pt-PT-3-0.bdic"
+    ],
+    "ro-RO": [
+      "ro-RO-3-0.bdic"
+    ],
+    "ru-RU": [
+      "ru-RU-3-0.bdic"
+    ],
+    "sh": [
+      "sh-3-0.bdic",
+      "sh-4-0.bdic"
+    ],
+    "sk-SK": [
+      "sk-SK-3-0.bdic"
+    ],
+    "sl-SI": [
+      "sl-SI-3-0.bdic"
+    ],
+    "sq": [
+      "sq-3-0.bdic"
+    ],
+    "sr": [
+      "sr-3-0.bdic",
+      "sr-4-0.bdic"
+    ],
+    "sv-SE": [
+      "sv-SE-3-0.bdic"
+    ],
+    "ta-IN": [
+      "ta-IN-3-0.bdic"
+    ],
+    "tg-TG": [
+      "tg-TG-5-0.bdic"
+    ],
+    "tr-TR": [
+      "tr-TR-4-0.bdic"
+    ],
+    "uk-UA": [
+      "uk-UA-4-0.bdic",
+      "uk-UA-5-0.bdic"
+    ],
+    "vi-VN": [
+      "vi-VN-3-0.bdic"
+    ]
+  }
+}

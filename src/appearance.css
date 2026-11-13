@@ -170,3 +170,13 @@
 .choice-options .settings-option { min-height: 48px; }
 .appearance-check { display: flex; align-items: center; gap: 9px; font-size: .86rem; font-weight: 750; cursor: pointer; }
 .appearance-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+.dictionary-box { display: grid; gap: 10px; margin-top: 4px; padding: 14px; border: 2px solid var(--ink); border-radius: 10px; background: var(--field); }
+.dictionary-box[hidden] { display: none; }
+.dictionary-title { margin: 0; font-size: .9rem; font-weight: 800; }
+.dictionary-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.dictionary-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; padding-bottom: 6px; border-bottom: 1px solid var(--hair); font-size: .92rem; }
+.dictionary-box > .button { justify-self: start; }
+.dictionary-row { display: flex; align-items: flex-end; gap: 8px; }
+.dictionary-link { flex: 1; min-width: 0; }
+@media (max-width: 520px) { .dictionary-row { flex-direction: column; align-items: stretch; } }

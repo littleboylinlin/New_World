@@ -12,6 +12,21 @@ interface StorageResult {
 
 type CloseBehavior = 'quit' | 'background'
 
+interface SpellingState {
+  /** False on macOS, which uses the system spell checker. */
+  supported: boolean
+  bundled: string[]
+  added: string[]
+}
+
+type SpellingError = 'name' | 'bundled' | 'size' | 'format' | 'link' | 'download' | 'busy'
+
+interface SpellingResult {
+  state: SpellingState
+  added: string[]
+  error?: SpellingError
+}
+
 type DesktopUpdateResult = { ok: true; canceled?: boolean } | { ok: false; message: string }
 
 interface DesktopUpdateProgress {
@@ -40,5 +55,9 @@ interface Window {
     getCloseBehavior: () => Promise<CloseBehavior>
     setCloseBehavior: (mode: CloseBehavior) => Promise<CloseBehavior>
     setWindowTheme?: (theme: import('./appearance').Theme) => Promise<void>
+    getSpellingDictionaries?: () => Promise<SpellingState>
+    importSpellingDictionaries?: () => Promise<SpellingResult>
+    downloadSpellingDictionary?: (link: string) => Promise<SpellingResult>
+    removeSpellingDictionary?: (language: string) => Promise<SpellingState>
   }
 }
