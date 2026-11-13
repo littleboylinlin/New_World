@@ -511,5 +511,6 @@
   "spelling.errorDownload": "下载失败，请检查链接和网络。",
   "spelling.errorBusy": "已有词典正在下载，请稍候。",
   "spelling.importTitle": "导入拼写词典",
-  "spelling.dictionaryFiles": "拼写词典"
+  "spelling.dictionaryFiles": "拼写词典",
+  "spelling.errorLocked": "这个语言的词典正在使用中，请重启应用后再添加。"
 }

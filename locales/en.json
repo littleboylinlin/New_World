@@ -511,5 +511,6 @@
   "spelling.errorDownload": "Download failed. Check the link and your connection.",
   "spelling.errorBusy": "A dictionary is already downloading. Please wait.",
   "spelling.importTitle": "Import Spelling Dictionary",
-  "spelling.dictionaryFiles": "Spelling dictionaries"
+  "spelling.dictionaryFiles": "Spelling dictionaries",
+  "spelling.errorLocked": "This language's dictionary is still in use. Restart the app, then add it again."
 }

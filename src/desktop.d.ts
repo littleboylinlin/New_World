@@ -19,7 +19,7 @@ interface SpellingState {
   added: string[]
 }
 
-type SpellingError = 'name' | 'bundled' | 'size' | 'format' | 'link' | 'download' | 'busy'
+type SpellingError = 'name' | 'bundled' | 'size' | 'format' | 'link' | 'download' | 'busy' | 'locked'
 
 interface SpellingResult {
   state: SpellingState

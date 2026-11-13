@@ -107,7 +107,7 @@ function heading(text: string) {
 
 const spellingErrors: Record<SpellingError, string> = {
   name: 'spelling.errorName', bundled: 'spelling.errorBundled', size: 'spelling.errorSize', format: 'spelling.errorFormat',
-  link: 'spelling.errorLink', download: 'spelling.errorDownload', busy: 'spelling.errorBusy',
+  link: 'spelling.errorLink', download: 'spelling.errorDownload', busy: 'spelling.errorBusy', locked: 'spelling.errorLocked',
 }
 
 function languageName(language: string) {

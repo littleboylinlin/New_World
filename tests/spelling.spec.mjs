@@ -85,3 +85,21 @@ test('下载链接只接受 https，且文件名要能对应到词典语言', ()
     ['not a link', 'link'], ['https://example.com/french.bdic', 'name'], ['https://example.com/', 'name'],
   ]) expect(() => spelling.downloadName(link)).toThrow(expect.objectContaining({ code }))
 })
+
+test('仍被占用而没删掉的词典不再使用，下次启动时删除', () => {
+  const profile = sandbox()
+  const english = readFileSync('desktop/dictionaries/en-US-10-2.bdic')
+  spelling.addDictionary(profile, 'fr-FR-3-0.bdic', english)
+  // As if Windows had refused to delete the open file.
+  writeFileSync(join(profile, 'Dictionaries', '.removed.json'), '["fr-FR"]\n')
+  expect(spelling.addedLanguages(profile)).toEqual([])
+  expect(spelling.activeLanguages(profile, ['en-US', 'en-GB', 'fr-FR'])).toEqual(['en-US', 'en-GB'])
+
+  spelling.installDictionaries(profile)
+  expect(readdirSync(join(profile, 'Dictionaries')).sort()).toEqual(['en-GB-10-2.bdic', 'en-US-10-2.bdic'])
+
+  // Adding the language again takes it off the list.
+  writeFileSync(join(profile, 'Dictionaries', '.removed.json'), '["fr-FR"]\n')
+  expect(spelling.addDictionary(profile, 'fr-FR-3-0.bdic', english)).toBe('fr-FR')
+  expect(spelling.addedLanguages(profile)).toEqual(['fr-FR'])
+})

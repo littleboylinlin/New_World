@@ -46,13 +46,48 @@ function languageOf(fileName) {
 function writeAtomically(path, bytes) {
   const partial = `${path}.partial`
   writeFileSync(partial, bytes)
-  renameSync(partial, path)
+  try {
+    renameSync(partial, path)
+  } catch (error) {
+    rmSync(partial, { force: true })
+    // Windows keeps a dictionary in use locked until the app restarts.
+    if (['EPERM', 'EBUSY', 'EACCES'].includes(error.code)) throw new DictionaryError('locked')
+    throw error
+  }
+}
+
+// Dictionaries removed while Chromium still had them open; deleted at the next start.
+const removalList = '.removed.json'
+
+function pendingRemovals(profile) {
+  try {
+    const list = JSON.parse(readFileSync(join(folder(profile), removalList), 'utf8'))
+    return Array.isArray(list) ? list.filter((language) => typeof language === 'string' && catalog[language]) : []
+  } catch {
+    return []
+  }
+}
+
+function savePendingRemovals(profile, list) {
+  const path = join(folder(profile), removalList)
+  if (list.length) writeFileSync(path, `${JSON.stringify([...new Set(list)])}\n`)
+  else rmSync(path, { force: true })
+}
+
+/** Deletes a language's files; returns false when Windows still has one locked. */
+function deleteFiles(profile, language) {
+  let done = true
+  for (const name of catalog[language]) {
+    try { rmSync(join(folder(profile), name), { force: true }) } catch { done = false }
+  }
+  return done
 }
 
 /** Copies the bundled dictionaries into the profile's Dictionaries folder. Returns the names copied. */
 function installDictionaries(profile, source = bundled) {
   const target = folder(profile)
   mkdirSync(target, { recursive: true })
+  savePendingRemovals(profile, pendingRemovals(profile).filter((language) => !deleteFiles(profile, language)))
   const copied = []
   for (const name of readdirSync(source)) {
     if (!name.endsWith('.bdic') || existsSync(join(target, name))) continue
@@ -78,8 +113,12 @@ function addDictionary(profile, fileName, bytes) {
   const { name, language } = checkDictionary(fileName, bytes)
   mkdirSync(folder(profile), { recursive: true })
   // Only one file per language, so a newer one replaces the older.
-  for (const old of catalog[language]) if (old !== name) rmSync(join(folder(profile), old), { force: true })
+  for (const old of catalog[language]) {
+    if (old === name) continue
+    try { rmSync(join(folder(profile), old), { force: true }) } catch { throw new DictionaryError('locked') }
+  }
   writeAtomically(join(folder(profile), name), bytes)
+  savePendingRemovals(profile, pendingRemovals(profile).filter((pending) => pending !== language))
   return language
 }
 
@@ -87,14 +126,18 @@ function addDictionary(profile, fileName, bytes) {
 function addedLanguages(profile) {
   let names = []
   try { names = readdirSync(folder(profile)) } catch { return [] }
+  const removed = pendingRemovals(profile)
   const found = new Set(names.filter((name) => catalog[languageOf(name)]?.includes(name)).map(languageOf)
-    .filter((language) => !languages.includes(language)))
+    .filter((language) => !languages.includes(language) && !removed.includes(language)))
   return [...found].sort()
 }
 
+/** Stops using a dictionary the writer added and deletes it, at the next start if it is still in use. */
 function removeDictionary(profile, language) {
   if (languages.includes(language) || !catalog[language]) throw new DictionaryError('bundled')
-  for (const name of catalog[language]) rmSync(join(folder(profile), name), { force: true })
+  mkdirSync(folder(profile), { recursive: true })
+  savePendingRemovals(profile, [...pendingRemovals(profile), language])
+  if (deleteFiles(profile, language)) savePendingRemovals(profile, pendingRemovals(profile).filter((pending) => pending !== language))
 }
 
 /** Chromium's code for a dictionary language: af-ZA is loaded as "af", fr-FR as "fr-FR". */
