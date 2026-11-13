@@ -676,3 +676,80 @@ test('可导入或从链接下载其他语言的拼写词典，与内置词典�
     })).toEqual(['en-GB-10-2.bdic', 'en-US-10-2.bdic'])
   } finally { await stop(app) }
 })
+
+test('自动备份和立即备份写入自选文件夹，可加密，并能从备份恢复', async ({}, testInfo) => {
+  const folder = testInfo.outputPath('backups')
+  const backups = async () => (await readdir(folder).catch(() => [])).sort()
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    // Native file dialogs are replaced: folders resolve to the test folder, files to the chosen backup.
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async (_window, options) => ({
+        canceled: false, filePaths: [options.properties.includes('openDirectory') ? folder : globalThis.testRestorePath],
+      })
+    }, folder)
+
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.getByRole('textbox', { name: '作品名' }).fill('备份的灯塔')
+    await page.getByRole('button', { name: '创建小说' }).click()
+    await editor(page).fill('守夜人把灯点亮。')
+    await page.getByRole('button', { name: '手动保存' }).click()
+    await expect(page.locator('.save-status')).toHaveText('已保存')
+
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '备份', exact: true })
+    await expect(section.getByRole('radio', { name: '每天' })).toBeChecked()
+    await expect(section.locator('.backup-location')).toContainText('New World Backups')
+    await section.getByRole('button', { name: '选择文件夹…' }).click()
+    await expect(section.locator('.backup-location')).toContainText(folder)
+    await expect(section.locator('.backup-location')).toContainText('自选位置')
+
+    await section.getByRole('radio', { name: '用密码加密' }).check()
+    const ask = page.getByRole('dialog', { name: '设置备份密码' })
+    await ask.getByLabel('密码', { exact: true }).fill('harbour')
+    await ask.getByLabel('再次输入密码').fill('harbour')
+    await ask.getByRole('button', { name: '设置密码' }).click()
+    await expect(section.locator('.backup-state')).toHaveText('之后的备份都会加密。')
+    expect(JSON.stringify(await app.evaluate(({ app }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-backup.json'), 'utf8'))
+    }))).not.toContain('harbour')
+
+    await section.getByRole('button', { name: '立即备份' }).click()
+    await expect(section.locator('.backup-state')).toContainText('已备份 1 部作品到')
+    const manual = (await backups()).find((name) => name.startsWith('New-World-backup-'))
+    expect(manual).toBeTruthy()
+    expect((await readFile(join(folder, manual)))[6] & 1).toBe(1)
+
+    // The first automatic backup is due right away and runs shortly after the start.
+    await expect(section.locator('.backup-last')).toContainText('上次自动备份', { timeout: 60_000 })
+
+    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '关闭', exact: true }).click()
+    await editor(page).fill('恢复前改过的正文。')
+    await page.getByRole('button', { name: '手动保存' }).click()
+    await expect(page.locator('.save-status')).toHaveText('已保存')
+
+    await app.evaluate((_electron, path) => { globalThis.testRestorePath = path }, join(folder, manual))
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await section.getByRole('button', { name: '从备份恢复…' }).click()
+    const password = page.getByRole('dialog', { name: '输入备份密码' })
+    await password.getByLabel('密码', { exact: true }).fill('harbour')
+    await password.getByRole('button', { name: '打开' }).click()
+    await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
+    await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
+    expect((await backups()).some((name) => name.startsWith('New-World-before-restore-'))).toBe(true)
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('link', { name: '查看 备份的灯塔', exact: true }).click()
+    await expect(editor(page)).toHaveText('守夜人把灯点亮。')
+
+    // Leave the shared profile as it was for the other desktop tests.
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await section.getByRole('radio', { name: '不加密' }).check()
+    await expect(section.locator('.backup-state')).toHaveText('之后的备份不加密。')
+    await section.getByRole('button', { name: '恢复默认位置' }).click()
+    await expect(section.locator('.backup-location')).toContainText('默认位置')
+  } finally { await stop(app) }
+})

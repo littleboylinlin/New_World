@@ -4,6 +4,7 @@ import { button, element } from './ui'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
+import { mountBackupView } from './backup-view'
 
 const choices: { value: CloseBehavior; label: string }[] = [
   { value: 'quit', label: t('settings.quit') },
@@ -62,6 +63,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
   mountAppearanceSettings(appearanceSection)
   const windowSection = section(t('settings.closeBehavior'), 'window-settings-title')
   const storageSection = section(t('settings.storage'), 'storage-settings-title')
+  const backupSection = section(t('backup.title'), 'backup-settings-title')
   const updateSection = section(t('settings.updates'), 'update-settings-title')
   const options = element('div', 'settings-options')
   options.setAttribute('role', 'radiogroup')
@@ -132,6 +134,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
       state.textContent = ''
       void refresh()
       void refreshStorage()
+      void refreshBackups()
     }
     if (!dialog.open) dialog.showModal()
     if (section) {
@@ -144,6 +147,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
 
   const refreshStorage = mountStorageView(storageSection, saveBeforeLeaving, setBusy)
   mountUpdateView(updateSection, saveBeforeLeaving, () => open(updateSection), setBusy)
+  const refreshBackups = mountBackupView(backupSection, saveBeforeLeaving, setBusy)
 
   function paint() {
     if (!desktop) {

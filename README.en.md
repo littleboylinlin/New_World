@@ -99,6 +99,21 @@ Deleting a work, a continuation project's source, an edited version, or a chapte
 - Restored chapters return to their original order. When restoring an edited version whose name already exists, "restored" is appended to the name.
 - If the owning work or version was also deleted, restore it first. If the same source file was re-imported after deletion, delete the newly imported copy first.
 
+## Archive
+
+Every work card on the shelves has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" in the header lists all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
+
+## Backup and restore
+
+"Settings → Backups" packs both libraries, every edition, the original files and the trash into one `.zip` file.
+
+- Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
+- Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
+- Backup location (desktop): `New World Backups` in Documents by default; choose another folder, go back to the default, or open the folder.
+- Encryption: none, or a password (AES-256, which tools such as 7-Zip can open). The desktop app keeps the password encrypted with the system keychain, so automatic backups are encrypted too; the web version asks for a password with each backup. A forgotten password cannot be recovered.
+- Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
+- Device settings such as appearance, language and storage location are not part of a backup.
+
 ## Format support
 
 "Edit" means a source can be converted into an independent manuscript. "Export" means a manuscript can produce a new file in that format. Downloading the original is a separate operation that preserves the imported file name and bytes.
