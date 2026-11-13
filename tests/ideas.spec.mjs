@@ -77,6 +77,8 @@ test('灵感页可以记下、标记已用、关联作品、删除和撤销', as
 test('网页版 Ctrl+Alt+N 弹出记灵感，默认关联最近打开的作品', async ({ page }) => {
   await newNovel(page, '北方来信')
   await page.goto('/#/')
+  // The shortcut is listened for once the app has started.
+  await expect(page.getByRole('link', { name: '灵感', exact: true })).toBeVisible()
   await page.keyboard.press('Control+Alt+KeyN')
   const dialog = page.getByRole('dialog', { name: '记灵感' })
   await expect(dialog).toBeVisible()
