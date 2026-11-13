@@ -92,7 +92,14 @@
   --disabled-border: light-dark(#a59c8d, #4d473f);
   --disabled-bg: light-dark(#ece5d6, #24211e);
   --empty-bg: light-dark(#fffdf7a8, #1e1b18a8);
-  --backdrop: light-dark(#16130f9e, #000000b3);
+  --backdrop: light-dark(#16130f6b, #000000a6);
+  /* Popups: dialogs, menus and panels share one border and shadow in every theme. */
+  --ring: var(--blue);
+  --pop-border: light-dark(var(--ink), #4b453c);
+  --pop-hard: light-dark(var(--edge), transparent);
+  --pop-soft: light-dark(#16130f24, #000000c4);
+  --field-border: light-dark(var(--ink), #5a534a);
+  --menu-hover: light-dark(#fff0a6, #3a3421);
   --bar: #16130f;
   --bar-text: #f4eee2;
 }
@@ -115,6 +122,8 @@
   --code-bg: #efe3ca;
   --disabled-bg: #e4d7bb;
   --empty-bg: #f7eedba8;
+  --menu-hover: #f6e49f;
+  --pop-soft: #2b21172e;
 }
 
 /* Appearance controls */
@@ -145,9 +154,10 @@
 .format-button.appearance-toggle { border-color: var(--ink); background: var(--sheet); }
 .appearance-toggle .format-glyph { font-size: 1rem; }
 .appearance-toggle[aria-expanded="true"] { color: var(--on-yellow); background: var(--yellow); }
-.appearance-panel { position: absolute; z-index: 6; top: calc(100% + 8px); inset-inline-end: 0; display: grid; gap: 14px; width: min(290px, calc(100vw - 32px)); padding: 14px; border: 2px solid var(--ink); border-radius: 12px; color: var(--ink); background: var(--sheet); box-shadow: 5px 5px 0 var(--edge); font-size: .9rem; text-align: start; }
+.appearance-panel { position: absolute; z-index: 6; top: calc(100% + 8px); inset-inline-end: 0; display: grid; gap: 14px; width: min(290px, calc(100vw - 32px)); padding: 16px; border: 2px solid var(--pop-border); border-radius: 16px; color: var(--ink); background: var(--sheet); box-shadow: 4px 4px 0 var(--pop-hard), 0 16px 36px -14px var(--pop-soft); font-size: .9rem; text-align: start; }
 .theme-swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .theme-swatches .settings-option { min-height: 44px; padding: 5px; }
+.theme-swatches .settings-option::after { display: none; }
 .theme-swatches .theme-swatch { width: 100%; height: 30px; }
 .appearance-panel .size-controls { flex-wrap: nowrap; }
 .appearance-panel .size-step { flex: 1; }

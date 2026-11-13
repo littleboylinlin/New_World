@@ -34,6 +34,25 @@ export function offerUndo(entry: TrashEntry, restored?: (result: Restored) => vo
   })
 }
 
+/** A short message in the same place, without an action. */
+export function showNotice(text: string) {
+  dismiss(true)
+  const toast = element('div', 'undo-toast')
+  toast.setAttribute('role', 'status')
+  const close = button('', 'undo-close', 'close')
+  close.setAttribute('aria-label', t('undo.dismissNotification'))
+  toast.append(element('p', '', text), close)
+  close.addEventListener('click', () => dismiss())
+  document.body.append(toast)
+  shown = toast
+  timer = window.setTimeout(() => { if (shown === toast) dismiss() }, 6000)
+}
+
+/** Any other change that can be undone from the same notice. */
+export function offerActionUndo(text: string, revert: () => Promise<unknown>) {
+  showUndo(text, async () => { await revert() })
+}
+
 /** Archiving can be undone from the same notice as deleting. */
 export function offerArchiveUndo(title: string, unarchive: () => Promise<unknown>) {
   showUndo(t('undo.archived', [shortTitle(title)]), async () => { await unarchive() })

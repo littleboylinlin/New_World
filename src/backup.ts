@@ -4,10 +4,12 @@
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { t } from './i18n'
-import { committed, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
+import { committed, coverOf, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
 import type { Book, BookFile, LibraryId, TrashEntry } from './library'
 import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
+import type { WritingDay } from './writing-stats'
+import type { Idea } from './ideas'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
@@ -32,6 +34,10 @@ interface Manifest {
   editions: Edition[]
   chapters: ChapterRecord[]
   trash: StoredTrashEntry[]
+  /** Daily writing counts for the heatmap. Missing from backups made before v0.14.0. */
+  writingDays?: WritingDay[]
+  /** Quick notes. Missing from backups made before v0.14.0, which then leave the current ideas alone. */
+  ideas?: Idea[]
 }
 
 export interface BackupSummary {
@@ -49,6 +55,8 @@ export interface BackupContents {
   editions: Edition[]
   chapters: ChapterRecord[]
   trash: TrashEntry[]
+  writingDays: WritingDay[]
+  ideas?: Idea[]
 }
 
 export type BackupProblem = 'password' | 'format' | 'newer'
@@ -83,13 +91,15 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction(libraryStores)
-  const [books, files, editions, chapters, trash]: [Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[]] = await Promise.all([
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas'])
+  const [books, files, editions, chapters, trash, writingDays, ideas]: [Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[]] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
     resultOf(tx.objectStore('editions').getAll()),
     resultOf(tx.objectStore('chapters').getAll()),
     resultOf(tx.objectStore('trash').getAll()),
+    resultOf(tx.objectStore('writingDays').getAll()),
+    resultOf(tx.objectStore('ideas').getAll()),
   ])
 
   const blobs: [string, Blob][] = []
@@ -98,11 +108,25 @@ export async function createBackup(password?: string) {
     blobs.push([path, file.blob])
     return { library: file.library, id: file.id, path, type: file.blob.type }
   }
+  // Cover images are blobs on the work records; they go beside the manifest like the original files.
+  const pack = (book: Book, folder: string): Book => {
+    const { cover: _stored, ...rest } = book
+    const cover = coverOf(book)
+    if (!cover) return rest as Book
+    const path = `${folder}/${book.library}/${book.id}`
+    blobs.push([path, cover])
+    return { ...rest, cover: { path, type: cover.type } as unknown as Blob } as Book
+  }
   const manifest: Manifest = {
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
-    books, editions, chapters,
+    editions, chapters, writingDays, ideas,
+    books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
-    trash: trash.map((entry) => ({ ...entry, files: entry.files.map((file) => store(file, `trash/${entry.id}`)) })),
+    trash: trash.map((entry) => ({
+      ...entry,
+      books: entry.books.map((book) => pack(book, `trash/${entry.id}/covers`)),
+      files: entry.files.map((file) => store(file, `trash/${entry.id}`)),
+    })),
   }
 
   const options = password ? { password, encryptionStrength: 3 as const } : {}
@@ -176,17 +200,31 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       if (typeof stored?.path !== 'string') throw new BackupError('format')
       return { library: stored.library, id: stored.id, blob: await read(stored.path, stored.type) }
     }
+    const unpack = async (book: Book): Promise<Book> => {
+      const cover = book.cover as unknown as { path?: unknown; type?: unknown } | undefined
+      const { cover: _stored, ...rest } = book
+      if (!cover || typeof cover.path !== 'string') return rest as Book
+      return { ...rest, cover: await read(cover.path, typeof cover.type === 'string' ? cover.type : '') } as Book
+    }
+    const books: Book[] = []
+    for (const book of manifest.books) books.push(await unpack(book))
     const files: BookFile[] = []
     for (const stored of manifest.files) files.push(await restore(stored))
     const trash: TrashEntry[] = []
     for (const entry of manifest.trash) {
       const entryFiles: BookFile[] = []
       for (const stored of list(entry.files) as unknown as StoredFile[]) entryFiles.push(await restore(stored))
-      trash.push({ ...entry, files: entryFiles })
+      const entryBooks: Book[] = []
+      for (const book of list(entry.books) as unknown as Book[]) entryBooks.push(await unpack(book))
+      trash.push({ ...entry, books: entryBooks, files: entryFiles })
     }
     return {
       summary: summarize(manifest),
-      books: manifest.books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
+      books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
+      writingDays: (Array.isArray(manifest.writingDays) ? manifest.writingDays : [])
+        .filter((day) => typeof day?.date === 'string' && Number.isFinite(day.words)),
+      ideas: Array.isArray(manifest.ideas)
+        ? manifest.ideas.filter((idea) => typeof idea?.id === 'string' && typeof idea.text === 'string') : undefined,
     }
   } finally {
     await zip.close()
@@ -196,8 +234,22 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
   const db = await openDatabase()
-  const tx = db.transaction(libraryStores, 'readwrite', { durability: 'strict' })
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas'], 'readwrite', { durability: 'strict' })
   for (const name of libraryStores) tx.objectStore(name).clear()
+  if (contents.ideas) {
+    const ideas = tx.objectStore('ideas')
+    ideas.clear()
+    for (const idea of contents.ideas) ideas.add(idea)
+  }
+  // Writing history is kept across restores: each day keeps the larger of the two counts.
+  const days = tx.objectStore('writingDays')
+  for (const day of contents.writingDays) {
+    const stored = days.get(day.date)
+    stored.onsuccess = () => {
+      const current = (stored.result as WritingDay | undefined)?.words ?? 0
+      if (day.words > current) days.put({ date: day.date, words: day.words })
+    }
+  }
   for (const book of contents.books) tx.objectStore('books').add(book)
   for (const file of contents.files) tx.objectStore('files').add(file)
   for (const edition of contents.editions) tx.objectStore('editions').add(edition)

@@ -56,6 +56,16 @@ async function desktopPassword(state: BackupState) {
   return password
 }
 
+/** Backs up to the desktop backup folder now, for the tray menu. Returns the message to show. */
+export async function backUpToFolder() {
+  const desktop = window.newWorldDesktop!
+  const state = await desktop.getBackupState!()
+  const { blob, summary } = await build(await desktopPassword(state))
+  const saved = await desktop.saveBackup!(backupName(new Date()), new Uint8Array(await blob.arrayBuffer()), false)
+  window.dispatchEvent(new CustomEvent('new-world:backup-change'))
+  return t('backup.saved', [summary.works, saved.path])
+}
+
 /** Writes an automatic backup on the desktop when one is due. Runs at start and every few minutes. */
 export function startAutomaticBackups() {
   const desktop = window.newWorldDesktop

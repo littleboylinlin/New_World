@@ -10,6 +10,7 @@
 @keyframes enter-back { from { opacity: 0; transform: translateX(-26px); } }
 @keyframes drop-in { from { opacity: 0; transform: translateY(-10px); } }
 @keyframes tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 6px)); } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 22px); } }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, 16px); } }
@@ -41,6 +42,7 @@
 
   .manage-dialog[open] { animation: 260ms var(--ease-pop) backwards dialog-in; }
   .manage-dialog[open]::backdrop { animation: 220ms ease-out backwards fade-in; }
+  .popup-menu { animation: 150ms var(--ease-out) backwards menu-in; }
   .undo-toast { animation: 320ms var(--ease-pop) backwards toast-in; }
   .undo-toast.leaving { animation: 200ms ease-in both toast-out; }
   .pop { animation: 360ms var(--ease-pop) pop; }
@@ -51,9 +53,9 @@
   .novel-body[data-turn="previous"] { animation-name: chapter-previous; }
   .chapter-jump[aria-current] { animation: 260ms var(--ease-pop) backwards fade-in; }
   .format-button:active:not(:disabled) { animation: 180ms ease-out press; }
-  .chapter-navigation, .conversion-info { interpolate-size: allow-keywords; }
-  .chapter-navigation::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
-  .chapter-navigation[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
+  .chapter-navigation, .ideas-card, .conversion-info { interpolate-size: allow-keywords; }
+  .chapter-navigation::details-content, .ideas-card::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
+  .chapter-navigation[open]::details-content, .ideas-card[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
 
   .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump { transition: transform 160ms var(--ease-out), background-color 140ms ease, color 140ms ease, border-color 140ms ease; }
   .shelf-card:hover .card-enter svg { transform: translateX(5px); }

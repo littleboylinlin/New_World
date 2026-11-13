@@ -14,6 +14,17 @@ type CloseBehavior = 'quit' | 'background'
 
 type BackupFrequency = 'off' | 'daily' | 'weekly'
 
+type DesktopCommand = { type: 'open'; hash: string } | { type: 'ideas' } | { type: 'new-novel' } | { type: 'backup' } | { type: 'idea'; text: string }
+
+interface CaptureState {
+  shortcut: string
+  options: string[]
+  /** How each shortcut is written on this platform. */
+  labels: Record<string, string>
+  /** False when another app already holds the shortcut. */
+  registered: boolean
+}
+
 interface BackupState {
   frequency: BackupFrequency
   folder: string
@@ -76,6 +87,12 @@ interface Window {
     closeWindow: () => void
     isMaximized: () => Promise<boolean>
     onMaximizeChange: (listener: (maximized: boolean) => void) => void
+    getCaptureState?: () => Promise<CaptureState>
+    setCaptureShortcut?: (shortcut: string) => Promise<CaptureState>
+    hideCapture?: () => Promise<void>
+    onCaptureShown?: (listener: () => void) => void
+    setRecentWorks?: (works: { title: string; hash: string }[]) => Promise<void>
+    onCommand?: (listener: (command: DesktopCommand) => void) => void
     getBackupState?: () => Promise<BackupState>
     setBackupFrequency?: (frequency: BackupFrequency) => Promise<BackupState>
     chooseBackupFolder?: () => Promise<BackupState | null>

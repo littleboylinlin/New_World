@@ -108,3 +108,9 @@ export function pdf({ imageOnly = false } = {}) {
   data += `xref\n0 ${offsets.length}\n${offsets.join('')}trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
   return file(imageOnly ? '影像原件.pdf' : '双页试读.pdf', data)
 }
+
+/** Runs an action from a shelf card's menu. Without a title, the only card on the shelf is used. */
+export async function bookAction(page, action, title) {
+  await page.getByRole('button', { name: title ? `「${title}」的操作` : /」的操作$/ }).click()
+  await page.getByRole('menu').getByRole('menuitem', { name: action, exact: true }).click()
+}
