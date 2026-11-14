@@ -4,6 +4,7 @@ import { button, element } from './ui'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
+import { mountAiSettings } from './ai/settings-view'
 import { mountBackupView } from './backup-view'
 import { mountCaptureSettings } from './idea-capture'
 
@@ -67,6 +68,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
   const windowSection = section(t('settings.closeBehavior'), 'window-settings-title')
   const storageSection = section(t('settings.storage'), 'storage-settings-title')
   const backupSection = section(t('backup.title'), 'backup-settings-title')
+  const aiSection = section(t('ai.settingsTitle'), 'ai-settings-title')
   const updateSection = section(t('settings.updates'), 'update-settings-title')
   const options = element('div', 'settings-options')
   options.setAttribute('role', 'radiogroup')
@@ -139,6 +141,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
       void refreshStorage()
       void refreshBackups()
       void refreshCapture()
+      void refreshAi()
     }
     if (!dialog.open) dialog.showModal()
     if (section) {
@@ -152,6 +155,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
   const refreshStorage = mountStorageView(storageSection, saveBeforeLeaving, setBusy)
   mountUpdateView(updateSection, saveBeforeLeaving, () => open(updateSection), setBusy)
   const refreshBackups = mountBackupView(backupSection, saveBeforeLeaving, setBusy)
+  const refreshAi = mountAiSettings(aiSection)
 
   function paint() {
     if (!desktop) {
