@@ -203,18 +203,30 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
     if (busy || revisions.length <= 1) return
     const keepCount = revisions.length > defaultPruneKeepCount ? defaultPruneKeepCount : 1
     const deleteCount = revisions.length - keepCount
+    const keepLabel = keepCount === 1
+      ? t('revisions.pruneKeepLabelOne')
+      : t('revisions.pruneKeepLabelMany', [keepCount])
+    const deleteLabel = deleteCount === 1
+      ? t('revisions.pruneDeleteLabelOne')
+      : t('revisions.pruneDeleteLabelMany', [deleteCount])
     formDialog(
       dialog,
       {
         title: t('revisions.pruneTitle'),
         action: t('revisions.pruneConfirm'),
         danger: true,
-        description: t('revisions.pruneDescription', [keepCount, deleteCount]),
+        description: t('revisions.pruneDescription', [keepLabel, deleteLabel]),
       },
       async () => {
         const result = await pruneChapterRevisions(edition, chapterId, keepCount)
         await reloadRevisions()
-        showNotice(t('revisions.pruned', [result.deleted, result.remaining]))
+        const removedLabel = result.deleted === 1
+          ? t('revisions.prunedRemovedOne')
+          : t('revisions.prunedRemovedMany', [result.deleted])
+        const keptLabel = result.remaining === 1
+          ? t('revisions.prunedKeptOne')
+          : t('revisions.prunedKeptMany', [result.remaining])
+        showNotice(t('revisions.pruned', [removedLabel, keptLabel]))
       },
     )
   })

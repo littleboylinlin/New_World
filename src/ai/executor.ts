@@ -19,6 +19,13 @@ import {
   listEditionAiBaselines,
   synchronousContentHash,
 } from '../documents/revisions'
+import {
+  computeChapterDeleteFingerprint,
+  computeEditionDeleteFingerprint,
+  computeIdeaDeleteFingerprint,
+  computeSourceDeleteFingerprint,
+  computeWorkDeleteFingerprint,
+} from '../confirm-state'
 import { hasDirtyOpenChapter, syncOpenEditionFromExternal } from '../documents/editor-view'
 import { chapterText, wordCount } from '../documents/model'
 import type { ChapterInput, ChapterRecord, Edition } from '../documents/model'
@@ -224,59 +231,31 @@ async function workImpactAndFingerprint(library: LibraryId, book: Book) {
   const editions = (await listEditions(library, book.id)).sort((a, b) => a.id.localeCompare(b.id))
   let totalChapters = 0
   let totalWords = 0
-  const editionSummaries: Array<{
-    id: string
-    name: string
-    revision: number
-    chapters: Array<{ id: string; title: string; revision: number; contentHash: string }>
-  }> = []
+  const allChapters: ChapterRecord[] = []
   for (const edition of editions) {
     totalChapters += edition.chapters.length
-    const sig = await editionChaptersSignature(edition)
-    totalWords += sig.totalWords
-    editionSummaries.push({
-      id: edition.id,
-      name: edition.name,
-      revision: edition.revision,
-      chapters: sig.expectedChapters,
-    })
+    const records = await readChapterRecords(edition)
+    allChapters.push(...records)
+    for (const rec of records) totalWords += wordCount(rec.content)
   }
-  const attachedSources = library === 'reference'
-    ? (await listBooks('reference'))
-      .filter((item): item is ImportedBook => item.workId === book.id && item.format !== 'draft')
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((src) => ({ id: src.id, title: src.title, originalName: src.originalName, size: src.size, digest: src.digest }))
-    : []
-  const stateHash = synchronousContentHash(JSON.stringify({
-    library,
-    id: book.id,
-    title: book.title,
-    archivedAt: book.archivedAt ?? 0,
-    coverSize: book.cover?.size ?? 0,
-    editions: editionSummaries,
-    sources: attachedSources,
-  }))
+  const ownedBooks = library === 'reference'
+    ? (await listBooks('reference')).filter((item) => item.id === book.id || item.workId === book.id)
+    : [book]
   return {
     editions,
     totalChapters,
     totalWords,
-    fingerprint: `work:${library}:${book.id}:${stateHash}`,
+    fingerprint: computeWorkDeleteFingerprint(library, book, ownedBooks, editions, allChapters),
   }
 }
 
-async function editionImpactAndFingerprint(library: LibraryId, bookId: string, edition: Edition) {
-  const sig = await editionChaptersSignature(edition)
-  const stateHash = synchronousContentHash(JSON.stringify({
-    library,
-    bookId,
-    id: edition.id,
-    name: edition.name,
-    revision: edition.revision,
-    chapters: sig.expectedChapters,
-  }))
+async function editionImpactAndFingerprint(edition: Edition) {
+  const records = await readChapterRecords(edition)
+  let totalWords = 0
+  for (const rec of records) totalWords += wordCount(rec.content)
   return {
-    totalWords: sig.totalWords,
-    fingerprint: `edition:${library}:${bookId}:${edition.id}:${stateHash}`,
+    totalWords,
+    fingerprint: computeEditionDeleteFingerprint(edition, records),
   }
 }
 
@@ -488,7 +467,12 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
 
       case 'works.delete': {
         const loaded = await loadWorkInScope(client, params.library, params.bookId)
-        if (!loaded.ok) return loaded.error
+        if (!loaded.ok) {
+          if (phase === 'execute-confirmed' && loaded.error.statusCode === 404) {
+            return fail(409, 'stale_confirmation_target', 'The target work changed or was deleted before confirmation completed.')
+          }
+          return loaded.error
+        }
         if (loaded.isAttachedSource) {
           return fail(400, 'use_sources_delete', 'Attached continuation sources must be removed via DELETE /sources/:sourceId.')
         }
@@ -517,7 +501,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (info.fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'The target work changed before confirmation completed; nothing was deleted.')
         }
-        const entry = await deleteBook(loaded.library, loaded.book.id)
+        const entry = await deleteBook(loaded.library, loaded.book.id, request.expectedFingerprint)
         notifyLibraryUpdated()
         return ok(
           { deleted: true, movedToTrash: true, library: loaded.library, bookId: loaded.book.id, title: loaded.book.title },
@@ -606,14 +590,24 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
 
       case 'editions.delete': {
         const loaded = await loadWorkInScope(client, params.library, params.bookId)
-        if (!loaded.ok) return loaded.error
+        if (!loaded.ok) {
+          if (phase === 'execute-confirmed' && loaded.error.statusCode === 404) {
+            return fail(409, 'stale_confirmation_target', 'Work changed or was deleted before confirmation completed.')
+          }
+          return loaded.error
+        }
         const editions = await listEditions(loaded.library, loaded.book.id)
         const edition = editions.find((e) => e.id === params.editionId)
-        if (!edition) return fail(404, 'edition_not_found', 'Edition not found.')
+        if (!edition) {
+          if (phase === 'execute-confirmed') {
+            return fail(409, 'stale_confirmation_target', 'Edition changed or was removed before confirmation completed.')
+          }
+          return fail(404, 'edition_not_found', 'Edition not found.')
+        }
         if (hasDirtyOpenChapter(loaded.library, loaded.book.id, edition.id)) {
           return fail(409, 'editor_has_unsaved_changes', 'This edition currently has unsaved edits open.')
         }
-        const info = await editionImpactAndFingerprint(loaded.library, loaded.book.id, edition)
+        const info = await editionImpactAndFingerprint(edition)
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -637,7 +631,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (info.fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Edition changed before confirmation completed.')
         }
-        const entry = await deleteEdition(edition)
+        const entry = await deleteEdition(edition, request.expectedFingerprint)
         notifyLibraryUpdated()
         await syncOpenEditionFromExternal(loaded.library, loaded.book.id, edition.id)
         return ok({ deleted: true, movedToTrash: true, editionId: edition.id }, 200, `${loaded.book.title} / ${edition.name}`, `trashed:${entry.id}`)
@@ -1041,26 +1035,30 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
 
       case 'chapters.delete': {
         const loaded = await loadWorkInScope(client, params.library, params.bookId)
-        if (!loaded.ok) return loaded.error
+        if (!loaded.ok) {
+          if (phase === 'execute-confirmed' && loaded.error.statusCode === 404) {
+            return fail(409, 'stale_confirmation_target', 'Work changed before confirmation completed.')
+          }
+          return loaded.error
+        }
         const editions = await listEditions(loaded.library, loaded.book.id)
         const edition = editions.find((e) => e.id === params.editionId)
-        if (!edition) return fail(404, 'edition_not_found', 'Edition not found.')
-        const infoEntry = edition.chapters.find((c) => c.id === params.chapterId)
-        if (!infoEntry) return fail(404, 'chapter_not_found', 'Chapter not found.')
+        if (!edition) {
+          if (phase === 'execute-confirmed') return fail(409, 'stale_confirmation_target', 'Edition changed before confirmation completed.')
+          return fail(404, 'edition_not_found', 'Edition not found.')
+        }
+        const chapterIndex = edition.chapters.findIndex((c) => c.id === params.chapterId)
+        const infoEntry = chapterIndex >= 0 ? edition.chapters[chapterIndex] : undefined
+        if (!infoEntry) {
+          if (phase === 'execute-confirmed') return fail(409, 'stale_confirmation_target', 'Chapter changed or was removed before confirmation completed.')
+          return fail(404, 'chapter_not_found', 'Chapter not found.')
+        }
         if (hasDirtyOpenChapter(loaded.library, loaded.book.id, edition.id, params.chapterId)) {
           return fail(409, 'chapter_dirty_in_editor', 'User has unsaved edits in this chapter.')
         }
         const record = await readChapter(edition, params.chapterId)
-        const chapterIndex = edition.chapters.findIndex((c) => c.id === params.chapterId)
         const words = wordCount(record.content)
-        const chHash = synchronousContentHash(JSON.stringify({
-          index: chapterIndex,
-          title: infoEntry.title,
-          editionRevision: edition.revision,
-          chapterRevision: record.revision,
-          contentHash: hashDocumentContent(record.content),
-        }))
-        const fingerprint = `chapter-delete:${loaded.library}:${loaded.book.id}:${edition.id}:${record.id}:${chHash}`
+        const fingerprint = computeChapterDeleteFingerprint(edition, record, chapterIndex)
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -1086,7 +1084,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Chapter changed before confirmation completed.')
         }
-        const deleted = await changeChapters(edition, { type: 'delete', id: params.chapterId })
+        const deleted = await changeChapters(edition, { type: 'delete', id: params.chapterId, expectedFingerprint: request.expectedFingerprint })
         notifyLibraryUpdated()
         await syncOpenEditionFromExternal(loaded.library, loaded.book.id, deleted.edition.id)
         return ok(
@@ -1153,25 +1151,24 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
 
       case 'sources.delete': {
         const loaded = await loadWorkInScope(client, params.library, params.bookId)
-        if (!loaded.ok) return loaded.error
+        if (!loaded.ok) {
+          if (phase === 'execute-confirmed' && loaded.error.statusCode === 404) {
+            return fail(409, 'stale_confirmation_target', 'Work changed before confirmation completed.')
+          }
+          return loaded.error
+        }
         if (loaded.library !== 'reference' || loaded.isAttachedSource) {
           return fail(400, 'sources_require_reference_work', 'Sources only belong to reference continuation works.')
         }
         const origRes = await readBook('reference', params.sourceId)
         if (!origRes || origRes.book.workId !== loaded.book.id) {
+          if (phase === 'execute-confirmed') {
+            return fail(409, 'stale_confirmation_target', 'Source changed or was removed before confirmation completed.')
+          }
           return fail(404, 'source_not_found', 'Source not found on this continuation project.')
         }
         const src = origRes.book
-        const srcHash = synchronousContentHash(JSON.stringify({
-          id: src.id,
-          workId: src.workId ?? '',
-          title: src.title,
-          originalName: src.format === 'draft' ? '' : src.originalName,
-          size: src.format === 'draft' ? 0 : src.size,
-          digest: src.format === 'draft' ? '' : src.digest,
-          importedAt: src.importedAt,
-        }))
-        const fingerprint = `source-delete:${loaded.book.id}:${src.id}:${srcHash}`
+        const fingerprint = computeSourceDeleteFingerprint(loaded.book.id, src)
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -1193,7 +1190,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Work changed before confirmation completed.')
         }
-        const entry = await removeWorkOriginal(loaded.book.id, params.sourceId)
+        const entry = await removeWorkOriginal(loaded.book.id, params.sourceId, request.expectedFingerprint)
         notifyLibraryUpdated()
         return ok({ deleted: true, movedToTrash: true, bookId: loaded.book.id, sourceId: params.sourceId }, 200, `${loaded.book.title} / ${origRes.book.title}`, `trashed:${entry.id}`)
       }
@@ -1403,20 +1400,13 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         const existing = ideas.find((i) => i.id === params.ideaId)
         if (!existing) {
           if (client.scope.mode !== 'all') return fail(403, 'forbidden_scope', 'Idea is outside scope or unavailable.')
+          if (phase === 'execute-confirmed') return fail(409, 'stale_confirmation_target', 'Idea changed or was removed before confirmation completed.')
           return fail(404, 'idea_not_found', 'Idea not found.')
         }
         if (!isIdeaInScope(client, existing)) {
           return fail(403, 'forbidden_scope', 'Idea is outside AI client scope.')
         }
-        const ideaHash = synchronousContentHash(JSON.stringify({
-          id: existing.id,
-          text: existing.text,
-          library: existing.library ?? '',
-          bookId: existing.bookId ?? '',
-          createdAt: existing.createdAt,
-          usedAt: existing.usedAt ?? 0,
-        }))
-        const fingerprint = `idea-delete:${existing.id}:${ideaHash}`
+        const fingerprint = computeIdeaDeleteFingerprint(existing)
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -1435,7 +1425,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Idea changed before confirmation completed.')
         }
-        const entry = await deleteIdea(existing.id)
+        const entry = await deleteIdea(existing.id, request.expectedFingerprint)
         return ok({ deleted: true, movedToTrash: Boolean(entry), ideaId: existing.id }, 200, existing.text.slice(0, 80), entry ? `trashed:${entry.id}` : 'already_deleted')
       }
 

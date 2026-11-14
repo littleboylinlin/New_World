@@ -246,7 +246,8 @@ function ideaRow(idea: Idea, books: Book[], report: (message: string) => void, r
   else meta.append(element('span', 'file-format', idea.bookId ? t('ideas.workGone') : t('ideas.unlinked')))
   if (idea.usedAt) meta.append(element('span', 'settings-badge', t('ideas.used')))
   if (revisionCount > 0) {
-    const historyChip = button(t('revisions.ideaBadge', [revisionCount]), 'button button-quiet button-small idea-history-button', 'history')
+    const badgeKey = revisionCount === 1 ? 'revisions.ideaBadgeOne' : 'revisions.ideaBadge'
+    const historyChip = button(t(badgeKey, [revisionCount]), 'button button-quiet button-small idea-history-button', 'history')
     historyChip.addEventListener('click', () => { void showIdeaRevisionsDialog(idea, books) })
     meta.append(historyChip)
   }

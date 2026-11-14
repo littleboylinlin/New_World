@@ -1184,3 +1184,321 @@ test('13. 章节历史去重压缩存储、空间统计与超阈值提示、用�
     await harness.cleanup()
   }
 })
+
+test('14. 事务级 TOCTOU 并发冲突拦截全部 5 类删除端点及 QuotaExceededError 恢复原子性保护', async ({ page }) => {
+  const harness = await mountAiHarness(page, { confirmTimeoutMs: 30_000 })
+  try {
+    harness.store.setEnabled(true)
+    const ai = harness.store.createClient({
+      name: 'TxRaceAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: true },
+      scope: { mode: 'all', workIds: [] },
+    })
+    await harness.bridge.sync()
+    await gotoReady(page, '/')
+
+    // Seed original work, edition, 2 chapters, reference project + source, and idea
+    const { workId, editionId, chapters } = await createWorkWithChapters(harness, ai.token, '事务一致性小说', [
+      { title: '第一章', format: 'text', content: '第一章原始内容。' },
+      { title: '第二章', format: 'text', content: '第二章原始内容。' },
+    ])
+    const copyRes = await harness.api('POST', `/works/original/${workId}/editions`, ai.token, {
+      name: '并发测试版本',
+      copyFromEditionId: editionId,
+    })
+    expect(copyRes.status).toBe(201)
+    const ed2Id = copyRes.json.data.edition.id
+
+    const refRes = await harness.api('POST', '/works', ai.token, {
+      library: 'reference',
+      title: '事务一致性续写',
+    })
+    expect(refRes.status).toBe(201)
+    const refWorkId = refRes.json.data.work.id
+    const srcRes = await harness.api('POST', `/works/reference/${refWorkId}/sources`, ai.token, {
+      fileName: '并发原文.txt',
+      content: '附带参考原文正文。',
+    })
+    expect(srcRes.status).toBe(201)
+    const sourceId = srcRes.json.data.source.id
+
+    const ideaRes = await harness.api('POST', '/ideas', ai.token, {
+      text: '待验证事务并发的灵感',
+      work: { library: 'original', bookId: workId },
+    })
+    expect(ideaRes.status).toBe(201)
+    const ideaId = ideaRes.json.data.idea.id
+
+    // Install one-shot TOCTOU fault hook inside IDBDatabase.prototype.transaction:
+    // ONLY on the AI readwrite transaction that includes `'trash'` (AFTER executor pre-check read already passed!),
+    // queue a concurrent mutating transaction immediately BEFORE the AI readwrite transaction runs.
+    await page.evaluate(() => {
+      const origTx = IDBDatabase.prototype.transaction
+      window.__nwTxRaceMutation = null
+      IDBDatabase.prototype.transaction = function (storeNames, mode, options) {
+        const names = Array.isArray(storeNames) ? storeNames : [storeNames]
+        if (mode === 'readwrite' && names.includes('trash') && window.__nwTxRaceMutation && typeof window.__nwTxRaceMutation.apply === 'function') {
+          const mutator = window.__nwTxRaceMutation
+          window.__nwTxRaceMutation = null
+          const raceTx = origTx.call(this, mutator.stores, 'readwrite', { durability: 'strict' })
+          mutator.apply(raceTx)
+        }
+        return origTx.call(this, storeNames, mode, options)
+      }
+    })
+
+    const dialog = page.getByRole('dialog', { name: '确认 AI 请求的操作' })
+
+    // 1. chapters.delete in-TX race -> 409
+    await page.evaluate(([wId, edId, chId]) => {
+      window.__nwTxRaceMutation = {
+        stores: ['chapters'],
+        apply: (tx) => {
+          const req = tx.objectStore('chapters').get(['original', wId, edId, chId])
+          req.onsuccess = () => {
+            const rec = req.result
+            if (rec) tx.objectStore('chapters').put({ ...rec, revision: rec.revision + 1 })
+          }
+        },
+      }
+    }, [workId, editionId, chapters[0].id])
+    const chDelP = harness.api('DELETE', `/works/original/${workId}/editions/${editionId}/chapters/${chapters[0].id}?wait=true`, ai.token)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const chDelRes = await chDelP
+    expect(chDelRes.status).toBe(409)
+    expect(chDelRes.json.error.code).toBe('stale_confirmation_target')
+
+    // 2. editions.delete in-TX race -> 409
+    await page.evaluate(([wId, edId]) => {
+      window.__nwTxRaceMutation = {
+        stores: ['editions'],
+        apply: (tx) => {
+          const req = tx.objectStore('editions').get(['original', wId, edId])
+          req.onsuccess = () => {
+            const ed = req.result
+            if (ed) tx.objectStore('editions').put({ ...ed, revision: ed.revision + 1 })
+          }
+        },
+      }
+    }, [workId, ed2Id])
+    const edDelP = harness.api('DELETE', `/works/original/${workId}/editions/${ed2Id}?wait=true`, ai.token)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const edDelRes = await edDelP
+    expect(edDelRes.status).toBe(409)
+    expect(edDelRes.json.error.code).toBe('stale_confirmation_target')
+
+    // 3. works.delete in-TX race -> 409
+    await page.evaluate(([wId]) => {
+      window.__nwTxRaceMutation = {
+        stores: ['books'],
+        apply: (tx) => {
+          const req = tx.objectStore('books').get(['original', wId])
+          req.onsuccess = () => {
+            const bk = req.result
+            if (bk) tx.objectStore('books').put({ ...bk, title: `${bk.title}_外部改名` })
+          }
+        },
+      }
+    }, [workId])
+    const workDelP = harness.api('DELETE', `/works/original/${workId}?wait=true`, ai.token)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const workDelRes = await workDelP
+    expect(workDelRes.status).toBe(409)
+    expect(workDelRes.json.error.code).toBe('stale_confirmation_target')
+
+    // 4. sources.delete in-TX race -> 409
+    await page.evaluate(([srcId]) => {
+      window.__nwTxRaceMutation = {
+        stores: ['books'],
+        apply: (tx) => {
+          const req = tx.objectStore('books').get(['reference', srcId])
+          req.onsuccess = () => {
+            const src = req.result
+            if (src) tx.objectStore('books').put({ ...src, title: `${src.title}_已变化` })
+          }
+        },
+      }
+    }, [sourceId])
+    const srcDelP = harness.api('DELETE', `/works/reference/${refWorkId}/sources/${sourceId}?wait=true`, ai.token)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const srcDelRes = await srcDelP
+    expect(srcDelRes.status).toBe(409)
+    expect(srcDelRes.json.error.code).toBe('stale_confirmation_target')
+
+    // 5. ideas.delete in-TX race -> 409
+    await page.evaluate(([iId]) => {
+      window.__nwTxRaceMutation = {
+        stores: ['ideas'],
+        apply: (tx) => {
+          const req = tx.objectStore('ideas').get(iId)
+          req.onsuccess = () => {
+            const idea = req.result
+            if (idea) tx.objectStore('ideas').put({ ...idea, text: `${idea.text}_刚更新` })
+          }
+        },
+      }
+    }, [ideaId])
+    const ideaDelP = harness.api('DELETE', `/ideas/${ideaId}?wait=true`, ai.token)
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const ideaDelRes = await ideaDelP
+    expect(ideaDelRes.status).toBe(409)
+    expect(ideaDelRes.json.error.code).toBe('stale_confirmation_target')
+
+    // All 5 targets survived completely intact and nothing was moved to trash!
+    expect((await harness.api('GET', `/works/original/${workId}/editions/${ed2Id}`, ai.token)).status).toBe(200)
+    expect((await harness.api('GET', `/works/reference/${refWorkId}/sources/${sourceId}`, ai.token)).status).toBe(200)
+    const trashCount = await page.evaluate(async () => {
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('new-world-library')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      const items = await new Promise((r) => { const q = db.transaction('trash').objectStore('trash').getAll(); q.onsuccess = () => r(q.result) })
+      db.close()
+      return items.length
+    })
+    expect(trashCount).toBe(0)
+
+    // 6. QuotaExceededError while restoring a chapter or idea revision never overwrites current text
+    expect((await harness.api('PUT', `/works/original/${workId}/editions/${editionId}/chapters/${chapters[0].id}`, ai.token, {
+      content: '最新正文字段，绝不可因空间不足而丢失。',
+    })).status).toBe(200)
+    expect((await harness.api('PATCH', `/ideas/${ideaId}`, ai.token, {
+      text: '最新灵感文字，绝不可因空间不足被破坏。',
+    })).status).toBe(200)
+
+    await page.evaluate(() => {
+      const origAdd = IDBObjectStore.prototype.add
+      window.__nwQuotaFailAdd = false
+      IDBObjectStore.prototype.add = function (...args) {
+        if (window.__nwQuotaFailAdd && (this.name === 'revisions' || this.name === 'ideaRevisions')) {
+          throw new DOMException('Simulated storage full on restore backup', 'QuotaExceededError')
+        }
+        return origAdd.apply(this, args)
+      }
+    })
+
+    await page.goto(`/#/original/${workId}/${editionId}`)
+    await page.locator('button.history-toggle').click()
+    const histDialog = page.getByRole('dialog', { name: /历史版本/ })
+    await expect(histDialog.locator('button.revision-item')).toHaveCount(1)
+    await page.evaluate(() => { window.__nwQuotaFailAdd = true })
+    await histDialog.getByRole('button', { name: '恢复此版本' }).click()
+    await expect(histDialog.getByRole('alert')).toBeVisible()
+    await histDialog.getByRole('button', { name: '关闭' }).first().click()
+    const curCh = await harness.api('GET', `/works/original/${workId}/editions/${editionId}/chapters/${chapters[0].id}`, ai.token)
+    expect(curCh.json.data.chapter.text).toContain('最新正文字段')
+
+    await page.goto('/#/ideas')
+    await page.locator('button.idea-history-button').first().click()
+    const ideaHistDialog = page.getByRole('dialog', { name: '灵感历史版本' })
+    await expect(ideaHistDialog.locator('button.revision-item')).toHaveCount(1)
+    await ideaHistDialog.getByRole('button', { name: '恢复此版本' }).click()
+    await expect(ideaHistDialog.getByRole('alert')).toBeVisible()
+    await ideaHistDialog.getByRole('button', { name: '关闭' }).first().click()
+    const curIdea = (await harness.api('GET', '/ideas', ai.token)).json.data.ideas.find((i) => i.id === ideaId)
+    expect(curIdea.text).toContain('最新灵感文字')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test.describe('v0.15.3 英文文案与单复数语法验证', () => {
+  test.use({ locale: 'en-US' })
+
+  test('15. 英文设置、工作选择单复数、AI确认按钮、备份提示与历史保留下限提示准确自然', async ({ page }) => {
+    const harness = await mountAiHarness(page, { confirmTimeoutMs: 30_000 })
+    try {
+      harness.store.setEnabled(true)
+      const ai = harness.store.createClient({
+        name: 'EnglishCopyAI',
+        enabled: true,
+        permissions: { read: true, create: true, update: true, delete: true },
+        scope: { mode: 'selected', workIds: [] },
+      })
+      await harness.bridge.sync()
+      await gotoReady(page, '/')
+
+      // Create 2 works so singular/plural counts can be verified in settings
+      harness.store.updateClient(ai.client.id, { scope: { mode: 'all', workIds: [] } })
+      expect((await harness.api('POST', '/works', ai.token, { library: 'original', title: 'Alpha Copy Novel' })).status).toBe(201)
+      expect((await harness.api('POST', '/works', ai.token, { library: 'original', title: 'Beta Copy Novel' })).status).toBe(201)
+      const createdWorks = (await harness.api('GET', '/works', ai.token)).json.data.works
+      const work1Id = createdWorks[0].id
+      const work2Id = createdWorks[1].id
+      harness.store.updateClient(ai.client.id, { scope: { mode: 'selected', workIds: [] } })
+
+      // 1. Settings UI copy checks: Permissions, Request deletion, Backup hint, 0/1/2 works selected
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      const settings = page.getByRole('dialog', { name: 'Settings' })
+      await expect(settings).toContainText('Each backup saves both libraries, all editions, original files, and the trash in a single .zip file.')
+      await expect(settings).toContainText('Because the web version cannot create background automatic backups or save to a custom folder, click “Back Up Now” regularly.')
+      await expect(settings).not.toContainText('backups made by hand')
+
+      const card = settings.locator('.ai-client-card', { hasText: 'EnglishCopyAI' })
+      await expect(card).toContainText('Permissions (all off by default)')
+      await expect(card).toContainText('Request deletion (always requires manual confirmation)')
+      await expect(card.locator('.ai-selected-count')).toHaveText('0 works selected:')
+
+      await card.locator('.ai-work-picker label', { hasText: createdWorks[0].title }).locator('input[type="checkbox"]').check()
+      await expect(card.locator('.ai-selected-count')).toHaveText('1 work selected:')
+
+      await card.locator('.ai-work-picker label', { hasText: createdWorks[1].title }).locator('input[type="checkbox"]').check()
+      await expect(card.locator('.ai-selected-count')).toHaveText('2 works selected:')
+
+      await settings.getByRole('button', { name: 'Close', exact: true }).click()
+
+      // 2. Confirmation modal buttons: Reject request / Approve request
+      const delPromise = harness.api('DELETE', `/works/original/${work1Id}?wait=true`, ai.token)
+      const confirmDialog = page.getByRole('dialog', { name: 'Confirm AI Action' })
+      await expect(confirmDialog).toBeVisible()
+      await expect(confirmDialog.getByRole('button', { name: 'Reject request' })).toBeVisible()
+      await expect(confirmDialog.getByRole('button', { name: 'Approve request' })).toBeVisible()
+      await confirmDialog.getByRole('button', { name: 'Approve request' }).click()
+      const delRes = await delPromise
+      expect(delRes.status).toBe(200)
+
+      // 3. Trash permanent delete dialog in English mentions external backups are unaffected
+      await page.goto('/#/trash')
+      await page.getByRole('button', { name: 'Delete permanently' }).first().click()
+      await expect(page.getByRole('dialog')).toContainText('Previously exported or automatic external backup files are not deleted and may still contain historical data.')
+      await page.getByRole('button', { name: 'Cancel' }).click()
+
+      // 4. History prune error message in English when trying to keep 0 revisions (via bundle string verification)
+      const edRes = await harness.api('GET', `/works/original/${work2Id}/editions`, ai.token)
+      const editionId = edRes.json.data.editions[0].id
+      const chapId = (await harness.api('GET', `/works/original/${work2Id}/editions/${editionId}/chapters`, ai.token)).json.data.chapters[0].id
+      expect((await harness.api('PUT', `/works/original/${work2Id}/editions/${editionId}/chapters/${chapId}`, ai.token, { content: 'Rev 1' })).status).toBe(200)
+      expect((await harness.api('PUT', `/works/original/${work2Id}/editions/${editionId}/chapters/${chapId}`, ai.token, { content: 'Rev 2' })).status).toBe(200)
+
+      const enPack = await page.evaluate(async () => {
+        const res = await fetch('./locales/New-World-lang-en.json')
+        return res.json()
+      })
+      expect(enPack.messages['revisions.keepAtLeastOne']).toBe('At least one recoverable revision must be kept.')
+      expect(enPack.messages['backup.desktopHint']).toBe(
+        'Each backup saves both libraries, all editions, original files, and the trash in a single .zip file. The {0} most recent automatic backups are kept; manual backups and pre-restore safety backups are never deleted automatically.',
+      )
+      expect(enPack.messages['backup.desktopHint']).not.toContain('made by hand')
+
+      // Verify chapter history prune dialog uses natural English without "(s)"
+      await page.goto(`/#/original/${work2Id}/${editionId}`)
+      await page.locator('button.history-toggle').click()
+      const histDialog = page.getByRole('dialog', { name: /History/ })
+      await histDialog.getByRole('button', { name: 'Prune older…' }).click()
+      const pruneDialog = page.getByRole('dialog', { name: 'Prune older revisions?' })
+      await expect(pruneDialog).toContainText('1 older snapshot')
+      await expect(pruneDialog).not.toContainText('snapshot(s)')
+      await pruneDialog.getByRole('button', { name: 'Confirm pruning' }).click()
+      await expect(page.getByRole('status').filter({ hasText: 'Permanently removed 1 older snapshot; kept the latest recoverable snapshot.' })).toBeVisible()
+    } finally {
+      await harness.cleanup()
+    }
+  })
+})

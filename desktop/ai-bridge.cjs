@@ -540,17 +540,26 @@ function createAiBridge({
       return { ok: true, status: 'rejected' }
     }
 
+    function checkConfirmAuthorization(confirmEntry) {
+      const globalState = store.getPublicState()
+      const current = store.getClientById(confirmEntry.clientId)
+      const targetBookId = confirmEntry.params?.bookId || confirmEntry.impact?.bookId
+      const scopeInvalid = !current || current.scope?.mode === 'none' || (
+        targetBookId
+        && current.scope?.mode === 'selected'
+        && !(Array.isArray(current.scope.workIds) && current.scope.workIds.includes(targetBookId))
+      )
+      if (!globalState.enabled || !current || !current.enabled || !current.permissions.delete || scopeInvalid) {
+        const reason = scopeInvalid && current?.enabled && current?.permissions?.delete ? 'scope_revoked' : 'permission_revoked'
+        return { ok: false, reason, client: current }
+      }
+      return { ok: true, reason: '', client: current }
+    }
+
     // Re-verify global enablement, client enablement, delete permission, and work scope at exact approval moment.
-    const globalState = store.getPublicState()
-    const currentClient = store.getClientById(entry.clientId)
-    const targetBookId = entry.params?.bookId || entry.impact?.bookId
-    const scopeInvalid = !currentClient || currentClient.scope?.mode === 'none' || (
-      targetBookId
-      && currentClient.scope?.mode === 'selected'
-      && !(Array.isArray(currentClient.scope.workIds) && currentClient.scope.workIds.includes(targetBookId))
-    )
-    if (!globalState.enabled || !currentClient || !currentClient.enabled || !currentClient.permissions.delete || scopeInvalid) {
-      const reason = scopeInvalid && currentClient?.enabled && currentClient?.permissions?.delete ? 'scope_revoked' : 'permission_revoked'
+    const initialAuth = checkConfirmAuthorization(entry)
+    if (!initialAuth.ok) {
+      const reason = initialAuth.reason
       const done = finalizeConfirmation(confirmationId, 'rejected', {
         error: { code: reason, message: 'AI access, permission, or work scope was revoked before execution.' },
       })
@@ -571,6 +580,7 @@ function createAiBridge({
       }
       return { ok: false, status: 'rejected', code: reason }
     }
+    const currentClient = initialAuth.client
 
     if (entry.status !== 'pending') {
       return { ok: false, status: entry.status }
@@ -579,19 +589,29 @@ function createAiBridge({
     clearTimeout(entry.timer)
 
     try {
-      const execution = await serializeOperation(() =>
-        dispatchOperation({
+      const execution = await serializeOperation(() => {
+        const queuedAuth = checkConfirmAuthorization(entry)
+        if (!queuedAuth.ok) {
+          return Promise.resolve({
+            ok: false,
+            statusCode: 403,
+            code: queuedAuth.reason,
+            auditReason: queuedAuth.reason,
+            message: 'AI access, permission, or work scope was revoked before execution.',
+          })
+        }
+        return dispatchOperation({
           phase: 'execute-confirmed',
           confirmationId: entry.confirmationId,
           approvalGrant: entry.approvalGrant,
           expectedFingerprint: entry.fingerprint,
-          client: currentClient,
+          client: queuedAuth.client,
           action: entry.action,
           params: entry.params,
           query: entry.query,
           body: entry.body,
-        }),
-      )
+        })
+      })
 
       if (!execution || !execution.ok) {
         const errCode = execution?.code || 'execution_failed'

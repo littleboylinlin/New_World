@@ -727,3 +727,134 @@ describe('desktop/release & updaters', () => {
     assert.deepEqual(fs.readdirSync(macCache), [])
   })
 })
+
+describe('desktop/ai-bridge confirmation concurrency & revocation', () => {
+  it('prevents duplicate concurrent execution of handleConfirmDecision and re-checks revoked permissions inside queued execution', async () => {
+    const dir = makeTempDir()
+    const store = createAiStore(dir)
+    store.setEnabled(true)
+    const client = store.createClient({
+      name: 'ConcurrentRaceAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: true },
+      scope: { mode: 'all', workIds: [] },
+    })
+
+    const prompted = []
+    let releaseQueueGate
+    const queueGate = new Promise((resolve) => { releaseQueueGate = resolve })
+    let confirmedExecCalls = 0
+    let queuedWorkExecCalls = 0
+
+    const bridge = createAiBridge({
+      store,
+      bindPort: 0,
+      onPromptConfirmation: (req) => {
+        prompted.push(req)
+      },
+      dispatchOperation: async ({ action, phase }) => {
+        if (action === 'works.list') {
+          await queueGate
+          return { ok: true, statusCode: 200, data: { works: [] } }
+        }
+        if (phase === 'prepare-delete') {
+          return {
+            ok: false,
+            requiresConfirmation: true,
+            confirmedAction: action,
+            fingerprint: `fp-${prompted.length}`,
+            targetSummary: 'Target Work',
+            impact: { kind: 'work', library: 'original', bookId: 'book-1', bookTitle: 'Work 1', summary: 'Delete' },
+          }
+        }
+        if (phase === 'execute-confirmed') {
+          if (queuedWorkExecCalls > 0 || confirmedExecCalls > 0) queuedWorkExecCalls++
+          confirmedExecCalls++
+          return { ok: true, statusCode: 200, data: { deleted: true } }
+        }
+        return { ok: true, statusCode: 200, data: {} }
+      },
+    })
+
+    try {
+      const { port } = await bridge.sync()
+      const auth = { Authorization: `Bearer ${client.token}`, 'Content-Type': 'application/json' }
+
+      // 1. Concurrent double-approval on one confirmation executes at most once
+      const req1 = rawHttpRequest({ port, method: 'DELETE', urlPath: '/v1/works/original/book-1?wait=true', headers: auth })
+      for (let i = 0; i < 40 && prompted.length < 1; i++) await new Promise((r) => setTimeout(r, 10))
+      assert.equal(prompted.length, 1)
+
+      // Hold the serialized queue busy behind a slow read while firing two concurrent approvals
+      releaseQueueGate?.()
+      const [decA, decB] = await Promise.all([
+        bridge.handleConfirmDecision({ confirmationId: prompted[0].confirmationId, approved: true }),
+        bridge.handleConfirmDecision({ confirmationId: prompted[0].confirmationId, approved: true }),
+      ])
+      const winCount = [decA, decB].filter((r) => r.ok === true).length
+      assert.equal(winCount, 1)
+      assert.equal([decA, decB].some((r) => r.ok === false), true)
+      assert.equal(confirmedExecCalls, 1)
+      const res1 = await req1
+      assert.equal(res1.status, 200)
+
+      // 2. Permission revoked AFTER approval while waiting behind an in-flight serialized operation -> blocked inside queue
+      let releaseSecondGate
+      const secondGate = new Promise((resolve) => { releaseSecondGate = resolve })
+      const bridge2 = createAiBridge({
+        store,
+        bindPort: 0,
+        onPromptConfirmation: (req) => prompted.push(req),
+        dispatchOperation: async ({ action, phase }) => {
+          if (action === 'stats.get') {
+            await secondGate
+            return { ok: true, statusCode: 200, data: {} }
+          }
+          if (phase === 'prepare-delete') {
+            return {
+              ok: false,
+              requiresConfirmation: true,
+              confirmedAction: action,
+              fingerprint: 'fp-queued',
+              targetSummary: 'Work Q',
+              impact: { kind: 'work', library: 'original', bookId: 'book-q', bookTitle: 'Work Q', summary: 'Delete Q' },
+            }
+          }
+          if (phase === 'execute-confirmed') {
+            queuedWorkExecCalls++
+            return { ok: true, statusCode: 200, data: { deleted: true } }
+          }
+          return { ok: true, statusCode: 200, data: {} }
+        },
+      })
+      const { port: port2 } = await bridge2.sync()
+      const execCallsBefore = queuedWorkExecCalls
+      try {
+        const queuedConfirmHttp = rawHttpRequest({ port: port2, method: 'DELETE', urlPath: '/v1/works/original/book-q?wait=true', headers: auth })
+        for (let i = 0; i < 40 && prompted.length < 2; i++) await new Promise((r) => setTimeout(r, 10))
+        assert.equal(prompted.length, 2)
+
+        // Occupy serialized queue with stats.get
+        const blockerHttp = rawHttpRequest({ port: port2, method: 'GET', urlPath: '/v1/stats', headers: auth })
+        await new Promise((r) => setTimeout(r, 25))
+
+        // Approve while queue is occupied, then immediately revoke delete permission before blocker finishes
+        const approvePromise = bridge2.handleConfirmDecision({ confirmationId: prompted[1].confirmationId, approved: true })
+        store.updateClient(client.client.id, { permissions: { read: true, create: true, update: true, delete: false } })
+        releaseSecondGate()
+
+        const [decisionRes, confirmHttpRes, blockerRes] = await Promise.all([approvePromise, queuedConfirmHttp, blockerHttp])
+        assert.equal(blockerRes.status, 200)
+        assert.equal(decisionRes.ok, false)
+        assert.equal(decisionRes.code, 'permission_revoked')
+        assert.equal(confirmHttpRes.status, 403)
+        assert.equal(confirmHttpRes.body.error.code, 'permission_revoked')
+        assert.equal(queuedWorkExecCalls, execCallsBefore)
+      } finally {
+        await bridge2.stop()
+      }
+    } finally {
+      await bridge.stop()
+    }
+  })
+})

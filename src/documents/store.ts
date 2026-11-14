@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { ConfirmStateConflictError, computeChapterDeleteFingerprint, computeEditionDeleteFingerprint } from '../confirm-state'
 import { announced, committed, maxTitleLength, openDatabase, resultOf, trashEntry, writing } from '../library'
 import type { Book, LibraryId, TrashEntry, WrittenBook } from '../library'
 import { emptyChapter, maxChapters, wordCount } from './model'
@@ -126,7 +127,7 @@ export async function readChapterRecords(key: EditionKey): Promise<ChapterRecord
 }
 
 type ChapterChange = { type: 'add'; title: string } | { type: 'rename'; id: string; title: string }
-  | { type: 'move'; id: string; offset: -1 | 1 } | { type: 'reorder'; order: string[] } | { type: 'delete'; id: string }
+  | { type: 'move'; id: string; offset: -1 | 1 } | { type: 'reorder'; order: string[] } | { type: 'delete'; id: string; expectedFingerprint?: string }
 
 export async function chapterWordCounts(key: EditionKey) {
   const db = await openDatabase()
@@ -142,10 +143,18 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
   const records = tx.objectStore('chapters')
   // A deleted chapter is read before the directory so its text can move to the trash.
   const removed = change.type === 'delete' ? records.get(chapterKey(edition, change.id)) : undefined
+  const expectedFingerprint = change.type === 'delete' ? change.expectedFingerprint : undefined
+  const conflictMsg = 'Chapter changed before confirmation completed.'
   let trashed: TrashEntry | undefined
   return announced(updateRecord(tx, editions.get(editionKey(edition)), (stored: Edition | undefined) => {
-    if (!stored) throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
-    if (stored.revision !== edition.revision) throw new Error(t('store.theChapterListWasUpdatedInAnotherPage'))
+    if (!stored) {
+      if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+      throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
+    }
+    if (stored.revision !== edition.revision) {
+      if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+      throw new Error(t('store.theChapterListWasUpdatedInAnotherPage'))
+    }
     const chapters = [...stored.chapters]
     let selected: string
     function append(title: string) {
@@ -176,7 +185,10 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
       selected = chapters[0]?.id ?? ''
     } else {
       const index = chapters.findIndex((chapter) => chapter.id === change.id)
-      if (index < 0) throw new Error(t('store.thisChapterHasBeenRemoved'))
+      if (index < 0) {
+        if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+        throw new Error(t('store.thisChapterHasBeenRemoved'))
+      }
       selected = change.id
       if (change.type === 'rename') chapters[index] = { ...chapters[index], title: checkedTitle(change.title) }
       if (change.type === 'move') {
@@ -187,7 +199,16 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
         chapters[target] = moved
       }
       if (change.type === 'delete') {
-        if (!removed?.result) throw new Error(t('store.theChapterWasNotFoundInThisEditable'))
+        if (!removed?.result) {
+          if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+          throw new Error(t('store.theChapterWasNotFoundInThisEditable'))
+        }
+        if (
+          expectedFingerprint !== undefined &&
+          computeChapterDeleteFingerprint(stored, removed.result, index) !== expectedFingerprint
+        ) {
+          throw new ConfirmStateConflictError(conflictMsg)
+        }
         trashed = trashEntry('chapter', stored.library, stored.bookId, chapters[index].title)
         trashed.chapters = [removed.result]
         trashed.position = { editionId: stored.id, index }
@@ -203,20 +224,28 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
   }))
 }
 
-export async function deleteEdition(edition: EditionKey) {
+export async function deleteEdition(edition: EditionKey, expectedFingerprint?: string) {
   const db = await openDatabase()
   const tx = db.transaction(['editions', 'chapters', 'trash'], 'readwrite', { durability: 'strict' })
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
   const { step, done } = writing<TrashEntry>(tx)
+  const conflictMsg = 'Edition changed before confirmation completed.'
   const stored = editions.get(editionKey(edition))
   const records = chapters.index('byEdition').getAll(editionKey(edition))
   records.onsuccess = step(() => {
     const current: Edition | undefined = stored.result
-    if (!current) throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
+    if (!current) {
+      if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+      throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
+    }
+    const editionRecords = records.result as ChapterRecord[]
+    if (expectedFingerprint !== undefined && computeEditionDeleteFingerprint(current, editionRecords) !== expectedFingerprint) {
+      throw new ConfirmStateConflictError(conflictMsg)
+    }
     const entry = trashEntry('edition', current.library, current.bookId, current.name)
     entry.editions = [current]
-    entry.chapters = records.result
+    entry.chapters = editionRecords
     editions.delete(editionKey(current))
     for (const chapter of entry.chapters) chapters.delete(chapterKey(current, chapter.id))
     tx.objectStore('trash').add(entry)
