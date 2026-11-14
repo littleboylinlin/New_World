@@ -10,7 +10,7 @@ import { renderIdeas } from './ideas-view'
 import { openCaptureDialog } from './idea-capture'
 import { addIdea, lastWork, recentWorks, rememberWork } from './ideas'
 import { showNotice } from './undo'
-import { mountSettingsView } from './settings-view'
+import { mountSettingsView, parseSettingsCategory } from './settings-view'
 import { mountAiDesktopHost } from './ai/desktop-host'
 import { changeView, pop } from './motion'
 import { libraries, notice } from './ui'
@@ -24,6 +24,7 @@ document.querySelector('meta[name="description"]')?.setAttribute('content', t('a
 
 const main = document.querySelector<HTMLElement>('#main')!
 const page = document.querySelector<HTMLElement>('#page')!
+const settingsEntry = document.querySelector<HTMLAnchorElement>('#settings')!
 // The desktop window has no system title bar. The app header takes its place and the page scrolls below it.
 if (window.newWorldDesktop) {
   document.documentElement.classList.add('desktop')
@@ -35,15 +36,45 @@ let leaveGuard: (() => Promise<boolean>) | undefined
 let activeHash = location.hash
 let navigation = 0
 
+const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
+if (window.newWorldDesktop) {
+  window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
+}
+const settings = mountSettingsView(saveBeforeLeaving, (hash) => {
+  if (location.hash !== hash) location.hash = hash
+})
+
+settingsEntry.addEventListener('click', (event) => {
+  if (settings.isLocked()) { event.preventDefault(); return }
+  const currentCategory = parseSettingsCategory(activeHash)
+  if (currentCategory && currentCategory !== 'general') return
+  if (currentCategory) event.preventDefault()
+})
+
 function render(moveFocus = false) {
   view?.abort()
   const scope = new AbortController()
   view = scope
   leaveGuard = undefined
   main.replaceChildren()
-  main.classList.remove('mode-original', 'mode-reference')
+  main.classList.remove('mode-original', 'mode-reference', 'settings-main', 'home-main')
+  const settingsCategory = parseSettingsCategory(activeHash)
+  document.documentElement.classList.toggle('settings-open', Boolean(settingsCategory))
+  if (settingsCategory) settingsEntry.setAttribute('aria-current', 'page')
+  else settingsEntry.removeAttribute('aria-current')
+
   const match = activeHash.match(/^#\/(original|reference)(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}|original))?)?\/?$/)
-  if (match) {
+  let handledFocus = false
+  if (settingsCategory) {
+    const canonical = `#/settings/${settingsCategory}`
+    if (activeHash !== canonical) {
+      activeHash = canonical
+      history.replaceState(null, '', canonical)
+    }
+    main.classList.add('settings-main')
+    main.append(settings.element)
+    handledFocus = settings.showCategory(settingsCategory, false)
+  } else if (match) {
     const library = match[1] as LibraryId
     main.classList.add(`mode-${library}`)
     document.title = `${libraries[library].name} · New World`
@@ -66,13 +97,14 @@ function render(moveFocus = false) {
     document.title = t('main.trashNewWorld')
     renderTrash(main, view.signal)
   } else {
+    main.classList.add('home-main')
     document.title = t('main.newWorldNovelLibrary')
     renderHome(main, view.signal)
   }
   if (moveFocus) {
     window.scrollTo(0, 0)
     page.scrollTo(0, 0)
-    main.focus({ preventScroll: true })
+    if (!handledFocus) main.focus({ preventScroll: true })
   }
 }
 
@@ -84,6 +116,20 @@ window.addEventListener('hashchange', async () => {
   const target = location.hash
   const request = ++navigation
   if (target === activeHash) return
+  const fromSettings = parseSettingsCategory(activeHash)
+  const toSettings = parseSettingsCategory(target)
+  if (fromSettings && settings.isLocked()) {
+    history.replaceState(null, '', activeHash || '#/')
+    return
+  }
+  if (fromSettings && toSettings) {
+    const canonical = `#/settings/${toSettings}`
+    if (target !== canonical) history.replaceState(null, '', canonical)
+    activeHash = canonical
+    settings.showCategory(toSettings, true)
+    page.scrollTo(0, 0)
+    return
+  }
   const allowed = !leaveGuard || await leaveGuard()
   if (request !== navigation || location.hash !== target) return
   if (!allowed) {
@@ -91,12 +137,13 @@ window.addEventListener('hashchange', async () => {
     return
   }
   const previous = activeHash
+  if (!fromSettings && toSettings) settings.recordOrigin(previous)
   activeHash = target
   changeView(main, previous, target, () => render(true))
 })
 render()
 const restored = restoredNotice()
-if (restored) main.prepend(notice(restored))
+if (restored && !parseSettingsCategory(activeHash)) main.prepend(notice(restored))
 const trashCount = document.querySelector<HTMLElement>('#trash-count')!
 async function refreshTrashCount() {
   try {
@@ -110,11 +157,6 @@ async function refreshTrashCount() {
 }
 libraryChanges.addEventListener('update', () => { void refreshTrashCount() })
 void refreshTrashCount()
-const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
-if (window.newWorldDesktop) {
-  window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
-}
-mountSettingsView(saveBeforeLeaving)
 mountAiDesktopHost()
 window.newWorldDesktop?.reportReady?.()
 startAutomaticBackups()

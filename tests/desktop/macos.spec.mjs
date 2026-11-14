@@ -69,6 +69,18 @@ async function stop(app) {
 
 const editor = (page) => page.getByRole('textbox', { name: '章节正文', exact: true })
 
+async function openSettingsCategory(page, category, locale = 'zh-CN') {
+  const settingsPage = page.locator('.settings-page')
+  if (!(await settingsPage.isVisible())) {
+    await page.getByRole('link', { name: locale === 'en' ? 'Settings' : '设置', exact: true }).click()
+    await expect(settingsPage).toBeVisible()
+  }
+  if (category) {
+    await settingsPage.locator(`.settings-nav-item[data-category="${category}"]`).click()
+  }
+  return category ? settingsPage.locator(`.settings-panel[data-category="${category}"]`) : settingsPage
+}
+
 test('从 DMG 安装后原生打开，标题栏、Command 保存、PDF 导出和重开恢复正常', async ({}, info) => {
   let app = await launch()
   try {
@@ -115,22 +127,22 @@ test('Mac 应用菜单可打开设置，语言切换和后台关闭后可恢复'
   let app = await launch()
   try {
     let page = await app.firstWindow()
-    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeVisible()
     const prefs = await app.evaluate(({ Menu }) => {
       const item = Menu.getApplicationMenu().items[0].submenu.items.find((item) => item.label === '设置')
       item.click()
       return item.accelerator
     })
     expect(prefs).toBe('Cmd+,')
-    let settings = page.getByRole('dialog', { name: '设置' })
+    let settings = page.locator('.settings-page')
     await expect(settings).toBeVisible()
     await settings.getByRole('radio', { name: '留后台', exact: true }).check()
-    await settings.getByRole('button', { name: '关闭', exact: true }).click()
+    await settings.locator('.settings-back').click()
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(false)
     await app.evaluate(({ app }) => app.emit('activate'))
     expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(true)
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await openSettingsCategory(page, 'general')
     await settings.getByRole('radio', { name: '完全退出', exact: true }).check()
     const english = await readFile('public/locales/New-World-lang-en.json', 'utf8')
     await app.evaluate(({ session }, body) => {
@@ -138,21 +150,22 @@ test('Mac 应用菜单可打开设置，语言切换和后台关闭后可恢复'
     }, english)
     await settings.getByRole('combobox', { name: '语言', exact: true }).selectOption('en')
     await settings.getByRole('button', { name: '应用语言', exact: true }).click()
-    settings = page.getByRole('dialog', { name: 'Settings' })
+    settings = page.locator('.settings-page')
     await expect(settings).toBeVisible()
-    await expect(settings).toContainText('macOS ' + (arch === 'arm64' ? 'Apple Silicon' : 'Intel'))
+    await expect(settings.getByRole('heading', { name: 'General', exact: true })).toBeVisible()
+    const updatesPanel = await openSettingsCategory(page, 'updates', 'en')
+    await expect(updatesPanel).toContainText('macOS ' + (arch === 'arm64' ? 'Apple Silicon' : 'Intel'))
     await page.screenshot({ path: info.outputPath('macos-english-settings.png'), animations: 'disabled' })
-    await settings.getByRole('button', { name: 'Close', exact: true }).click()
+    await settings.locator('.settings-back').click()
     await checkNativeHeader(app, page, info, 'macos')
     await stop(app)
     app = await launch()
     page = await app.firstWindow()
     await expect(page.getByRole('heading', { name: 'My novel library' })).toBeVisible()
-    await page.getByRole('button', { name: 'Settings', exact: true }).click()
-    settings = page.getByRole('dialog', { name: 'Settings' })
+    settings = await openSettingsCategory(page, 'general', 'en')
     await settings.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh-CN')
     await settings.getByRole('button', { name: 'Apply language', exact: true }).click()
-    await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible()
+    await expect(page.locator('.settings-page').getByRole('heading', { name: '常规', exact: true })).toBeVisible()
   } finally { await stop(app) }
 })
 
@@ -226,8 +239,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     await page.keyboard.press('Meta+s')
     await expect(page.locator('.save-status')).toHaveText('已保存')
     const draftUrl = page.url()
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settings = page.getByRole('dialog', { name: '设置' })
+    const settings = await openSettingsCategory(page, 'updates')
     const update = settings.getByRole('button', { name: '更新并重启', exact: true })
     await update.click()
     await expect(settings.getByRole('alert')).toContainText('SHA-256')
@@ -236,7 +248,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     const closed = app.waitForEvent('close', { timeout: 90_000 })
     await update.click()
     await expect.poll(() => settings.getByRole('progressbar').evaluate((node) => node.value)).toBeGreaterThan(0)
-    await settings.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
     await editor(page).fill('下载期间新增的正文也必须保留。')
     await app.evaluate(() => globalThis.continueMacDownload())
     await closed
@@ -310,10 +322,7 @@ test('AI 接入与权限：macOS 桌面端可启用本地接口，创建作品�
   const app = await launch()
   try {
     const page = await app.firstWindow()
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settingsDialog = page.getByRole('dialog', { name: '设置' })
-    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
-    await section.scrollIntoViewIfNeeded()
+    const section = await openSettingsCategory(page, 'ai')
 
     await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
     await section.locator('input[data-ai-global-enable="true"]').check()
@@ -335,7 +344,7 @@ test('AI 接入与权限：macOS 桌面端可启用本地接口，创建作品�
       await card.locator(`input[data-ai-perm="${perm}"]`).check()
     }
     await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
-    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
 
     const createRes = await fetch(`${baseUrl}/works`, {
       method: 'POST',
@@ -360,8 +369,7 @@ test('AI 接入与权限：macOS 桌面端可启用本地接口，创建作品�
     await confirmDialog.getByRole('button', { name: '本人确认执行' }).click()
     expect((await delPromise).status).toBe(200)
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    await section.scrollIntoViewIfNeeded()
+    await openSettingsCategory(page, 'ai')
     await section.locator('.ai-client-card').filter({ hasText: 'MacDesktopAgent' }).getByRole('button', { name: '撤销配置' }).click()
     await section.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
@@ -372,12 +380,9 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
   let app = await launch()
   try {
     let page = await app.firstWindow()
-    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settingsDialog = page.getByRole('dialog', { name: '设置' })
-    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
-    await section.scrollIntoViewIfNeeded()
+    const section = await openSettingsCategory(page, 'ai')
     await section.locator('input[data-ai-global-enable="true"]').check()
     await expect(section.locator('.ai-badge').first()).toContainText('本地监听 127.0.0.1:')
     const portMatch = (await section.locator('.ai-endpoint-line').innerText()).match(/http:\/\/127\.0\.0\.1:(\d+)\/v1/)
@@ -398,7 +403,7 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
     }
     await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
     await expect(card.getByRole('radio', { name: '允许访问整个小说库' })).toBeChecked()
-    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
 
     const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
     const v0 = 'Mac 初版正文：寒夜里的书房灯光始终亮着。'
@@ -462,7 +467,7 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
     await stop(app)
     app = await launch()
     page = await app.firstWindow()
-    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeVisible()
 
     await page.evaluate((u) => { location.hash = u }, `#/original/${workId}/${editionId}`)
     await expect(editor(page)).toHaveText(v2)
@@ -492,9 +497,7 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
     await page.evaluate(() => { location.hash = '#/ideas' })
     await expect(page.getByRole('list', { name: '灵感列表' })).toContainText('Mac 重启恢复灵感')
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const resetSection = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: 'AI 接入与权限', exact: true })
-    await resetSection.scrollIntoViewIfNeeded()
+    const resetSection = await openSettingsCategory(page, 'ai')
     await resetSection.locator('.ai-client-card').filter({ hasText: 'MacRecoveryAI' }).getByRole('button', { name: '撤销配置' }).click()
     await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')

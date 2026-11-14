@@ -17,7 +17,8 @@ const libraryIds: LibraryId[] = ['original', 'reference']
 
 export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const home = element('section', 'home')
-  const intro = element('header', 'home-intro')
+  const head = element('header', 'home-head')
+  const intro = element('div', 'home-intro')
   intro.append(element('h1', '', t('shelf.myNovelLibrary')))
 
   const cards = element('div', 'shelf-grid')
@@ -28,7 +29,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
     card.href = bookPath(id)
     card.setAttribute('aria-label', t('shelf.open', [library.name]))
     const copy = element('div', 'card-copy')
-    copy.append(element('h2', '', library.name))
+    copy.append(element('h2', '', library.name), element('p', 'card-subtitle', library.label))
     const bottom = element('div', 'card-bottom')
     const count = element('span', 'card-count', t('shelf.loading'))
     const enter = element('span', 'card-enter')
@@ -40,17 +41,18 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   }
 
   // Archived works sit outside both libraries, so their entry is on the home page.
-  const archive = link('#/archive', '', 'archive-entry')
+  const archive = link('#/archive', '', 'archive-entry home-entry-archive')
   archive.setAttribute('aria-label', t('archive.title'))
   const archiveCount = element('span', 'list-count archive-count')
   archive.append(icon('archive'), element('span', '', t('archive.title')), archiveCount)
-  const ideas = link('#/ideas', '', 'archive-entry')
+  const ideas = link('#/ideas', '', 'archive-entry home-entry-ideas')
   ideas.setAttribute('aria-label', t('ideas.title'))
   const ideaCount = element('span', 'list-count archive-count')
   ideas.append(icon('idea'), element('span', '', t('ideas.title')), ideaCount)
   const entries = element('div', 'home-entries')
   entries.append(ideas, archive)
-  home.append(intro, stagger(cards), entries)
+  head.append(intro, entries)
+  home.append(head, stagger(cards))
   renderWritingStats(home, signal)
   root.append(home)
 

@@ -1,6 +1,6 @@
 import { changeLanguage, locale, t } from './i18n'
 import type { Locale } from '../shared/language-packs.mjs'
-import { button, element } from './ui'
+import { button, element, icon } from './ui'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
@@ -8,39 +8,126 @@ import { mountAiSettings } from './ai/settings-view'
 import { mountBackupView } from './backup-view'
 import { mountCaptureSettings } from './idea-capture'
 
-const choices: { value: CloseBehavior; label: string }[] = [
+export type SettingsCategory = 'general' | 'appearance' | 'capture' | 'storage' | 'backup' | 'ai' | 'updates'
+
+interface CategorySpec {
+  id: SettingsCategory
+  icon: 'general' | 'appearance' | 'idea' | 'storage' | 'backup' | 'ai' | 'updates'
+  label: string
+  description: string
+}
+
+const categories: readonly CategorySpec[] = [
+  { id: 'general', icon: 'general', label: t('settings.categoryGeneral'), description: t('settings.categoryGeneralDesc') },
+  { id: 'appearance', icon: 'appearance', label: t('settings.categoryAppearance'), description: t('settings.categoryAppearanceDesc') },
+  { id: 'capture', icon: 'idea', label: t('settings.categoryCapture'), description: t('settings.categoryCaptureDesc') },
+  { id: 'storage', icon: 'storage', label: t('settings.categoryStorage'), description: t('settings.categoryStorageDesc') },
+  { id: 'backup', icon: 'backup', label: t('settings.categoryBackup'), description: t('settings.categoryBackupDesc') },
+  { id: 'ai', icon: 'ai', label: t('settings.categoryAi'), description: t('settings.categoryAiDesc') },
+  { id: 'updates', icon: 'updates', label: t('settings.categoryUpdates'), description: t('settings.categoryUpdatesDesc') },
+]
+
+const categoryIds = new Set<string>(categories.map((item) => item.id))
+const returnStorageKey = 'new-world:settings-return'
+
+export function parseSettingsCategory(hash: string): SettingsCategory | null {
+  const match = /^#\/settings(?:\/([a-z-]+))?\/?$/.exec(hash)
+  if (!match) return null
+  const candidate = match[1] as SettingsCategory | undefined
+  return candidate && categoryIds.has(candidate) ? candidate : 'general'
+}
+
+const closeChoices: { value: CloseBehavior; label: string }[] = [
   { value: 'quit', label: t('settings.quit') },
   { value: 'background', label: t('settings.background') },
 ]
 
-export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
-  const desktop = window.newWorldDesktop
-  const entry = document.querySelector<HTMLButtonElement>('#settings')!
-
-  const title = element('h2', '', t('settings.title'))
-  title.id = 'settings-dialog-title'
-  const dialog = element('dialog', 'manage-dialog settings-dialog')
-  dialog.id = 'settings-dialog'
-  dialog.setAttribute('aria-labelledby', title.id)
-  const content = element('div', 'manage-form')
-
-  const fields = element('fieldset', 'settings-fields')
-  const scroll = element('div', 'settings-scroll')
-  const list = element('ul', 'settings-list')
-  list.setAttribute('aria-label', t('settings.list'))
-  function section(name: string, id: string) {
-    const item = element('li')
-    const panel = element('section', 'settings-section')
-    const heading = element('h3', 'settings-heading', name)
-    heading.id = id
-    heading.tabIndex = -1
-    panel.setAttribute('aria-labelledby', id)
-    panel.append(heading)
-    item.append(panel)
-    list.append(item)
-    return panel
+function readStoredReturnHash(): string {
+  try {
+    const saved = sessionStorage.getItem(returnStorageKey) || ''
+    return saved && !parseSettingsCategory(saved) ? saved : '#/'
+  } catch {
+    return '#/'
   }
-  const languageSection = section(t('settings.language'), 'language-settings-title')
+}
+
+export function mountSettingsView(
+  saveBeforeLeaving: () => Promise<boolean>,
+  navigate: (hash: string) => void,
+) {
+  const desktop = window.newWorldDesktop
+
+  const page = element('section', 'settings-page')
+  page.setAttribute('aria-labelledby', 'settings-page-title')
+
+  const sidebar = element('aside', 'settings-sidebar')
+  const sidebarTop = element('div', 'settings-sidebar-top')
+  const backButton = button('', 'button button-quiet button-small settings-back')
+  const backLabel = element('span', 'settings-back-label', t('settings.backToApp'))
+  backButton.append(icon('back'), backLabel)
+  const pageTitle = element('h1', 'settings-page-title', t('settings.title'))
+  pageTitle.id = 'settings-page-title'
+  sidebarTop.append(backButton, pageTitle)
+
+  const nav = element('nav', 'settings-nav')
+  nav.setAttribute('aria-label', t('settings.navLabel'))
+  const navLinks = new Map<SettingsCategory, HTMLAnchorElement>()
+
+  const content = element('div', 'settings-content')
+  content.tabIndex = -1
+  const fields = element('fieldset', 'settings-fields')
+  const panels = new Map<SettingsCategory, HTMLElement>()
+  const panelBodies = new Map<SettingsCategory, HTMLElement>()
+  const panelHeadings = new Map<SettingsCategory, HTMLHeadingElement>()
+
+  for (const spec of categories) {
+    const link = element('a', 'settings-nav-item')
+    link.href = `#/settings/${spec.id}`
+    link.dataset.category = spec.id
+    link.append(icon(spec.icon), element('span', 'settings-nav-label', spec.label))
+    nav.append(link)
+    navLinks.set(spec.id, link)
+
+    const panel = element('section', 'settings-panel')
+    panel.dataset.category = spec.id
+    const headingId = `settings-panel-heading-${spec.id}`
+    panel.setAttribute('aria-labelledby', headingId)
+    panel.hidden = true
+
+    const header = element('header', 'settings-panel-header')
+    const heading = element('h2', 'settings-panel-title', spec.label)
+    heading.id = headingId
+    heading.tabIndex = -1
+    const description = element('p', 'settings-panel-desc', spec.description)
+    header.append(heading, description)
+
+    const body = element('div', 'settings-panel-body')
+    panel.append(header, body)
+    fields.append(panel)
+
+    panels.set(spec.id, panel)
+    panelBodies.set(spec.id, body)
+    panelHeadings.set(spec.id, heading)
+  }
+
+  sidebar.append(sidebarTop, nav)
+  content.append(fields)
+  page.append(sidebar, content)
+
+  function createCard(parent: HTMLElement, headingText?: string, headingId?: string) {
+    const card = element('div', 'settings-card')
+    if (headingText) {
+      const heading = element('h3', 'settings-heading', headingText)
+      if (headingId) heading.id = headingId
+      card.append(heading)
+    }
+    parent.append(card)
+    return card
+  }
+
+  // Category 1: General (Language & Close behavior)
+  const generalBody = panelBodies.get('general')!
+  const languageCard = createCard(generalBody, t('settings.language'), 'language-settings-title')
   const languageLabel = element('label', 'field-label')
   const language = element('select', 'editor-select')
   language.setAttribute('aria-labelledby', 'language-settings-title')
@@ -60,21 +147,14 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
   const languageError = element('p', 'field-error language-error')
   languageError.setAttribute('role', 'alert')
   languageError.hidden = true
-  languageSection.append(languageLabel, element('p', 'dialog-help', t('settings.languageHint')), languageActions, languageState, languageError)
-  const appearanceSection = section(t('appearance.title'), 'appearance-settings-title')
-  mountAppearanceSettings(appearanceSection)
-  const captureSection = section(t('ideas.settingsTitle'), 'capture-settings-title')
-  const refreshCapture = mountCaptureSettings(captureSection)
-  const windowSection = section(t('settings.closeBehavior'), 'window-settings-title')
-  const storageSection = section(t('settings.storage'), 'storage-settings-title')
-  const backupSection = section(t('backup.title'), 'backup-settings-title')
-  const aiSection = section(t('ai.settingsTitle'), 'ai-settings-title')
-  const updateSection = section(t('settings.updates'), 'update-settings-title')
+  languageCard.append(languageLabel, element('p', 'dialog-help', t('settings.languageHint')), languageActions, languageState, languageError)
+
+  const windowCard = createCard(generalBody, t('settings.closeBehavior'), 'window-settings-title')
   const options = element('div', 'settings-options')
   options.setAttribute('role', 'radiogroup')
   options.setAttribute('aria-label', t('settings.closeBehavior'))
   const inputs: HTMLInputElement[] = []
-  for (const choice of choices) {
+  for (const choice of closeChoices) {
     const item = element('label', 'settings-option')
     const input = element('input')
     input.type = 'radio'
@@ -84,32 +164,122 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
     options.append(item)
     inputs.push(input)
   }
-
   const badge = element('span', 'settings-badge', t('settings.browserManaged'))
   const state = element('p', 'settings-state')
   state.setAttribute('role', 'status')
   const error = element('p', 'field-error')
   error.setAttribute('role', 'alert')
   error.hidden = true
-  const close = button(t('common.close'), 'button button-quiet')
-  const controls = element('div', 'dialog-controls')
-  controls.append(close)
-  windowSection.append(options, badge, state, error)
-  fields.append(list)
-  scroll.append(fields)
-  content.append(title, scroll, controls)
-  dialog.append(content)
-  document.body.append(dialog)
+  windowCard.append(options, badge, state, error)
+
+  // Category 2: Appearance
+  mountAppearanceSettings(panelBodies.get('appearance')!)
+
+  // Category 3: Quick Capture
+  const captureCard = createCard(panelBodies.get('capture')!, t('ideas.settingsTitle'), 'capture-settings-title')
+  const refreshCapture = mountCaptureSettings(captureCard)
+
+  // Category 4: Storage
+  const storageCard = createCard(panelBodies.get('storage')!, t('settings.storage'), 'storage-settings-title')
+  // Category 5: Backup & Restore
+  const backupCard = createCard(panelBodies.get('backup')!, t('backup.title'), 'backup-settings-title')
+  // Category 6: AI Integration
+  const aiCard = createCard(panelBodies.get('ai')!, t('ai.settingsTitle'), 'ai-settings-title')
+  // Category 7: Updates & About
+  const updatesBody = panelBodies.get('updates')!
+  const updateCard = createCard(updatesBody, t('settings.updates'), 'update-settings-title')
+  const aboutCard = createCard(updatesBody, t('settings.aboutSection'), 'about-settings-title')
+  aboutCard.append(
+    element('p', 'dialog-help', t('settings.aboutCopy')),
+    element('p', 'dialog-help', desktop ? t('settings.aboutEnvironmentDesktop') : t('settings.aboutEnvironmentWeb')),
+  )
 
   let behavior: CloseBehavior = 'quit'
   let busy = false
   let locked = false
   let loaded = false
+  let activeCategory: SettingsCategory = 'general'
+  let returnHash = readStoredReturnHash()
+  let pendingHeadingFocus = false
+
+  function updateBackButtonLabel() {
+    backLabel.textContent = (!returnHash || returnHash === '#/')
+      ? t('settings.backToApp')
+      : t('settings.backPrevious')
+  }
+  updateBackButtonLabel()
 
   function setBusy(value: boolean, allowClose = false) {
     busy = fields.disabled = value
-    locked = close.disabled = value && !allowClose
+    locked = backButton.disabled = value && !allowClose
+    for (const link of navLinks.values()) {
+      if (locked) link.setAttribute('aria-disabled', 'true')
+      else link.removeAttribute('aria-disabled')
+    }
   }
+
+  function recordOrigin(hash: string) {
+    if (parseSettingsCategory(hash)) return
+    returnHash = hash || '#/'
+    try { sessionStorage.setItem(returnStorageKey, returnHash) } catch { /* In-memory return target still works. */ }
+    updateBackButtonLabel()
+  }
+
+  function refreshAll() {
+    if (busy) return
+    state.textContent = ''
+    void refresh()
+    void refreshStorage()
+    void refreshBackups()
+    void refreshCapture()
+    void refreshAi()
+  }
+
+  function showCategory(category: SettingsCategory, fromWithinSettings: boolean, focusHeading = false) {
+    const changed = category !== activeCategory
+    activeCategory = category
+    if (!fromWithinSettings) refreshAll()
+
+    for (const [id, link] of navLinks) {
+      if (id === category) link.setAttribute('aria-current', 'page')
+      else link.removeAttribute('aria-current')
+    }
+    for (const [id, panel] of panels) {
+      const show = id === category
+      panel.hidden = !show
+      panel.classList.remove('settings-panel-enter')
+      if (show && (changed || fromWithinSettings)) {
+        void panel.offsetWidth
+        panel.classList.add('settings-panel-enter')
+      }
+    }
+
+    const spec = categories.find((item) => item.id === category)!
+    document.title = `${spec.label} · ${t('settings.pageTitle')}`
+    content.scrollTop = 0
+
+    if (focusHeading || pendingHeadingFocus) {
+      pendingHeadingFocus = false
+      panelHeadings.get(category)?.focus({ preventScroll: true })
+      return true
+    }
+    return false
+  }
+
+  function openCategory(category: SettingsCategory = 'general') {
+    pendingHeadingFocus = true
+    const target = `#/settings/${category}`
+    if (parseSettingsCategory(location.hash) === category && location.hash === target) {
+      showCategory(category, true, true)
+      return
+    }
+    navigate(target)
+  }
+
+  const refreshStorage = mountStorageView(storageCard, saveBeforeLeaving, setBusy)
+  mountUpdateView(updateCard, saveBeforeLeaving, () => openCategory('updates'), setBusy)
+  const refreshBackups = mountBackupView(backupCard, saveBeforeLeaving, setBusy)
+  const refreshAi = mountAiSettings(aiCard)
 
   language.addEventListener('change', () => { applyLanguage.disabled = language.value === locale })
   applyLanguage.addEventListener('click', async () => {
@@ -120,7 +290,7 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
     try {
       if (!await saveBeforeLeaving()) throw new Error(t('settings.languageSaveRequired'))
       await changeLanguage(language.value as Locale)
-      try { sessionStorage.setItem('new-world:settings-open', '1') } catch { /* Language selection is already saved. */ }
+      try { sessionStorage.setItem(returnStorageKey, returnHash) } catch { /* Language selection is already saved. */ }
       if (desktop?.reloadForLanguage) await desktop.reloadForLanguage()
       else location.reload()
     } catch (cause) {
@@ -133,29 +303,6 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
       setBusy(false)
     }
   })
-
-  function open(section?: HTMLElement) {
-    if (!busy) {
-      state.textContent = ''
-      void refresh()
-      void refreshStorage()
-      void refreshBackups()
-      void refreshCapture()
-      void refreshAi()
-    }
-    if (!dialog.open) dialog.showModal()
-    if (section) {
-      section.scrollIntoView({ block: 'start' })
-      section.querySelector<HTMLElement>('h3')?.focus({ preventScroll: true })
-    } else {
-      scroll.scrollTop = 0
-    }
-  }
-
-  const refreshStorage = mountStorageView(storageSection, saveBeforeLeaving, setBusy)
-  mountUpdateView(updateSection, saveBeforeLeaving, () => open(updateSection), setBusy)
-  const refreshBackups = mountBackupView(backupSection, saveBeforeLeaving, setBusy)
-  const refreshAi = mountAiSettings(aiSection)
 
   function paint() {
     if (!desktop) {
@@ -207,16 +354,42 @@ export function mountSettingsView(saveBeforeLeaving: () => Promise<boolean>) {
   for (const input of inputs) {
     input.addEventListener('change', () => { void save(input.value as CloseBehavior) })
   }
-  entry.addEventListener('click', () => open())
-  desktop?.onSettingsRequested?.(() => open())
-  window.addEventListener('new-world:open-appearance-settings', () => open(appearanceSection))
-  close.addEventListener('click', () => dialog.close())
-  dialog.addEventListener('cancel', (event) => { if (locked) event.preventDefault() })
-  paint()
-  try {
-    if (sessionStorage.getItem('new-world:settings-open') === '1') {
-      sessionStorage.removeItem('new-world:settings-open')
-      open(languageSection)
+
+  backButton.addEventListener('click', () => {
+    if (locked) return
+    navigate(returnHash || '#/')
+  })
+
+  nav.addEventListener('click', (event) => {
+    const target = (event.target as HTMLElement | null)?.closest('a')
+    if (!target) return
+    if (locked) {
+      event.preventDefault()
     }
-  } catch { /* Settings can still be opened from the header. */ }
+  })
+
+  nav.addEventListener('keydown', (event) => {
+    const items = [...nav.querySelectorAll<HTMLAnchorElement>('.settings-nav-item')]
+    const current = items.indexOf(document.activeElement as HTMLAnchorElement)
+    if (current === -1) return
+    let next = -1
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') next = (current + 1) % items.length
+    else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') next = (current - 1 + items.length) % items.length
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = items.length - 1
+    if (next === -1) return
+    event.preventDefault()
+    items[next]?.focus()
+  })
+
+  desktop?.onSettingsRequested?.(() => openCategory('general'))
+  window.addEventListener('new-world:open-appearance-settings', () => openCategory('appearance'))
+  paint()
+
+  return {
+    element: page,
+    showCategory,
+    recordOrigin,
+    isLocked: () => locked,
+  }
 }

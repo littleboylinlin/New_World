@@ -1435,12 +1435,14 @@ test.describe('v0.15.3 英文文案与单复数语法验证', () => {
       harness.store.updateClient(ai.client.id, { scope: { mode: 'selected', workIds: [] } })
 
       // 1. Settings UI copy checks: Permissions, Request deletion, Backup hint, 0/1/2 works selected
-      await page.getByRole('button', { name: 'Settings', exact: true }).click()
-      const settings = page.getByRole('dialog', { name: 'Settings' })
+      await page.getByRole('link', { name: 'Settings', exact: true }).click()
+      const settings = page.locator('.settings-page')
+      await settings.getByRole('link', { name: 'Backup & restore', exact: true }).click()
       await expect(settings).toContainText('Each backup saves both libraries, all editions, original files, and the trash in a single .zip file.')
       await expect(settings).toContainText('Because the web version cannot create background automatic backups or save to a custom folder, click “Back Up Now” regularly.')
       await expect(settings).not.toContainText('backups made by hand')
 
+      await settings.getByRole('link', { name: 'AI integration', exact: true }).click()
       const card = settings.locator('.ai-client-card', { hasText: 'EnglishCopyAI' })
       await expect(card).toContainText('Permissions (all off by default)')
       await expect(card).toContainText('Request deletion (always requires manual confirmation)')
@@ -1452,7 +1454,7 @@ test.describe('v0.15.3 英文文案与单复数语法验证', () => {
       await card.locator('.ai-work-picker label', { hasText: createdWorks[1].title }).locator('input[type="checkbox"]').check()
       await expect(card.locator('.ai-selected-count')).toHaveText('2 works selected:')
 
-      await settings.getByRole('button', { name: 'Close', exact: true }).click()
+      await settings.locator('.settings-back').click()
 
       // 2. Confirmation modal buttons: Reject request / Approve request
       const delPromise = harness.api('DELETE', `/works/original/${work1Id}?wait=true`, ai.token)

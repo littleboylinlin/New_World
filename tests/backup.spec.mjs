@@ -4,8 +4,18 @@ import { expect, test } from './app-test.mjs'
 import { bookAction } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
-const settings = (page) => page.getByRole('dialog', { name: '设置' })
-const backupSection = (page) => settings(page).getByRole('region', { name: '备份', exact: true })
+const settings = (page) => page.locator('.settings-page')
+const backupSection = (page) => settings(page).getByRole('region', { name: '备份与恢复', exact: true })
+
+async function openBackupSettings(page) {
+  await page.getByRole('link', { name: '设置', exact: true }).click()
+  await settings(page).getByRole('link', { name: '备份与恢复', exact: true }).click()
+}
+
+async function closeSettings(page) {
+  await settings(page).locator('.settings-back').click()
+  await expect(settings(page)).toBeHidden()
+}
 
 async function newNovel(page, name, text) {
   await page.goto('/#/original')
@@ -19,7 +29,7 @@ async function newNovel(page, name, text) {
 }
 
 async function backUp(page, testInfo, name, password) {
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openBackupSettings(page)
   const download = page.waitForEvent('download')
   await backupSection(page).getByRole('button', { name: '立即备份' }).click()
   if (password) {
@@ -33,7 +43,7 @@ async function backUp(page, testInfo, name, password) {
   const path = testInfo.outputPath(name)
   await file.saveAs(path)
   await expect(backupSection(page).locator('.backup-state')).toContainText('已备份 1 部作品')
-  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+  await closeSettings(page)
   return path
 }
 
@@ -45,7 +55,7 @@ async function keepIdea(page, text) {
 }
 
 async function chooseBackup(page, path) {
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openBackupSettings(page)
   const chooser = page.waitForEvent('filechooser')
   await backupSection(page).getByRole('button', { name: '从备份恢复…' }).click()
   await (await chooser).setFiles(path)
@@ -114,13 +124,13 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
 
 test('加密备份需要正确密码才能恢复，损坏的文件会被拒绝', async ({ page }, testInfo) => {
   await newNovel(page, '密封的信', '只有知道密码的人才能读到。')
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openBackupSettings(page)
   await backupSection(page).getByRole('radio', { name: '用密码加密' }).check()
   await expect(backupSection(page).locator('.backup-state')).toHaveText('之后每次备份时会请你设置密码。')
-  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+  await closeSettings(page)
 
   // Mismatched passwords are caught before anything is written.
-  await page.getByRole('button', { name: '设置', exact: true }).click()
+  await openBackupSettings(page)
   await backupSection(page).getByRole('button', { name: '立即备份' }).click()
   const ask = page.getByRole('dialog', { name: '为这份备份设置密码' })
   await ask.getByLabel('密码', { exact: true }).fill('lighthouse')
@@ -128,7 +138,7 @@ test('加密备份需要正确密码才能恢复，损坏的文件会被拒绝',
   await ask.getByRole('button', { name: '设置密码' }).click()
   await expect(ask.getByRole('alert')).toHaveText('两次输入的密码不一致。')
   await ask.getByRole('button', { name: '取消' }).click()
-  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+  await closeSettings(page)
 
   const path = await backUp(page, testInfo, 'encrypted-backup.zip', 'lighthouse')
   expect((await readFile(path))[6] & 1).toBe(1)
@@ -182,7 +192,7 @@ test('备份恢复拦截超量条目与超限解压体积的 ZIP 炸弹且保留
   await writeFile(manyEntriesPath, await entryWriter.close())
   await chooseBackup(page, manyEntriesPath)
   await expect(backupSection(page).getByRole('alert')).toHaveText('备份文件太大，无法打开。')
-  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+  await closeSettings(page)
 
   // 2. Deflated manifest exceeds maxBackupManifestBytes (64 MiB) while ZIP on disk is tiny
   const inflatedBombPath = testInfo.outputPath('manifest-bomb.zip')
@@ -192,7 +202,7 @@ test('备份恢复拦截超量条目与超限解压体积的 ZIP 炸弹且保留
   await writeFile(inflatedBombPath, await bombWriter.close())
   await chooseBackup(page, inflatedBombPath)
   await expect(backupSection(page).getByRole('alert')).toHaveText('备份文件太大，无法打开。')
-  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+  await closeSettings(page)
 
   // Existing library must still be completely untouched
   await page.goto('/#/original')

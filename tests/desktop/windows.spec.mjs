@@ -23,6 +23,18 @@ const setup = promisify(execFile)
 const editor = (page) => page.getByRole('textbox', { name: '章节正文' })
 const status = (page) => page.locator('.save-status')
 
+async function openSettingsCategory(page, category, locale = 'zh-CN') {
+  const settingsPage = page.locator('.settings-page')
+  if (!(await settingsPage.isVisible())) {
+    await page.getByRole('link', { name: locale === 'en' ? 'Settings' : '设置', exact: true }).click()
+    await expect(settingsPage).toBeVisible()
+  }
+  if (category) {
+    await settingsPage.locator(`.settings-nav-item[data-category="${category}"]`).click()
+  }
+  return category ? settingsPage.locator(`.settings-panel[data-category="${category}"]`) : settingsPage
+}
+
 async function runSetup(path, directory = '') {
   const { stdout } = await setup('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     "$params = '/S'; if ($env:NEW_WORLD_SETUP_DIR) { $params += ' /D=' + $env:NEW_WORLD_SETUP_DIR }; $process = Start-Process -FilePath $env:NEW_WORLD_SETUP_FILE -ArgumentList $params -PassThru -Wait; Write-Output $process.ExitCode"], {
@@ -132,19 +144,24 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     const english = await page.locator('html').getAttribute('lang') === 'en'
     const header = await page.evaluate(() => {
       const inner = document.querySelector('.header-inner')
+      const trash = document.querySelector('#trash-link').getBoundingClientRect()
       const settings = document.querySelector('#settings').getBoundingClientRect()
+      const footer = document.querySelector('.footer-inner').getBoundingClientRect()
       const controls = document.querySelector('.window-controls').getBoundingClientRect()
       const buttons = [...document.querySelectorAll('.window-controls button')].map((node) => ({
         label: node.getAttribute('aria-label'), title: node.getAttribute('title'),
       }))
       return {
         top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight),
-        gap: innerWidth - settings.right, viewport: innerWidth, buttons, right: controls.right, height: controls.height,
+        gap: innerWidth - trash.right, viewport: innerWidth, buttons, right: controls.right, height: controls.height,
+        settingsLeft: settings.left, footerLeft: footer.left, settingsBottom: settings.bottom, viewportHeight: innerHeight,
       }
     })
     expect(header.top).toBe(0)
     expect(header.reserved).toBeGreaterThan(90)
     expect(header.gap).toBeGreaterThan(90)
+    expect(header.settingsLeft).toBeGreaterThanOrEqual(header.footerLeft - 1)
+    expect(header.settingsBottom).toBeLessThanOrEqual(header.viewportHeight + 1)
     expect(header.buttons).toEqual((english
       ? ['Minimize', 'Maximize', 'Close window']
       : ['最小化', '最大化', '关闭窗口']).map((label) => ({ label, title: null })))
@@ -326,8 +343,7 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     expect(requests).toBe(1)
     await banner.getByRole('button', { name: '本次忽略' }).click()
     await expect(banner).toBeHidden()
-    await page.getByRole('button', { name: '设置' }).click()
-    const help = page.getByRole('dialog', { name: '设置' })
+    const help = await openSettingsCategory(page, 'updates')
     await expect(help).toContainText(`当前运行版本 ${versionTag} · Windows x64`)
     await expect(help).toContainText('改进离线写作。')
     await expect(help.getByRole('link', { name: '查看 GitHub 发布页' })).toHaveAttribute('href', `${releaseBase}/tag/${next}`)
@@ -353,7 +369,7 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     await check.click()
     await expect(help.locator('.update-state')).toContainText(next)
     expect(requests).toBe(7)
-    await help.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
 
     await page.locator('a[href="#/original"]').first().click()
     await page.getByRole('button', { name: '新建小说' }).click()
@@ -369,25 +385,28 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     const expectedRequests = await mockUpdateDownload(app, corrupt, { body: 'x' })
     await page.evaluate(() => { globalThis.desktopTestStorageFull = true })
     await editor(page).fill('这段正文必须留在桌面端。')
-    await page.getByRole('button', { name: '设置' }).click()
-    const download = help.getByRole('button', { name: '更新并重启' })
-    await download.click()
-    await expect(help.getByRole('alert')).toContainText('当前正文尚未保存')
+    await page.getByRole('link', { name: '设置', exact: true }).click()
+    await expect(page).toHaveURL(draftUrl)
+    await expect(status(page)).toHaveText('未保存 · 失败')
+    await expect(page.locator('.settings-page')).toBeHidden()
     expect(await app.evaluate(() => globalThis.testExternalLinks)).toEqual([])
     expect(await app.evaluate(() => globalThis.testUpdateRequests)).toEqual([])
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
     await expect(status(page)).toHaveText('未保存 · 失败')
     await page.evaluate(() => { globalThis.desktopTestStorageFull = false })
+    await openSettingsCategory(page, 'updates')
+    const download = help.getByRole('button', { name: '更新并重启' })
     await download.click()
     await expect(help.getByRole('alert')).toContainText(installer ? 'SHA-256 校验不匹配' : '适用于已安装的 Windows x64 正式版')
     expect(await app.evaluate(() => globalThis.testUpdateRequests)).toEqual(installer ? expectedRequests : [])
     expect(await app.evaluate(() => globalThis.testExternalLinks)).toEqual([])
+    await page.screenshot({ path: testInfo.outputPath('windows-updates.png') })
+    await page.locator('.settings-back').click()
     await expect(page).toHaveURL(draftUrl)
     await expect(status(page)).toHaveText('已保存')
     const invalid = await page.evaluate(() => window.newWorldDesktop.downloadUpdate('https://example.invalid/'))
     expect(invalid.ok).toBe(false)
     expect(await app.evaluate(() => globalThis.testUpdateRequests)).toEqual(installer ? expectedRequests : [])
-    await page.screenshot({ path: testInfo.outputPath('windows-updates.png') })
   } finally {
     await stop(app)
   }
@@ -471,22 +490,23 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     await editor(page).fill('更新前已写好的正文。')
     await expect(status(page)).toHaveText('已保存')
     const draftUrl = page.url()
-    await page.getByRole('button', { name: '设置' }).click()
-    const help = page.getByRole('dialog', { name: '设置' })
+    const help = await openSettingsCategory(page, 'updates')
     const update = help.getByRole('button', { name: '更新并重启' })
     await update.click()
     const progress = help.getByRole('progressbar', { name: '安装包下载进度' })
     await expect.poll(() => progress.evaluate((bar) => bar.value)).toBeGreaterThan(0)
     await page.screenshot({ path: testInfo.outputPath('windows-update-download.png') })
-    await help.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
     const lastText = '下载期间新增的正文也要保留。'
     await page.evaluate(() => { globalThis.desktopTestStorageFull = true })
     await editor(page).fill(lastText)
     await app.evaluate(() => globalThis.testContinueUpdate())
-    await expect(help.getByRole('alert')).toContainText('安装包已下载', { timeout: 30_000 })
+    await expect(page.locator('#update-banner')).toContainText('安装包已下载', { timeout: 30_000 })
     expect(await app.evaluate(() => globalThis.testUpdateRequests)).toEqual(requests)
     await expect(page.locator('.novel-body')).toHaveText(lastText)
     await page.evaluate(() => { globalThis.desktopTestStorageFull = false })
+    await page.locator('#update-banner').getByRole('button', { name: '查看更新' }).click()
+    await expect(help.getByRole('alert')).toContainText('安装包已下载')
     const exited = app.waitForEvent('close', { timeout: 30_000 })
     await update.click()
     await exited
@@ -516,7 +536,7 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
   let app = await launch(testInfo)
   try {
     let page = await app.firstWindow()
-    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeVisible()
     if (installer) {
       expect(await app.evaluate(({ app }) => {
         const { existsSync } = process.getBuiltinModule('node:fs')
@@ -532,8 +552,7 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
         return url.endsWith('/New-World-lang-en.json') ? new Response(body) : new Response(null, { status: 404 })
       }
     }, pack)
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    let settings = page.getByRole('dialog', { name: '设置' })
+    let settings = await openSettingsCategory(page, 'general')
     await settings.getByRole('combobox', { name: '语言', exact: true }).selectOption('en')
     await settings.getByRole('button', { name: '应用语言' }).click()
     await expect.poll(() => app.evaluate(({ app }) => {
@@ -541,8 +560,9 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
       const { join } = process.getBuiltinModule('node:path')
       return JSON.parse(readFileSync(join(app.getPath('appData'), 'NewWorld-languages', 'language.json'), 'utf8')).locale
     })).toBe('en')
-    settings = page.getByRole('dialog', { name: 'Settings' })
+    settings = page.locator('.settings-page')
     await expect(settings).toBeVisible()
+    await expect(settings.getByRole('heading', { name: 'General', exact: true })).toBeVisible()
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['Edit', 'View'])
     if (installer) {
@@ -551,18 +571,17 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
       ])
     }
     await page.screenshot({ path: testInfo.outputPath('windows-english-settings.png') })
-    await settings.getByRole('button', { name: 'Close', exact: true }).click()
+    await settings.locator('.settings-back').click()
     await checkNativeHeader(app, page, testInfo, 'windows')
     await stop(app)
     app = await launch(testInfo)
     page = await app.firstWindow()
     await expect(page.getByRole('heading', { name: 'My novel library' })).toBeVisible()
-    await page.getByRole('button', { name: 'Settings', exact: true }).click()
-    settings = page.getByRole('dialog', { name: 'Settings' })
+    settings = await openSettingsCategory(page, 'general', 'en')
     await expect(settings.getByRole('combobox', { name: 'Language', exact: true })).toHaveValue('en')
     await settings.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh-CN')
     await settings.getByRole('button', { name: 'Apply language' }).click()
-    await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible()
+    await expect(page.locator('.settings-page').getByRole('heading', { name: '常规', exact: true })).toBeVisible()
     expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['编辑', '视图'])
   } finally { await stop(app) }
 })
@@ -580,8 +599,7 @@ test('黑色主题重开时窗口直接以深色底色打开，不先闪浅色',
   let app = await launch(testInfo)
   try {
     let page = await app.firstWindow()
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    let section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    let section = await openSettingsCategory(page, 'appearance')
     await section.getByRole('radio', { name: /黑色/ }).check()
     await expect.poll(() => app.evaluate(themeFile)).toBe('dark')
     await expect.poll(() => app.evaluate(windowState)).toEqual({ background: '#131210', source: 'dark' })
@@ -595,8 +613,7 @@ test('黑色主题重开时窗口直接以深色底色打开，不先闪浅色',
     await page.screenshot({ path: testInfo.outputPath('windows-dark-theme.png') })
 
     // Leave the shared profile as it was for the other desktop tests.
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    section = await openSettingsCategory(page, 'appearance')
     await section.getByRole('radio', { name: /跟随系统/ }).check()
     await expect.poll(() => app.evaluate(themeFile)).toBe('system')
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
@@ -664,8 +681,7 @@ test('可导入或从链接下载其他语言的拼写词典，与内置词典�
       copyFileSync(join(app.getPath('userData'), 'Dictionaries', 'en-US-10-2.bdic'), file)
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] })
     })
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '外观', exact: true })
+    const section = await openSettingsCategory(page, 'appearance')
     const list = section.getByRole('list', { name: '拼写词典' })
     await expect(list.getByRole('listitem')).toHaveCount(2)
     await expect(list).toContainText('en-US')
@@ -735,8 +751,7 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     await page.getByRole('button', { name: '手动保存' }).click()
     await expect(page.locator('.save-status')).toHaveText('已保存')
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '备份', exact: true })
+    const section = await openSettingsCategory(page, 'backup')
     await expect(section.getByRole('radio', { name: '每天' })).toBeChecked()
     await expect(section.locator('.backup-location')).toContainText('New World Backups')
     await section.getByRole('button', { name: '选择文件夹…' }).click()
@@ -764,13 +779,13 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     // The first automatic backup is due right away and runs shortly after the start.
     await expect(section.locator('.backup-last')).toContainText('上次自动备份', { timeout: 60_000 })
 
-    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
     await editor(page).fill('恢复前改过的正文。')
     await page.getByRole('button', { name: '手动保存' }).click()
     await expect(page.locator('.save-status')).toHaveText('已保存')
 
     await app.evaluate((_electron, path) => { globalThis.testRestorePath = path }, join(folder, manual))
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await openSettingsCategory(page, 'backup')
     await section.getByRole('button', { name: '从备份恢复…' }).click()
     const password = page.getByRole('dialog', { name: '输入备份密码' })
     await password.getByLabel('密码', { exact: true }).fill('harbour')
@@ -783,7 +798,7 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     await expect(editor(page)).toHaveText('守夜人把灯点亮。')
 
     // Leave the shared profile as it was for the other desktop tests.
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await openSettingsCategory(page, 'backup')
     await section.getByRole('radio', { name: '不加密' }).check()
     await expect(section.locator('.backup-state')).toHaveText('之后的备份不加密。')
     await section.getByRole('button', { name: '恢复默认位置' }).click()
@@ -804,8 +819,7 @@ test('灵感速记：全局快捷键可在设置里更换，任务栏的速记�
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(await registered('Control+Alt+N')).toBe(true)
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const section = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: '灵感速记', exact: true })
+    const section = await openSettingsCategory(page, 'capture')
     const shortcuts = section.getByRole('radiogroup', { name: '全局快捷键' })
     await expect(shortcuts.getByRole('radio', { name: 'Ctrl + Alt + N' })).toBeChecked()
     await shortcuts.getByRole('radio', { name: 'Alt + Shift + N' }).check()
@@ -818,7 +832,7 @@ test('灵感速记：全局快捷键可在设置里更换，任务栏的速记�
     await shortcuts.getByRole('radio', { name: 'Ctrl + Alt + N' }).check()
     await expect.poll(() => registered('Control+Alt+N')).toBe(true)
     expect(await app.evaluate(shortcutFile)).toBe('Control+Alt+N')
-    await page.getByRole('dialog', { name: '设置' }).getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
 
     // The taskbar task starts New World again with --quick-note.
     const opened = app.waitForEvent('window')
@@ -844,10 +858,7 @@ test('AI 接入与权限：桌面端启用本地接口、写入作品并在人�
     const page = await app.firstWindow()
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settingsDialog = page.getByRole('dialog', { name: '设置' })
-    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
-    await section.scrollIntoViewIfNeeded()
+    const section = await openSettingsCategory(page, 'ai')
 
     await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
     await section.locator('input[data-ai-global-enable="true"]').check()
@@ -869,7 +880,7 @@ test('AI 接入与权限：桌面端启用本地接口、写入作品并在人�
       await card.locator(`input[data-ai-perm="${perm}"]`).check()
     }
     await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
-    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
 
     // Verify secret token is hashed cleanly on disk and never stored in plaintext
     const storedAiConfig = await app.evaluate(({ app }) => {
@@ -919,8 +930,7 @@ test('AI 接入与权限：桌面端启用本地接口、写入作品并在人�
     expect(auditText).toContain('works.delete')
 
     // Reset AI config so shared profile starts disabled again
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    await section.scrollIntoViewIfNeeded()
+    await openSettingsCategory(page, 'ai')
     await section.locator('.ai-client-card').filter({ hasText: 'DesktopAgent' }).getByRole('button', { name: '撤销配置' }).click()
     await expect(section.locator('.ai-client-card')).toHaveCount(0)
     await section.locator('input[data-ai-global-enable="true"]').uncheck()
@@ -933,12 +943,9 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
   let app = await launch(testInfo)
   try {
     let page = await app.firstWindow()
-    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settingsDialog = page.getByRole('dialog', { name: '设置' })
-    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
-    await section.scrollIntoViewIfNeeded()
+    const section = await openSettingsCategory(page, 'ai')
     await section.locator('input[data-ai-global-enable="true"]').check()
     await expect(section.locator('.ai-badge').first()).toContainText('本地监听 127.0.0.1:')
     const portMatch = (await section.locator('.ai-endpoint-line').innerText()).match(/http:\/\/127\.0\.0\.1:(\d+)\/v1/)
@@ -959,7 +966,7 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     }
     await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
     await expect(card.getByRole('radio', { name: '允许访问整个小说库' })).toBeChecked()
-    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
 
     const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
     const v0 = '桌面初版正文：灯塔守夜人检查了雾笛开关。'
@@ -1027,7 +1034,7 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     await stop(app)
     app = await launch(testInfo)
     page = await app.firstWindow()
-    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: '设置', exact: true })).toBeVisible()
 
     // Open edition and restore v0 from History dialog (automatically backing up v2 first)
     await page.evaluate((u) => { location.hash = u }, `#/original/${workId}/${editionId}`)
@@ -1060,9 +1067,7 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     await expect(page.getByRole('list', { name: '灵感列表' })).toContainText('桌面重启后恢复的灵感')
 
     // Clean up AI config so profile returns to default disabled state
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const resetSection = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: 'AI 接入与权限', exact: true })
-    await resetSection.scrollIntoViewIfNeeded()
+    const resetSection = await openSettingsCategory(page, 'ai')
     await resetSection.locator('.ai-client-card').filter({ hasText: 'RecoveryDesktopAI' }).getByRole('button', { name: '撤销配置' }).click()
     await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')
