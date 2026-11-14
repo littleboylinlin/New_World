@@ -19,8 +19,9 @@ function reply(route, payload, status = 200, headers = {}) {
 }
 
 async function openHelp(page) {
-  await page.getByRole('button', { name: '设置', exact: true }).click()
-  return page.getByRole('dialog', { name: '设置' })
+  await page.getByRole('link', { name: '设置', exact: true }).click()
+  await page.getByRole('link', { name: '更新与关于', exact: true }).click()
+  return page.getByRole('region', { name: '更新与关于', exact: true })
 }
 
 test('启动检查异步且只请求一次，手动检查显示进度和最新状态', async ({ page }) => {
@@ -54,7 +55,7 @@ test('启动检查异步且只请求一次，手动检查显示进度和最新�
     await expect.poll(() => requests).toBe(2)
     manual.resolve()
     await expect(dialog.locator('.update-state')).toHaveText('当前已是最新版本。')
-    await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+    await page.locator('.settings-back').click()
     await expect(banner(page)).toBeHidden()
   } finally {
     auto.resolve()
@@ -78,9 +79,9 @@ test('较高的正式版本显示说明和可信入口，忽略后仍可从帮�
   await expect(notice).toContainText(`发现新版本 ${newerTag}`)
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await notice.getByRole('button', { name: '查看更新' }).click()
-  const dialog = page.getByRole('dialog', { name: '设置' })
-  await expect(dialog.getByRole('heading', { name: '帮助与更新', exact: true })).toBeFocused()
-  await expect(page.locator('dialog[open]')).toHaveCount(1)
+  const dialog = page.getByRole('region', { name: '更新与关于', exact: true })
+  await expect(dialog.getByRole('heading', { name: '更新与关于', exact: true })).toBeFocused()
+  await expect(page.locator('.settings-page')).toBeVisible()
   const link = dialog.getByRole('link', { name: '查看 GitHub 发布页' })
   expect(await dialog.locator('.update-notes').textContent()).toBe(notes)
   await expect(dialog.locator('.update-notes img')).toHaveCount(0)
@@ -92,7 +93,7 @@ test('较高的正式版本显示说明和可信入口，忽略后仍可从帮�
   await expect(popup).toHaveURL(releasePage)
   await popup.close()
   expect(unexpected).toEqual([])
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.locator('.settings-back').click()
   await notice.getByRole('button', { name: '本次忽略' }).click()
   await expect(notice).toBeHidden()
   await page.getByRole('link', { name: '进入续写／仿写库' }).click()
@@ -166,7 +167,7 @@ test('离线、连接失败、限流、服务异常和无效版本可手动重�
     await expect(check).toBeEnabled()
   }
   expect(requests).toBe(8)
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.locator('.settings-back').click()
   await page.getByRole('link', { name: '进入原创库' }).click()
   await expect(page.getByRole('button', { name: '导入文件' })).toBeEnabled()
   await expect(banner(page)).toBeHidden()
@@ -196,22 +197,21 @@ test('更新重载复用编辑器保存检查，失败保留正文，成功后�
   await editor.fill('还没写入存储的段落。')
   await expect(page.locator('.save-status')).toContainText('未保存')
 
-  const dialog = await openHelp(page)
-  const reload = dialog.getByRole('button', { name: '重新加载当前网页' })
-  await reload.click()
-  await expect(dialog.getByRole('alert')).toContainText('当前正文尚未保存')
-  await expect(reload).toBeEnabled()
+  await banner(page).getByRole('button', { name: '查看更新' }).click()
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(timeOrigin)
   await expect(page).toHaveURL(url)
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(editor).toHaveText('还没写入存储的段落。')
   await expect(page.locator('.save-status')).toContainText('失败')
 
   await page.evaluate(() => { window.updateTestStorageFull = false })
-  await openHelp(page)
+  const section = await openHelp(page)
+  const reload = section.getByRole('button', { name: '重新加载当前网页' })
+  const settingsUrl = page.url()
   await Promise.all([page.waitForEvent('load'), reload.click()])
-  await expect(page).toHaveURL(url)
+  await expect(page).toHaveURL(settingsUrl)
   expect(await page.evaluate(() => performance.timeOrigin)).not.toBe(timeOrigin)
+  await page.locator('.settings-back').click()
+  await expect(page).toHaveURL(url)
   await expect(editor).toHaveText('还没写入存储的段落。')
   await expect(page.locator('.save-status')).toHaveText('已保存')
 })

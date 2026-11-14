@@ -9,7 +9,7 @@ export function headerProblems(page) {
     const right = bounds.right - parseFloat(style.paddingRight)
     const problems = []
     let previousRight = left
-    for (const selector of ['.brand', '.local-label', '#trash-link', '#settings']) {
+    for (const selector of ['.brand', '.local-label', '#trash-link']) {
       const node = header.querySelector(selector)
       if (!node.getClientRects().length) continue
       const box = node.getBoundingClientRect()
@@ -19,6 +19,16 @@ export function headerProblems(page) {
       const textBox = text.getBoundingClientRect()
       if (textBox.width && (textBox.left < box.left - 1 || textBox.right > box.right + 1)) problems.push(`${selector} text overflows`)
       previousRight = box.right
+    }
+    const footer = document.querySelector('.footer-inner')
+    const settings = footer.querySelector('#settings')
+    const meta = footer.querySelector('.footer-meta')
+    if (!settings) problems.push('#settings missing in footer')
+    else {
+      const sBox = settings.getBoundingClientRect()
+      const fBox = footer.getBoundingClientRect()
+      if (sBox.left < fBox.left - 1 || sBox.top < 0 || sBox.bottom > innerHeight + 1) problems.push('#settings out of footer bounds')
+      if (meta && sBox.right > meta.getBoundingClientRect().left + 1) problems.push('#settings overlaps footer metadata')
     }
     if (document.documentElement.classList.contains('desktop') && bounds.height > 47) problems.push('The title bar wraps')
     if (document.documentElement.scrollWidth > innerWidth) problems.push('The page overflows horizontally')
@@ -32,16 +42,13 @@ export async function expectHeaderLayout(page) {
 
 export async function checkSettingsLayout(page) {
   const english = await page.locator('html').getAttribute('lang') === 'en'
-  await page.getByRole('button', { name: english ? 'Settings' : '设置', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: english ? 'Settings' : '设置', exact: true })
-  await expect(dialog).toBeVisible()
-  expect(await dialog.evaluate((node) => {
-    const box = node.getBoundingClientRect()
-    return box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight
-      && node.scrollWidth <= node.clientWidth
-  })).toBe(true)
-  await dialog.getByRole('button', { name: english ? 'Close' : '关闭', exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await page.getByRole('link', { name: english ? 'Settings' : '设置', exact: true }).click()
+  const settingsPage = page.locator('.settings-page')
+  await expect(settingsPage).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(await settingsPage.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true)
+  await settingsPage.locator('.settings-back').click()
+  await expect(settingsPage).toBeHidden()
 }
 
 export async function checkNativeHeader(app, page, info, prefix) {

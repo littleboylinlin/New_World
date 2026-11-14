@@ -13,7 +13,7 @@ export function mountUpdateView(
   const macos = desktop?.platform === 'darwin'
   const macArch = desktop?.arch === 'arm64' ? 'Apple Silicon' : 'Intel'
   const platformLabel = macos ? `macOS ${macArch}` : 'Windows x64'
-  const settings = document.querySelector<HTMLButtonElement>('#settings')!
+  const settings = document.querySelector<HTMLElement>('#settings')!
   const banner = document.querySelector<HTMLElement>('#update-banner')!
   document.querySelector('#app-version')!.textContent = runningVersion
 
@@ -64,6 +64,7 @@ export function mountUpdateView(
     state.classList.toggle('update-state-error', result.kind === 'failed')
     release.hidden = result.kind !== 'available'
     updateError.hidden = true
+    bannerMessage.setAttribute('role', 'status')
     offeredTag = result.kind === 'available' ? result.tag : undefined
     installerTag = result.kind === 'available' && (result.windows || result.macos) ? result.tag : undefined
     banner.hidden = !offeredTag || offeredTag === ignoredTag
@@ -103,6 +104,7 @@ export function mountUpdateView(
     settings.focus()
   })
   function updateStatus(message: string) {
+    bannerMessage.setAttribute('role', 'status')
     state.textContent = bannerMessage.textContent = message
   }
 
@@ -138,18 +140,23 @@ export function mountUpdateView(
 
       applying = true
       setBusy(true)
-      openHelp()
       progress.hidden = true
       updateStatus(t(macos ? 'macUpdate.verified' : 'update.installerVerifiedSavingTextAndInstalling'))
       if (!await saveBeforeLeaving()) throw new Error(t('update.theCurrentTextIsNotSavedTheInstaller'))
+      openHelp()
       const installed = await desktop.installUpdate(tag!)
       if (!installed.ok) throw new Error(installed.message)
       restarting = true
       updateStatus(t(macos ? 'macUpdate.ready' : 'update.updatingAndRestartingNewWorld'))
     } catch (error) {
-      updateError.textContent = error instanceof Error ? error.message : t('update.theUpdateFailedTryAgainLater')
+      const message = error instanceof Error ? error.message : t('update.theUpdateFailedTryAgainLater')
+      updateError.textContent = message
       updateError.hidden = false
-      if (desktop && tag) updateStatus(t('update.newVersionAvailable', [tag]))
+      if (desktop && tag) {
+        state.textContent = t('update.newVersionAvailable', [tag])
+        bannerMessage.setAttribute('role', 'alert')
+        bannerMessage.textContent = message
+      }
     } finally {
       if (!restarting) {
         applying = updating = check.disabled = update.disabled = ignore.disabled = false

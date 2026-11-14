@@ -20,7 +20,10 @@ test('桌面版页眉固定在窗口顶部，页面在页眉下方滚动', async
   await page.getByRole('textbox', { name: '作品名' }).fill('长卷')
   await page.getByRole('button', { name: '创建小说' }).click()
   await page.getByRole('textbox', { name: '章节正文' }).fill(Array.from({ length: 80 }, (_, line) => `第 ${line + 1} 行。`).join('\n'))
-  await page.locator('.site-footer').scrollIntoViewIfNeeded()
+  await page.evaluate(() => {
+    const pageEl = document.querySelector('#page')
+    pageEl.scrollTop = pageEl.scrollHeight
+  })
 
   const position = () => page.evaluate(() => ({
     header: document.querySelector('.site-header').getBoundingClientRect().top,
@@ -44,7 +47,7 @@ test('Web 端页眉随页面滚动', async ({ page }) => {
   await page.getByRole('textbox', { name: '作品名' }).fill('长卷')
   await page.getByRole('button', { name: '创建小说' }).click()
   await page.getByRole('textbox', { name: '章节正文' }).fill(Array.from({ length: 80 }, (_, line) => `第 ${line + 1} 行。`).join('\n'))
-  await page.locator('.site-footer').scrollIntoViewIfNeeded()
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
   expect(await page.evaluate(() => document.querySelector('.site-header').getBoundingClientRect().top)).toBeLessThan(0)
 })

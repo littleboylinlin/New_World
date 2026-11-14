@@ -18,6 +18,7 @@
 @keyframes chapter-next { from { opacity: 0; transform: translateY(16px); } }
 @keyframes chapter-previous { from { opacity: 0; transform: translateY(-16px); } }
 @keyframes press { 50% { transform: scale(.9); } }
+@keyframes settings-panel-in { from { opacity: 0; transform: translateY(6px); } }
 
 @media (prefers-reduced-motion: no-preference) {
   /* Page changes. The new page arrives from the side it was opened from. */
@@ -57,7 +58,8 @@
   .chapter-navigation::details-content, .ideas-card::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
   .chapter-navigation[open]::details-content, .ideas-card[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
 
-  .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump { transition: transform 160ms var(--ease-out), background-color 140ms ease, color 140ms ease, border-color 140ms ease; }
+  .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump, .settings-nav-item, .settings-entry { transition: transform 160ms var(--ease-out), background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
+  .settings-panel-enter { animation: 170ms var(--ease-out) backwards settings-panel-in; }
   .shelf-card:hover .card-enter svg { transform: translateX(5px); }
   .version-tab:hover:not([aria-current]) { transform: translateY(-2px); }
   .book-row:hover { transform: translateX(3px); }

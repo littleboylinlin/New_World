@@ -33,18 +33,18 @@ const widthLabel = (value: TextWidth) => ({
 
 const switches = ['off', 'on'] as const
 
-/** Keeps a control in step with changes made elsewhere until the control leaves the page. */
-function follow(node: HTMLElement, paint: (value: Appearance) => void) {
+/** Keeps a control in step with changes made elsewhere until the control leaves the page (unless persistent). */
+function follow(node: HTMLElement, paint: (value: Appearance) => void, persistent = false) {
   paint(appearance())
   const stop = onAppearanceChange((value) => {
-    if (!node.isConnected) { stop(); return }
+    if (!persistent && !node.isConnected) { stop(); return }
     paint(value)
   })
 }
 
 function radioGroup<T extends string>(
   label: string, className: string, values: readonly T[], content: (value: T) => Node[], select: (value: T) => void,
-  current: (value: Appearance) => T,
+  current: (value: Appearance) => T, persistent = false,
 ) {
   const group = element('div', className)
   group.setAttribute('role', 'radiogroup')
@@ -61,7 +61,7 @@ function radioGroup<T extends string>(
     group.append(item)
     return input
   })
-  follow(group, (value) => { for (const input of inputs) input.checked = input.value === current(value) })
+  follow(group, (value) => { for (const input of inputs) input.checked = input.value === current(value) }, persistent)
   return group
 }
 
@@ -69,7 +69,7 @@ function swatch(theme: Theme) {
   return element('span', `theme-swatch theme-swatch-${theme}`)
 }
 
-function sizeControls(withReset: boolean) {
+function sizeControls(withReset: boolean, persistent = false) {
   const row = element('div', 'size-controls')
   const smaller = button('', 'button button-quiet button-small size-step')
   smaller.append(element('span', 'size-glyph size-glyph-small', 'Aa'), element('span', 'size-sign', '−'))
@@ -97,7 +97,7 @@ function sizeControls(withReset: boolean) {
     smaller.disabled = size <= minSize
     larger.disabled = size >= maxSize
     if (reset) reset.disabled = current.size === null
-  })
+  }, persistent)
   return row
 }
 
@@ -207,45 +207,59 @@ function dictionaryControls(): HTMLElement[] {
   return [box]
 }
 
-/** The appearance section of the settings dialog. */
+/** The appearance section of the settings page, organized into clean subsections. */
 export function mountAppearanceSettings(section: HTMLElement) {
   const theme = radioGroup(t('appearance.theme'), 'settings-options theme-options', themes,
-    (value) => [swatch(value), element('span', '', themeLabel(value))], (value) => updateAppearance({ theme: value }), (value) => value.theme)
+    (value) => [swatch(value), element('span', '', themeLabel(value))], (value) => updateAppearance({ theme: value }), (value) => value.theme, true)
   const latin = radioGroup(t('appearance.latinFont'), 'settings-options font-options', latinFonts,
     (value) => [element('span', `font-name font-${value}`, latinLabel(value)), element('span', `font-sample font-${value}`, t('appearance.latinSample'))],
-    (value) => updateAppearance({ latin: value }), (value) => value.latin)
+    (value) => updateAppearance({ latin: value }), (value) => value.latin, true)
   const cjk = radioGroup(t('appearance.cjkFont'), 'settings-options font-options', cjkFonts,
     (value) => [
       element('span', `font-name font-${value}`, cjkLabel(value)),
       element('span', `font-sample font-${value}`, value === 'auto' ? t('appearance.cjkAutoHint') : t('appearance.cjkSample')),
     ],
-    (value) => updateAppearance({ cjk: value }), (value) => value.cjk)
-  section.append(
+    (value) => updateAppearance({ cjk: value }), (value) => value.cjk, true)
+
+  const themeGroup = element('div', 'settings-subgroup')
+  themeGroup.append(
+    element('h3', 'settings-group-title', t('settings.appearanceGroupTheme')),
     heading(t('appearance.theme')), theme,
     heading(t('appearance.latinFont')), latin,
     heading(t('appearance.cjkFont')), cjk,
-    heading(t('appearance.textSize')), sizeControls(true),
+  )
+
+  const typographyGroup = element('div', 'settings-subgroup')
+  typographyGroup.append(
+    element('h3', 'settings-group-title', t('settings.appearanceGroupTypography')),
+    heading(t('appearance.textSize')), sizeControls(true, true),
     heading(t('appearance.lineHeight')),
     radioGroup(t('appearance.lineHeight'), 'settings-options choice-options', lineHeights,
-      (value) => [element('span', '', lineHeightLabel(value))], (value) => updateAppearance({ lineHeight: value }), (value) => value.lineHeight),
+      (value) => [element('span', '', lineHeightLabel(value))], (value) => updateAppearance({ lineHeight: value }), (value) => value.lineHeight, true),
     heading(t('appearance.paragraphSpacing')),
     radioGroup(t('appearance.paragraphSpacing'), 'settings-options choice-options', paragraphSpacings,
-      (value) => [element('span', '', paragraphLabel(value))], (value) => updateAppearance({ paragraph: value }), (value) => value.paragraph),
+      (value) => [element('span', '', paragraphLabel(value))], (value) => updateAppearance({ paragraph: value }), (value) => value.paragraph, true),
     heading(t('appearance.indent')),
     radioGroup(t('appearance.indent'), 'settings-options', switches,
       (value) => [element('span', '', value === 'on' ? t('appearance.indentOn') : t('appearance.indentOff'))],
-      (value) => updateAppearance({ indent: value === 'on' }), (value) => value.indent ? 'on' : 'off'),
+      (value) => updateAppearance({ indent: value === 'on' }), (value) => value.indent ? 'on' : 'off', true),
     heading(t('appearance.textWidth')),
     radioGroup(t('appearance.textWidth'), 'settings-options choice-options', textWidths,
-      (value) => [element('span', '', widthLabel(value))], (value) => updateAppearance({ width: value }), (value) => value.width),
+      (value) => [element('span', '', widthLabel(value))], (value) => updateAppearance({ width: value }), (value) => value.width, true),
+  )
+
+  const spellingGroup = element('div', 'settings-subgroup')
+  spellingGroup.append(
+    element('h3', 'settings-group-title', t('settings.appearanceGroupSpelling')),
     heading(t('appearance.spellcheck')),
     radioGroup(t('appearance.spellcheck'), 'settings-options', switches,
       (value) => [element('span', '', value === 'on' ? t('appearance.on') : t('appearance.off'))],
-      (value) => updateAppearance({ spellcheck: value === 'on' }), (value) => value.spellcheck ? 'on' : 'off'),
+      (value) => updateAppearance({ spellcheck: value === 'on' }), (value) => value.spellcheck ? 'on' : 'off', true),
     element('p', 'dialog-help', t('appearance.spellcheckHint')),
     ...dictionaryControls(),
-    element('p', 'dialog-help', t('appearance.hint')),
   )
+
+  section.append(themeGroup, typographyGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
 }
 
 /** The "Aa" button in the reading and writing toolbars, with a small appearance panel. */

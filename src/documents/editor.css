@@ -122,8 +122,8 @@
 
 @media (min-width: 780px) {
   /* The chapter list and the ideas stay beside the text while it scrolls. */
-  .edition-side { position: sticky; top: 14px; max-height: calc(100svh - 28px); overflow: auto; padding: 2px 6px 6px 2px; margin: -2px -6px -6px -2px; scrollbar-width: thin; }
-  .desktop .edition-side { max-height: calc(100svh - 80px); }
+  .edition-side { position: sticky; top: 14px; max-height: calc(100svh - 78px); overflow: auto; padding: 2px 6px 6px 2px; margin: -2px -6px -6px -2px; scrollbar-width: thin; }
+  .desktop .edition-side { max-height: calc(100svh - 124px); }
 }
 
 @media (max-width: 779px) {

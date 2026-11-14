@@ -180,11 +180,11 @@ async function gotoReady(page, url = '/') {
 }
 
 async function openAiSettings(page) {
-  await page.getByRole('button', { name: '设置', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '设置' })
+  await page.getByRole('link', { name: '设置', exact: true }).click()
+  await page.getByRole('link', { name: 'AI 接入', exact: true }).click()
+  const dialog = page.locator('.settings-page')
   await expect(dialog).toBeVisible()
-  const section = dialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
-  await section.scrollIntoViewIfNeeded()
+  const section = dialog.getByRole('region', { name: 'AI 接入', exact: true })
   return { dialog, section }
 }
 
@@ -345,11 +345,12 @@ test('设置页 AI 权限管理、多 AI 隔离、指定范围、未授权泄露
     expect(disabledRead.json.error.code).toBe('client_disabled')
 
     // Mobile viewport check in AI settings panel
-    await dialog.getByRole('button', { name: '关闭' }).click()
+    await dialog.locator('.settings-back').click()
     await page.setViewportSize({ width: 390, height: 700 })
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('link', { name: '设置', exact: true }).click()
+    await page.getByRole('link', { name: 'AI 接入', exact: true }).click()
     await expect(dialog).toBeVisible()
-    expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
   } finally {
     await harness.cleanup()
   }
@@ -654,15 +655,16 @@ test('Update 变相删除全链路防护与备份恢复兼容性', async ({ page
 
     // 5. Real New_World .zip backup & restore compatibility test via Settings UI
     await page.goto('/')
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settingsDialog = page.getByRole('dialog', { name: '设置' })
-    const backupSection = settingsDialog.getByRole('region', { name: '备份', exact: true })
+    await page.getByRole('link', { name: '设置', exact: true }).click()
+    await page.getByRole('link', { name: '备份与恢复', exact: true }).click()
+    const settingsDialog = page.locator('.settings-page')
+    const backupSection = settingsDialog.getByRole('region', { name: '备份与恢复', exact: true })
     const downloadPromise = page.waitForEvent('download')
     await backupSection.getByRole('button', { name: '立即备份' }).click()
     const download = await downloadPromise
     const zipPath = path.join(harness.dir, 'backup.zip')
     await download.saveAs(zipPath)
-    await settingsDialog.getByRole('button', { name: '关闭' }).click()
+    await settingsDialog.locator('.settings-back').click()
 
     // Delete the work cleanly via confirmation so library is emptied
     const delWait = harness.api('DELETE', `/works/original/${workId}?wait=true`, token)
@@ -672,7 +674,8 @@ test('Update 变相删除全链路防护与备份恢复兼容性', async ({ page
     expect((await harness.api('GET', '/works', token)).json.data.works).toEqual([])
 
     // Restore from saved .zip via UI
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await page.getByRole('link', { name: '设置', exact: true }).click()
+    await page.getByRole('link', { name: '备份与恢复', exact: true }).click()
     const chooserPromise = page.waitForEvent('filechooser')
     await backupSection.getByRole('button', { name: '从备份恢复…' }).click()
     const chooser = await chooserPromise

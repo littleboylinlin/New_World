@@ -102,6 +102,9 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   totalCard.append(totalValue, element('span', 'stat-label', t('writing.totalLabel')))
   numbers.append(streakCard, totalCard)
 
+  const top = element('div', 'stats-top')
+  top.append(heading, numbers)
+
   const heatmap = element('div', 'heatmap')
   const body = element('div', 'heatmap-body')
   const weekdays = element('div', 'heatmap-weekdays')
@@ -130,9 +133,11 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   tooltip.hidden = true
 
   const hint = element('p', 'stats-hint', t('writing.emptyHint'))
+  const statsFooter = element('div', 'stats-footer')
+  statsFooter.append(hint, legend)
 
-  heatmap.append(body, legend, tooltip)
-  panel.append(heading, numbers, heatmap, hint)
+  heatmap.append(body, tooltip)
+  panel.append(top, heatmap, statsFooter)
   host.append(panel)
 
   const today = startOfDay(new Date())
