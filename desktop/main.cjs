@@ -9,6 +9,8 @@ const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
 const backups = require('./backup.cjs')
 const capture = require('./capture.cjs')
+const { createAiStore } = require('./ai-store.cjs')
+const { createAiBridge } = require('./ai-bridge.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
@@ -67,6 +69,48 @@ let desktopUpdater
 let languages
 let macInstaller
 let maintenanceStarted = false
+let aiStore
+let aiBridge
+let aiRendererReady = false
+const aiPendingDispatches = new Map()
+
+function fullAiState() {
+  if (!aiStore || !aiBridge) return null
+  return { ...aiStore.getPublicState(), bridge: aiBridge.getStatus() }
+}
+
+function trustedMainRenderer(event) {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents && trustedFrame(event))
+}
+
+function rejectPendingAiDispatches(reason) {
+  for (const [callId, entry] of Array.from(aiPendingDispatches.entries())) {
+    clearTimeout(entry.timer)
+    aiPendingDispatches.delete(callId)
+    entry.resolve({ ok: false, statusCode: 503, code: 'renderer_unavailable', message: reason })
+  }
+}
+
+function dispatchToRenderer(payload) {
+  if (!mainWindow || mainWindow.isDestroyed() || !aiRendererReady) {
+    return Promise.resolve({ ok: false, statusCode: 503, code: 'renderer_unavailable', message: 'New_World window is not ready.' })
+  }
+  const callId = require('node:crypto').randomUUID()
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      aiPendingDispatches.delete(callId)
+      resolve({ ok: false, statusCode: 504, code: 'dispatch_timeout', message: 'Renderer operation timed out.' })
+    }, 15_000)
+    aiPendingDispatches.set(callId, { resolve, timer })
+    try {
+      mainWindow.webContents.send('new-world:ai-dispatch', { callId, payload })
+    } catch {
+      clearTimeout(timer)
+      aiPendingDispatches.delete(callId)
+      resolve({ ok: false, statusCode: 503, code: 'renderer_unavailable', message: 'Failed to contact application window.' })
+    }
+  })
+}
 
 function languageNetworkFor(manifest, partition) {
   const network = session.fromPartition(partition)
@@ -82,7 +126,10 @@ function languageNetworkFor(manifest, partition) {
 }
 
 ipcMain.on('new-world:ready', (event) => {
-  if (trustedFrame(event) && event.sender === mainWindow?.webContents) flushCommands()
+  if (trustedFrame(event) && event.sender === mainWindow?.webContents) {
+    aiRendererReady = true
+    flushCommands()
+  }
   if (!trustedFrame(event) || !languages || maintenanceStarted) return
   maintenanceStarted = true
   const token = process.env.NEW_WORLD_UPDATE_TOKEN
@@ -632,8 +679,16 @@ function openWindow() {
   mainWindow.on('closed', () => {
     mainWindow = undefined
     closing = false
+    aiRendererReady = false
+    rejectPendingAiDispatches('Application window closed.')
     // A hidden quick note window must not keep the app running once the main window is gone.
     if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
+  })
+  contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) {
+      aiRendererReady = false
+      rejectPendingAiDispatches('Application window reloaded.')
+    }
   })
   if (process.platform !== 'darwin') {
     const reportMaximized = () => { if (!contents.isDestroyed()) contents.send('new-world:window-maximized', mainWindow.isMaximized()) }
@@ -665,15 +720,95 @@ ipcMain.on('new-world:close-result', (event, saved) => {
   if (saved === true) mainWindow.close()
 })
 
+ipcMain.on('new-world:ai-dispatch-result', (event, data) => {
+  if (!trustedMainRenderer(event) || !data || typeof data.callId !== 'string') return
+  const entry = aiPendingDispatches.get(data.callId)
+  if (!entry) return
+  clearTimeout(entry.timer)
+  aiPendingDispatches.delete(data.callId)
+  entry.resolve(data.result)
+})
+
+ipcMain.handle('new-world:ai-state', (event) => {
+  if (!trustedMainRenderer(event)) return null
+  return fullAiState()
+})
+
+ipcMain.handle('new-world:ai-set-enabled', async (event, enabled) => {
+  if (!trustedMainRenderer(event) || !aiStore || !aiBridge) return null
+  aiStore.setEnabled(enabled === true)
+  await aiBridge.sync()
+  return fullAiState()
+})
+
+ipcMain.handle('new-world:ai-set-port', async (event, port) => {
+  if (!trustedMainRenderer(event) || !aiStore || !aiBridge) return null
+  aiStore.setPort(port)
+  await aiBridge.sync()
+  return fullAiState()
+})
+
+ipcMain.handle('new-world:ai-create-client', (event, input) => {
+  if (!trustedMainRenderer(event) || !aiStore) return null
+  const created = aiStore.createClient(input)
+  return { state: fullAiState(), client: created.client, token: created.token }
+})
+
+ipcMain.handle('new-world:ai-update-client', (event, id, patch) => {
+  if (!trustedMainRenderer(event) || !aiStore || !aiBridge) return null
+  const updated = aiStore.updateClient(id, patch)
+  if (!updated.client.enabled || !updated.client.permissions.delete) {
+    aiBridge.cancelClientPending(id, 'client_updated')
+  }
+  return { state: fullAiState(), client: updated.client }
+})
+
+ipcMain.handle('new-world:ai-rotate-token', (event, id) => {
+  if (!trustedMainRenderer(event) || !aiStore) return null
+  const rotated = aiStore.rotateClientToken(id)
+  return { state: fullAiState(), client: rotated.client, token: rotated.token }
+})
+
+ipcMain.handle('new-world:ai-delete-client', (event, id) => {
+  if (!trustedMainRenderer(event) || !aiStore || !aiBridge) return null
+  aiBridge.cancelClientPending(id, 'client_deleted')
+  aiStore.deleteClient(id)
+  return fullAiState()
+})
+
+ipcMain.handle('new-world:ai-list-audit', (event, limit) => {
+  if (!trustedMainRenderer(event) || !aiStore) return []
+  return aiStore.listAudit(limit)
+})
+
+ipcMain.handle('new-world:ai-clear-audit', (event) => {
+  if (!trustedMainRenderer(event) || !aiStore) return []
+  return aiStore.clearAudit()
+})
+
+ipcMain.handle('new-world:ai-confirm-decision', async (event, data) => {
+  if (!trustedMainRenderer(event) || !aiBridge || !data) return { ok: false, status: 'unauthorized' }
+  return aiBridge.handleConfirmDecision({
+    confirmationId: data.confirmationId,
+    approved: data.approved === true,
+  })
+})
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   // Starting New World again shows the open window; the taskbar's quick note task opens the note window.
   app.on('second-instance', (_event, argv) => { if (argv.includes(quickNoteFlag)) openCapture(); else showWindow() })
   app.on('activate', showWindow)
-  app.on('before-quit', () => { forceQuit = true })
+  app.on('before-quit', () => {
+    forceQuit = true
+    void aiBridge?.stop()
+  })
   app.on('window-all-closed', () => app.quit())
-  app.on('will-quit', () => globalShortcut.unregisterAll())
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+    void aiBridge?.stop()
+  })
   app.whenReady().then(async () => {
     nativeTheme.on('updated', () => {
       if (theme === 'system' && mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
@@ -738,6 +873,27 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     protocol.handle('new-world', serveApp)
+    aiStore = createAiStore(appData)
+    const testConfirmTimeout = !app.isPackaged && Number(process.env.NEW_WORLD_AI_TEST_TIMEOUT_MS) >= 500
+      ? Number(process.env.NEW_WORLD_AI_TEST_TIMEOUT_MS)
+      : undefined
+    aiBridge = createAiBridge({
+      store: aiStore,
+      dispatchOperation: dispatchToRenderer,
+      onAttentionNeeded: () => showWindow(),
+      onPromptConfirmation: (request) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('new-world:ai-confirm-open', request)
+        }
+      },
+      onCloseConfirmation: (detail) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('new-world:ai-confirm-close', detail)
+        }
+      },
+      ...(testConfirmTimeout ? { confirmTimeoutMs: testConfirmTimeout } : {}),
+    })
+    await aiBridge.sync()
     refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
     registerCapture()

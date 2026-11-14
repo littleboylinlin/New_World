@@ -11,6 +11,7 @@ import { openCaptureDialog } from './idea-capture'
 import { addIdea, lastWork, recentWorks, rememberWork } from './ideas'
 import { showNotice } from './undo'
 import { mountSettingsView } from './settings-view'
+import { mountAiDesktopHost } from './ai/desktop-host'
 import { changeView, pop } from './motion'
 import { libraries, notice } from './ui'
 import { mountWindowControls } from './window-controls'
@@ -114,6 +115,7 @@ if (window.newWorldDesktop) {
   window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)
 }
 mountSettingsView(saveBeforeLeaving)
+mountAiDesktopHost()
 window.newWorldDesktop?.reportReady?.()
 startAutomaticBackups()
 

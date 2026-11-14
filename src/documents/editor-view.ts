@@ -18,10 +18,41 @@ import { countText, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './model'
 import { checkDocument, documentExtensions } from './schema'
 import { replaceMatches, revealMatch, SearchHighlight, searchState, setSearch } from './search'
-import { changeChapters, chapterWordCounts, createEdition, deleteEdition, readBundle, readChapter, saveChapter } from './store'
+import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
 import './editor.css'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
+
+interface ActiveEditionSession {
+  library: string
+  bookId: string
+  editionId: string
+  getChapterId: () => string
+  isDirty: () => boolean
+  reload: () => Promise<void>
+}
+
+const activeSessions = new Set<ActiveEditionSession>()
+
+export function hasDirtyOpenChapter(library: string, bookId: string, editionId?: string, chapterId?: string): boolean {
+  for (const session of activeSessions) {
+    if (session.library !== library || session.bookId !== bookId) continue
+    if (editionId && session.editionId !== editionId) continue
+    if (chapterId && session.getChapterId() !== chapterId) continue
+    if (session.isDirty()) return true
+  }
+  return false
+}
+
+export async function syncOpenEditionFromExternal(library: string, bookId: string, editionId?: string): Promise<void> {
+  for (const session of Array.from(activeSessions)) {
+    if (session.library !== library || session.bookId !== bookId) continue
+    if (editionId && session.editionId !== editionId) continue
+    if (!session.isDirty()) {
+      await session.reload()
+    }
+  }
+}
 
 export async function renderEdition(
   host: HTMLElement, root: HTMLElement, book: Book, initial: Edition, signal: AbortSignal, registerLeave: RegisterLeave,
@@ -595,7 +626,29 @@ export async function renderEdition(
   document.addEventListener('visibilitychange', () => { if (document.hidden) void flush() }, { signal })
   window.addEventListener('pagehide', () => { void flush() }, { signal })
   const stopFollowing = onAppearanceChange((value) => { paper.spellcheck = value.spellcheck })
+  const session: ActiveEditionSession = {
+    library: edition.library,
+    bookId: edition.bookId,
+    editionId: edition.id,
+    getChapterId: () => chapter.id,
+    isDirty: () => change !== saved || Boolean(editor?.view.composing),
+    reload: async () => {
+      if (signal.aborted || change !== saved || editor?.view.composing) return
+      const currentEditions = await listEditions(edition.library, edition.bookId)
+      const latest = currentEditions.find((item) => item.id === edition.id)
+      if (!latest || signal.aborted) return
+      edition = latest
+      const targetId = latest.chapters.some((item) => item.id === chapter.id) ? chapter.id : latest.chapters[0]?.id
+      if (!targetId) return
+      const next = await readChapter(latest, targetId)
+      if (signal.aborted || change !== saved || editor?.view.composing) return
+      words = await chapterWordCounts(latest)
+      mountChapter(next)
+    },
+  }
+  activeSessions.add(session)
   signal.addEventListener('abort', () => {
+    activeSessions.delete(session)
     stopFollowing()
     setFocus(false)
     window.clearTimeout(timer)

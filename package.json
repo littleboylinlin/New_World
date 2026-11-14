@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "desktop": "npm run build && electron .",
     "build:windows": "npm run build && node desktop/build-windows.mjs",
-    "test": "npm run build && playwright test",
+    "test": "npm run build && node --test tests/unit/ai-bridge-unit.mjs && playwright test",
     "test:desktop": "playwright test --config desktop/playwright.config.mjs",
     "predev": "node scripts/build-language-packs.mjs",
     "build:macos": "npm run build && node desktop/build-macos.mjs",

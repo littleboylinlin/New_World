@@ -121,7 +121,7 @@ export async function readBundle(key: EditionKey): Promise<EditionBundle> {
 }
 
 type ChapterChange = { type: 'add'; title: string } | { type: 'rename'; id: string; title: string }
-  | { type: 'move'; id: string; offset: -1 | 1 } | { type: 'delete'; id: string }
+  | { type: 'move'; id: string; offset: -1 | 1 } | { type: 'reorder'; order: string[] } | { type: 'delete'; id: string }
 
 export async function chapterWordCounts(key: EditionKey) {
   const db = await openDatabase()
@@ -153,6 +153,22 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
     if (change.type === 'add') {
       if (chapters.length >= maxChapters) throw new Error(t('store.eachEditableVersionCanContainUpToChapters', [maxChapters]))
       selected = append(change.title)
+    } else if (change.type === 'reorder') {
+      if (change.order.length !== chapters.length) {
+        throw new Error('Invalid chapter reorder: chapter count mismatch.')
+      }
+      const seen = new Set<string>()
+      const byId = new Map(chapters.map((chapter) => [chapter.id, chapter]))
+      const reordered: typeof chapters = []
+      for (const id of change.order) {
+        if (seen.has(id)) throw new Error('Invalid chapter reorder: duplicate chapter id.')
+        const found = byId.get(id)
+        if (!found) throw new Error('Invalid chapter reorder: unknown chapter id.')
+        seen.add(id)
+        reordered.push(found)
+      }
+      chapters.splice(0, chapters.length, ...reordered)
+      selected = chapters[0]?.id ?? ''
     } else {
       const index = chapters.findIndex((chapter) => chapter.id === change.id)
       if (index < 0) throw new Error(t('store.thisChapterHasBeenRemoved'))

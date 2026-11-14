@@ -305,3 +305,65 @@ test('Mac 新版进程启动失败后原子恢复旧应用，保留书库并清�
     try { await expect((await app.firstWindow()).getByRole('heading', { name: '我的小说书库' })).toBeVisible() } finally { await stop(app) }
   } finally { if (restarted) { try { process.kill(restarted, 'SIGKILL') } catch {} } }
 })
+
+test('AI 接入与权限：macOS 桌面端可启用本地接口，创建作品并在人工二次确认后才允许删除', async () => {
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settingsDialog = page.getByRole('dialog', { name: '设置' })
+    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
+    await section.scrollIntoViewIfNeeded()
+
+    await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
+    await section.locator('input[data-ai-global-enable="true"]').check()
+    await expect(section.locator('.ai-badge').first()).toContainText('本地监听 127.0.0.1:')
+    const endpointText = await section.locator('.ai-endpoint-line').innerText()
+    const portMatch = endpointText.match(/http:\/\/127\.0\.0\.1:(\d+)\/v1/)
+    expect(portMatch).toBeTruthy()
+    const baseUrl = `http://127.0.0.1:${portMatch[1]}/v1`
+
+    await section.getByLabel('AI 配置名称').fill('MacDesktopAgent')
+    await section.getByRole('button', { name: '添加 AI 配置' }).click()
+    await expect(section.locator('.ai-token-banner')).toBeVisible()
+    const token = (await section.locator('.ai-token-value').innerText()).trim()
+    expect(token.startsWith('nw_ai_')).toBe(true)
+    await section.getByRole('button', { name: '我已保存' }).click()
+
+    const card = section.locator('.ai-client-card').filter({ hasText: 'MacDesktopAgent' })
+    for (const perm of ['create', 'read', 'update', 'delete']) {
+      await card.locator(`input[data-ai-perm="${perm}"]`).check()
+    }
+    await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
+    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+    const createRes = await fetch(`${baseUrl}/works`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        library: 'original',
+        title: 'macOS AI 联调作品',
+        initialChapters: [{ title: '第一章', format: 'text', content: 'macOS 主进程本地调用写入的正文。' }],
+      }),
+    })
+    expect(createRes.status).toBe(201)
+    const createdJson = await createRes.json()
+    const workId = createdJson.data.work.id
+
+    const confirmDialog = page.getByRole('dialog', { name: '确认 AI 请求的操作' })
+    const delPromise = fetch(`${baseUrl}/works/original/${workId}?wait=true`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    await expect(confirmDialog).toBeVisible()
+    await expect(confirmDialog).toContainText('macOS AI 联调作品')
+    await confirmDialog.getByRole('button', { name: '本人确认执行' }).click()
+    expect((await delPromise).status).toBe(200)
+
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await section.scrollIntoViewIfNeeded()
+    await section.locator('.ai-client-card').filter({ hasText: 'MacDesktopAgent' }).getByRole('button', { name: '撤销配置' }).click()
+    await section.locator('input[data-ai-global-enable="true"]').uncheck()
+    await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
+  } finally { await stop(app) }
+})
