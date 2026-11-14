@@ -2,7 +2,7 @@ import { t } from './i18n'
 import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
-import { clearExpiredTrash, countTrash } from './trash'
+import { countTrash } from './trash'
 import { renderTrash } from './trash-view'
 import { renderArchive } from './archive-view'
 import { backUpToFolder, restoredNotice, startAutomaticBackups } from './backup-view'
@@ -109,7 +109,7 @@ async function refreshTrashCount() {
   }
 }
 libraryChanges.addEventListener('update', () => { void refreshTrashCount() })
-void clearExpiredTrash().catch(() => {}).then(refreshTrashCount)
+void refreshTrashCount()
 const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
 if (window.newWorldDesktop) {
   window.newWorldDesktop.onCloseRequested(saveBeforeLeaving)

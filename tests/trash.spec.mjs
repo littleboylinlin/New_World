@@ -123,7 +123,7 @@ test('编辑版本和续写项目的原文删除后可以撤销', async ({ page 
   await expect(page.getByRole('article')).toHaveText('旧港的原文。')
 })
 
-test('回收站在 30 天后清理过期内容', async ({ page }) => {
+test('回收站永久保留超过 30 天的旧内容与历史记录格式，直到用户手动恢复或二次确认彻底删除', async ({ page }) => {
   await page.goto('/#/trash')
   await expect(page.getByText('回收站是空的')).toBeVisible()
   await page.evaluate(async () => {
@@ -134,7 +134,7 @@ test('回收站在 30 天后清理过期内容', async ({ page }) => {
     })
     const day = 24 * 60 * 60 * 1000
     const tx = db.transaction('trash', 'readwrite')
-    for (const [title, age] of [['过期的稿子', 31], ['还能恢复的稿子', 29]]) {
+    for (const [title, age] of [['旧版百日旧稿', 120], ['满月旧稿', 31]]) {
       const id = crypto.randomUUID()
       tx.objectStore('trash').add({
         id: crypto.randomUUID(), kind: 'book', library: 'original', bookId: id, title, deletedAt: Date.now() - age * day,
@@ -145,7 +145,24 @@ test('回收站在 30 天后清理过期内容', async ({ page }) => {
     db.close()
   })
   await page.reload()
-  await expect(trashRow(page, '还能恢复的稿子')).toContainText('还剩 1 天')
-  await expect(trashRow(page, '过期的稿子')).toHaveCount(0)
+  await expect(page.locator('#trash-count')).toHaveText('2')
+  await expect(page.getByText('会持续保留在这里，可随时恢复，直到你手动彻底删除。')).toBeVisible()
+  await expect(trashRow(page, '旧版百日旧稿')).toContainText('删除')
+  await expect(trashRow(page, '旧版百日旧稿')).not.toContainText('还剩')
+  await expect(trashRow(page, '满月旧稿')).toContainText('删除')
+  await expect(trashRow(page, '满月旧稿')).not.toContainText('还剩')
+
+  await trashRow(page, '旧版百日旧稿').getByRole('button', { name: '恢复' }).click()
   await expect(page.locator('#trash-count')).toHaveText('1')
+
+  await trashRow(page, '满月旧稿').getByRole('button', { name: '彻底删除' }).click()
+  await page.getByRole('button', { name: '取消' }).click()
+  await expect(trashRow(page, '满月旧稿')).toHaveCount(1)
+  await trashRow(page, '满月旧稿').getByRole('button', { name: '彻底删除' }).click()
+  await page.getByRole('button', { name: '彻底删除' }).last().click()
+  await expect(page.getByText('回收站是空的')).toBeVisible()
+  await expect(page.locator('#trash-count')).toHaveText('')
+
+  await page.goto('/#/original')
+  await expect(page.getByRole('link', { name: '查看 旧版百日旧稿', exact: true })).toBeVisible()
 })

@@ -1,14 +1,25 @@
 import assert from 'node:assert/strict'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, it } from 'node:test'
+import { maxInstallerBytes, readMacInstaller, readWindowsInstaller } from '../../desktop/release.mjs'
 
 const require = createRequire(import.meta.url)
 const { createAiStore } = require('../../desktop/ai-store.cjs')
 const { createAiBridge } = require('../../desktop/ai-bridge.cjs')
+const {
+  isTrustedOriginFrame,
+  isTrustedMainRenderer,
+  isTrustedCaptureRenderer,
+  isTrustedAppRenderer,
+  shouldCancelClientConfirmations,
+} = require('../../desktop/ipc-guard.cjs')
+const { createWindowsUpdater, UpdateError } = require('../../desktop/windows-update.cjs')
+const { createMacUpdater, MacUpdateError } = require('../../desktop/macos-update.cjs')
 
 const tempDirs = []
 
@@ -482,5 +493,237 @@ describe('desktop/ai-bridge', () => {
     } finally {
       await bridge.stop()
     }
+  })
+
+  it('blocks idea/blob revision routes and rejects confirmation when client scope narrows before approval', async () => {
+    const dir = makeTempDir()
+    const store = createAiStore(dir)
+    store.setEnabled(true)
+    const workA = 'original:book-a'
+    const workB = 'original:book-b'
+    const client = store.createClient({
+      name: 'ScopeShrinkAgent',
+      enabled: true,
+      permissions: { read: true, create: false, update: true, delete: true },
+      scope: { mode: 'selected', workIds: [workA, workB] },
+    })
+
+    let promptedConfirmId = null
+    const bridge = createAiBridge({
+      store,
+      bindPort: 0,
+      onPromptConfirmation: (req) => {
+        promptedConfirmId = req.confirmationId
+      },
+      dispatchOperation: async ({ action, params, phase }) => {
+        if (phase === 'prepare-delete' && action === 'works.delete') {
+          return {
+            ok: false,
+            requiresConfirmation: true,
+            confirmedAction: 'works.delete',
+            fingerprint: 'fp-book-a',
+            targetSummary: 'Book A',
+            impact: { kind: 'delete_work', library: params.library, bookId: params.bookId, title: 'Book A', summary: 'Delete Book A' },
+          }
+        }
+        return { ok: true, statusCode: 200, data: { unexpected: true } }
+      },
+    })
+
+    try {
+      const { port } = await bridge.sync()
+      const auth = { Authorization: `Bearer ${client.token}`, 'Content-Type': 'application/json' }
+
+      // 1. Additional v0.15.2 recovery isolation routes are unconditionally forbidden
+      for (const [method, urlPath] of [
+        ['GET', '/v1/ideas/idea-1/revisions'],
+        ['POST', '/v1/ideas/idea-1/history'],
+        ['GET', '/v1/idea-revisions'],
+        ['DELETE', '/v1/idea-revisions/rev-1'],
+        ['GET', '/v1/revision-blobs'],
+        ['DELETE', '/v1/revision-blobs/hash-1'],
+      ]) {
+        const res = await rawHttpRequest({ port, method, urlPath, headers: auth })
+        assert.equal(res.status, 403, `${method} ${urlPath} -> ${res.status}`)
+        assert.equal(res.body.error.code, 'recovery_data_forbidden')
+      }
+
+      // 2. Narrowing client scope to exclude target book invalidates pending confirmation
+      const pendingPromise = rawHttpRequest({
+        port,
+        method: 'DELETE',
+        urlPath: '/v1/works/original/book-a?wait=true',
+        headers: auth,
+      })
+      for (let i = 0; i < 40 && !promptedConfirmId; i++) {
+        await new Promise((r) => setTimeout(r, 15))
+      }
+      assert.ok(promptedConfirmId, 'Expected confirmation prompt to be queued')
+
+      store.updateClient(client.client.id, {
+        scope: { mode: 'selected', workIds: [workB] },
+      })
+
+      const decided = await bridge.handleConfirmDecision({
+        confirmationId: promptedConfirmId,
+        approved: true,
+      })
+      assert.equal(decided.ok, false)
+      assert.equal(decided.code, 'scope_revoked')
+
+      const waitRes = await pendingPromise
+      assert.equal(waitRes.status, 403)
+      assert.equal(waitRes.body.error.code, 'scope_revoked')
+
+      const reasons = store.listAudit(20).map((item) => item.reason)
+      assert.equal(reasons.includes('scope_revoked'), true)
+    } finally {
+      await bridge.stop()
+    }
+  })
+})
+
+describe('desktop/ipc-guard', () => {
+  it('separates main renderer from capture renderer and rejects subframes/untrusted origins', () => {
+    const appUrl = 'http://127.0.0.1:45123/'
+    const mainContents = { id: 1, mainFrame: { url: `${appUrl}#/settings` } }
+    const captureContents = { id: 2, mainFrame: { url: `${appUrl}#/capture` } }
+    const subframe = { url: `${appUrl}#/settings` }
+    const mainWindow = { webContents: mainContents, isDestroyed: () => false }
+    const captureWindow = { webContents: captureContents, isDestroyed: () => false }
+
+    const mainEvent = { sender: mainContents, senderFrame: mainContents.mainFrame }
+    const captureEvent = { sender: captureContents, senderFrame: captureContents.mainFrame }
+    const subframeEvent = { sender: mainContents, senderFrame: subframe }
+    const evilEvent = { sender: { mainFrame: { url: 'https://evil.example/' } }, senderFrame: null }
+    evilEvent.senderFrame = evilEvent.sender.mainFrame
+
+    assert.equal(isTrustedOriginFrame(mainEvent, appUrl), true)
+    assert.equal(isTrustedOriginFrame(subframeEvent, appUrl), false)
+    assert.equal(isTrustedOriginFrame(evilEvent, appUrl), false)
+
+    assert.equal(isTrustedMainRenderer(mainEvent, { appUrl, mainWindow }), true)
+    assert.equal(isTrustedMainRenderer(captureEvent, { appUrl, mainWindow }), false)
+    assert.equal(isTrustedMainRenderer(subframeEvent, { appUrl, mainWindow }), false)
+    assert.equal(isTrustedMainRenderer(mainEvent, { appUrl, mainWindow: { webContents: mainContents, isDestroyed: () => true } }), false)
+
+    assert.equal(isTrustedCaptureRenderer(captureEvent, { appUrl, captureWindow }), true)
+    assert.equal(isTrustedCaptureRenderer(mainEvent, { appUrl, captureWindow }), false)
+
+    assert.equal(isTrustedAppRenderer(mainEvent, { appUrl, mainWindow, captureWindow }), true)
+    assert.equal(isTrustedAppRenderer(captureEvent, { appUrl, mainWindow, captureWindow }), true)
+    assert.equal(isTrustedAppRenderer(evilEvent, { appUrl, mainWindow, captureWindow }), false)
+  })
+
+  it('detects confirmation cancellation on disable, delete revocation, or scope narrowing', () => {
+    const base = {
+      enabled: true,
+      permissions: { read: true, create: false, update: true, delete: true },
+      scope: { mode: 'selected', workIds: ['original:b1', 'original:b2'] },
+    }
+    assert.equal(shouldCancelClientConfirmations(base, { ...base, enabled: false }), true)
+    assert.equal(shouldCancelClientConfirmations(base, { ...base, permissions: { ...base.permissions, delete: false } }), true)
+    assert.equal(shouldCancelClientConfirmations(base, { ...base, scope: { mode: 'selected', workIds: ['original:b1'] } }), true)
+    assert.equal(shouldCancelClientConfirmations({ ...base, scope: { mode: 'all', workIds: [] } }, base), true)
+    assert.equal(shouldCancelClientConfirmations(base, { ...base, scope: { mode: 'selected', workIds: ['original:b1', 'original:b2', 'original:b3'] } }), false)
+  })
+})
+
+describe('desktop/release & updaters', () => {
+  it('enforces maxInstallerBytes bound in release asset parsing', () => {
+    assert.equal(maxInstallerBytes, 1024 * 1024 * 1024)
+    const tag = 'v0.99.0'
+    const digest = 'sha256:' + 'a'.repeat(64)
+    const winName = 'New-World-Setup-0.99.0-x64.exe'
+    const macName = 'New-World-0.99.0-macos-arm64.dmg'
+
+    assert.equal(readWindowsInstaller(tag, [{
+      name: winName,
+      state: 'uploaded',
+      browser_download_url: `https://github.com/littleboylinlin/New_World/releases/download/${tag}/${winName}`,
+      size: maxInstallerBytes + 1,
+      digest,
+    }]), undefined)
+
+    assert.equal(readMacInstaller(tag, [{
+      name: macName,
+      state: 'uploaded',
+      browser_download_url: `https://github.com/littleboylinlin/New_World/releases/download/${tag}/${macName}`,
+      size: maxInstallerBytes + 1,
+      digest,
+    }], 'arm64'), undefined)
+  })
+
+  it('rejects installers when HTTP Content-Length mismatches declared asset size without leaving cache files', async () => {
+    const winPayload = Buffer.from('fake-windows-installer')
+    const macPayload = Buffer.from('fake-mac-installer')
+    const winSha = crypto.createHash('sha256').update(winPayload).digest('hex')
+    const macSha = crypto.createHash('sha256').update(macPayload).digest('hex')
+    const tag = 'v0.99.0'
+    const winUrl = `https://github.com/littleboylinlin/New_World/releases/download/${tag}/New-World-Setup-0.99.0-x64.exe`
+    const macUrl = `https://github.com/littleboylinlin/New_World/releases/download/${tag}/New-World-0.99.0-macos-arm64.dmg`
+
+    const releaseJson = {
+      tag_name: tag,
+      draft: false,
+      prerelease: false,
+      assets: [
+        {
+          name: 'New-World-Setup-0.99.0-x64.exe',
+          state: 'uploaded',
+          browser_download_url: winUrl,
+          size: winPayload.byteLength,
+          digest: `sha256:${winSha}`,
+        },
+        {
+          name: 'New-World-0.99.0-macos-arm64.dmg',
+          state: 'uploaded',
+          browser_download_url: macUrl,
+          size: macPayload.byteLength,
+          digest: `sha256:${macSha}`,
+        },
+      ],
+    }
+
+    const fakeNetwork = (payload, declaredLength) => ({
+      webRequest: { onBeforeRequest: () => {} },
+      fetch: async (url) => {
+        if (url.endsWith(`/releases/tags/${tag}`)) {
+          return new Response(JSON.stringify(releaseJson), { status: 200, headers: { 'content-type': 'application/json' } })
+        }
+        return new Response(payload, {
+          status: 200,
+          headers: { 'content-length': String(declaredLength) },
+        })
+      },
+    })
+
+    const winCache = makeTempDir()
+    const installDir = makeTempDir()
+    fs.writeFileSync(path.join(installDir, 'Uninstall New World.exe'), 'uninstaller')
+    const winUpdater = createWindowsUpdater({
+      network: fakeNetwork(winPayload, winPayload.byteLength + 100),
+      cache: winCache,
+      installDir,
+      version: '0.15.1',
+    })
+    await assert.rejects(
+      winUpdater.download(tag, () => {}),
+      (err) => err instanceof UpdateError && err.message === 'windowsUpdate.theInstallerSizeOrSha256ChecksumDoes',
+    )
+    assert.deepEqual(fs.readdirSync(winCache), [])
+
+    const macCache = makeTempDir()
+    const macUpdater = await createMacUpdater({
+      network: fakeNetwork(macPayload, macPayload.byteLength + 50),
+      version: '0.15.1',
+      arch: 'arm64',
+      cache: macCache,
+    })
+    await assert.rejects(
+      macUpdater.download(tag, () => {}),
+      (err) => err instanceof MacUpdateError && err.message === 'windowsUpdate.theInstallerSizeOrSha256ChecksumDoes',
+    )
+    assert.deepEqual(fs.readdirSync(macCache), [])
   })
 })

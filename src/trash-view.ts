@@ -1,19 +1,16 @@
 import { locale, t } from './i18n'
 import { formDialog } from './dialogs'
 import { libraryChanges, storageError } from './library'
-import { emptyTrash, listTrash, restoreTrash, trashDays } from './trash'
+import { emptyTrash, listTrash, restoreTrash } from './trash'
 import type { TrashItem } from './trash'
 import { button, element, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
 import { trashKinds } from './undo'
 
-const day = 24 * 60 * 60 * 1000
-
 function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (message: string, error?: boolean) => void) {
   const row = element('li', 'book-row trash-row')
   const copy = element('div', 'book-copy')
   const details = element('div', 'file-details')
-  const left = Math.max(1, Math.ceil((entry.deletedAt + trashDays * day - Date.now()) / day))
   const deleted = new Date(entry.deletedAt).toLocaleString(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   const placeText = entry.kind === 'idea' && !entry.bookId
     ? t('ideas.unlinked')
@@ -21,7 +18,7 @@ function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (messa
   details.append(
     element('span', 'file-format', trashKinds[entry.kind]),
     element('span', 'filename', placeText),
-    element('span', 'file-size', t('trash.deletedDaySRemaining', [deleted, left])),
+    element('span', 'file-size', t('trash.deletedAt', [deleted])),
   )
   copy.append(element('strong', 'book-title', entry.title), details)
   const controls = element('div', 'book-controls')
@@ -59,7 +56,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
   const header = element('div', 'page-heading')
   const heading = element('div')
   heading.append(element('p', 'eyebrow', 'TRASH'), element('h1', '', t('trash.title')),
-    element('p', 'intro-copy', t('trash.deletedWorksSourcesEditableVersionsAndChaptersAre', [trashDays])))
+    element('p', 'intro-copy', t('trash.keptUntilDeletedPermanently')))
   const clear = button(t('trash.emptyTrash'), 'button button-quiet remove-button', 'trash')
   header.append(heading, clear)
   const message = element('div', 'version-message')

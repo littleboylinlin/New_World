@@ -53,6 +53,10 @@ async function createMacUpdater({ network, version, arch, cache, legacyDownloads
       try {
         const response = await request(installer.url, { redirect: 'follow', signal: controller.signal })
         if (!response.ok || !response.body) throw new MacUpdateError('windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour')
+        const declaredLength = response.headers?.get?.('content-length')
+        if (declaredLength !== null && declaredLength !== undefined && declaredLength !== '' && Number(declaredLength) !== installer.size) {
+          throw new MacUpdateError('windowsUpdate.theInstallerSizeOrSha256ChecksumDoes')
+        }
         timer.refresh()
         progress(0, installer.size)
         const count = new Transform({ transform(chunk, _encoding, done) {

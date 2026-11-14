@@ -145,12 +145,15 @@ function matchRoute(method, pathname) {
     return { action: 'self_confirm_attempt', permission: null, parts }
   }
 
-  // Trash, revision history, and backup recovery storage are strictly off-limits to AI clients.
+  // Trash, revision history (chapter & idea), and backup recovery storage are strictly off-limits to AI clients.
   if (
     parts[1] === 'trash'
     || parts[1] === 'revisions'
+    || parts[1] === 'revision-blobs'
+    || parts[1] === 'idea-revisions'
     || parts[1] === 'history'
     || parts[1] === 'backups'
+    || (parts[1] === 'ideas' && ['revisions', 'history'].includes(parts[3]))
     || (parts[1] === 'works' && (
       ['trash', 'revisions', 'history'].includes(parts[4])
       || ['revisions', 'history'].includes(parts[6])
@@ -537,12 +540,19 @@ function createAiBridge({
       return { ok: true, status: 'rejected' }
     }
 
-    // Re-verify global enablement, client enablement, and delete permission at exact approval moment.
+    // Re-verify global enablement, client enablement, delete permission, and work scope at exact approval moment.
     const globalState = store.getPublicState()
     const currentClient = store.getClientById(entry.clientId)
-    if (!globalState.enabled || !currentClient || !currentClient.enabled || !currentClient.permissions.delete) {
+    const targetBookId = entry.params?.bookId || entry.impact?.bookId
+    const scopeInvalid = !currentClient || currentClient.scope?.mode === 'none' || (
+      targetBookId
+      && currentClient.scope?.mode === 'selected'
+      && !(Array.isArray(currentClient.scope.workIds) && currentClient.scope.workIds.includes(targetBookId))
+    )
+    if (!globalState.enabled || !currentClient || !currentClient.enabled || !currentClient.permissions.delete || scopeInvalid) {
+      const reason = scopeInvalid && currentClient?.enabled && currentClient?.permissions?.delete ? 'scope_revoked' : 'permission_revoked'
       const done = finalizeConfirmation(confirmationId, 'rejected', {
-        error: { code: 'permission_revoked', message: 'AI access or delete permission was revoked before execution.' },
+        error: { code: reason, message: 'AI access, permission, or work scope was revoked before execution.' },
       })
       store.appendAudit({
         clientId: entry.clientId,
@@ -554,12 +564,12 @@ function createAiBridge({
         statusCode: 403,
         targetSummary: entry.targetSummary,
         confirmId: confirmationId,
-        reason: 'permission_revoked',
+        reason,
       })
       if (done) {
-        resolveWaiters(done.entry, 403, errorPayload('permission_revoked', 'Permission was revoked before execution.', { confirmationId }))
+        resolveWaiters(done.entry, 403, errorPayload(reason, 'Permission or scope was revoked before execution.', { confirmationId }))
       }
-      return { ok: false, status: 'rejected', code: 'permission_revoked' }
+      return { ok: false, status: 'rejected', code: reason }
     }
 
     if (entry.status !== 'pending') {

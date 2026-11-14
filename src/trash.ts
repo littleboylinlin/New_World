@@ -5,9 +5,6 @@ import { announceIdeas } from './ideas'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
 import type { Book, TrashEntry } from './library'
 
-export const trashDays = 30
-const lifetime = trashDays * 24 * 60 * 60 * 1000
-
 export interface TrashItem {
   entry: TrashEntry
   place: string
@@ -134,22 +131,4 @@ export async function emptyTrash(id?: string) {
   else tx.objectStore('trash').clear()
   await committed(tx)
   libraryChanges.dispatchEvent(new Event('update'))
-}
-
-export async function clearExpiredTrash(now = Date.now()) {
-  const db = await openDatabase()
-  const tx = db.transaction('trash', 'readwrite')
-  const request = tx.objectStore('trash').openCursor()
-  let cleared = 0
-  request.onsuccess = () => {
-    const cursor = request.result
-    if (!cursor) return
-    if (now - (cursor.value as TrashEntry).deletedAt > lifetime) {
-      cursor.delete()
-      cleared++
-    }
-    cursor.continue()
-  }
-  await committed(tx)
-  if (cleared) libraryChanges.dispatchEvent(new Event('update'))
 }

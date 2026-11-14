@@ -5,6 +5,7 @@ export const desktopReleaseList = releaseEndpoint + '?per_page=100'
 
 const stableTag = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 const cdnHosts = new Set(['release-assets.githubusercontent.com', 'objects.githubusercontent.com'])
+export const maxInstallerBytes = 1024 * 1024 * 1024
 
 export function isStableTag(tag) {
   return typeof tag === 'string' && tag.length <= 40 && tag.trim() === tag && stableTag.test(tag)
@@ -34,7 +35,7 @@ function readInstaller(tag, assets, platform, arch) {
   for (const asset of assets) {
     if (!asset || asset.name !== name || asset.state !== 'uploaded' || asset.browser_download_url !== url) continue
     const { size, digest } = asset
-    if (!Number.isSafeInteger(size) || size <= 0) continue
+    if (!Number.isSafeInteger(size) || size <= 0 || size > maxInstallerBytes) continue
     if (typeof digest !== 'string' || digest.length !== 71 || !/^sha256:[0-9a-f]{64}$/i.test(digest)) continue
     return { tag, name, url, size, sha256: digest.slice(7).toLowerCase() }
   }

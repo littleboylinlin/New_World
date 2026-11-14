@@ -1,18 +1,173 @@
 import { locale, t } from './i18n'
 import { captureForm } from './idea-capture'
-import { deleteIdea, listIdeas, saveIdea, setIdeaUsed } from './ideas'
+import { deleteIdea, listIdeaRevisionCounts, listIdeaRevisions, listIdeas, restoreIdeaRevision, saveIdea, setIdeaUsed } from './ideas'
 import type { Idea } from './ideas'
 import { libraryChanges, listBooks, storageError } from './library'
-import type { Book, LibraryId } from './library'
+import type { Book, IdeaRevision, LibraryId } from './library'
 import { openMenu } from './menu'
 import type { MenuItem } from './menu'
 import { stagger } from './motion'
 import { restoreTrash } from './trash'
 import { bookPath, button, element, icon, libraries, link, notice } from './ui'
-import { offerActionUndo } from './undo'
+import { offerActionUndo, showNotice } from './undo'
+import './documents/editor.css'
 
 function when(time: number) {
   return new Date(time).toLocaleString(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatRevisionTime(time: number) {
+  return new Date(time).toLocaleString(locale, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+function ideaRevisionSourceLabel(rev: IdeaRevision): string {
+  if (rev.source === 'user-restore') return t('revisions.sourceRestore')
+  return rev.clientName ? t('revisions.sourceAi', [rev.clientName]) : t('revisions.sourceAiGeneric')
+}
+
+async function showIdeaRevisionsDialog(idea: Idea, books: Book[]) {
+  const dialog = element('dialog', 'manage-dialog revision-dialog') as HTMLDialogElement
+  const titleId = `idea-revision-dialog-title-${crypto.randomUUID()}`
+  dialog.setAttribute('aria-labelledby', titleId)
+
+  const head = element('div', 'modal-head')
+  const heading = element('h2', '', t('revisions.ideaDialogTitle'))
+  heading.id = titleId
+  const closeIcon = button(t('common.close'), 'close')
+  closeIcon.setAttribute('aria-label', t('common.close'))
+  head.append(heading, closeIcon)
+
+  const hint = element('p', 'dialog-help', t('revisions.ideaHint'))
+  const errBox = element('p', 'notice notice-error')
+  errBox.setAttribute('role', 'alert')
+  errBox.hidden = true
+
+  const body = element('div', 'revision-layout')
+  const listCol = element('div', 'revision-list-col')
+  const listHeading = element('h3', 'revision-section-title', t('revisions.listLabel'))
+  const list = element('ul', 'revision-list')
+  list.setAttribute('aria-label', t('revisions.listLabel'))
+  listCol.append(listHeading, list)
+
+  const previewCol = element('div', 'revision-preview-col')
+  const previewHeading = element('h3', 'revision-section-title', t('revisions.previewLabel'))
+  const previewMeta = element('p', 'revision-preview-meta')
+  const previewPage = element('div', 'export-preview-page revision-preview-page')
+  const previewText = element('pre', 'export-plain revision-preview-text')
+  previewPage.append(previewText)
+  previewCol.append(previewHeading, previewMeta, previewPage)
+
+  body.append(listCol, previewCol)
+
+  const controls = element('div', 'dialog-controls')
+  const cancelBtn = button(t('common.close'), 'button button-quiet')
+  const restoreBtn = button('', 'button button-primary', 'undo')
+  const restoreLabel = element('span', '', t('revisions.restoreThis'))
+  restoreBtn.append(restoreLabel)
+  restoreBtn.disabled = true
+  controls.append(cancelBtn, restoreBtn)
+
+  dialog.append(head, hint, errBox, body, controls)
+  document.body.append(dialog)
+
+  const close = () => {
+    if (dialog.open) dialog.close()
+  }
+  dialog.addEventListener('close', () => dialog.remove(), { once: true })
+  closeIcon.addEventListener('click', close)
+  cancelBtn.addEventListener('click', close)
+
+  let revisions: IdeaRevision[] = []
+  let selectedId: string | null = null
+  let busy = false
+
+  function describeMeta(rev: IdeaRevision): string {
+    const book = rev.bookId ? books.find((item) => item.library === rev.library && item.id === rev.bookId) : undefined
+    const place = book ? book.title : rev.bookId ? t('ideas.workGone') : t('ideas.unlinked')
+    const used = rev.usedAt ? ` · ${t('ideas.used')}` : ''
+    return `${formatRevisionTime(rev.createdAt)} · ${ideaRevisionSourceLabel(rev)} · ${place}${used}`
+  }
+
+  function selectRevision(rev: IdeaRevision) {
+    selectedId = rev.id
+    for (const btn of list.querySelectorAll('button.revision-item')) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-rev-id') === rev.id))
+    }
+    previewMeta.textContent = describeMeta(rev)
+    previewText.textContent = rev.text
+    restoreBtn.disabled = busy
+  }
+
+  function renderList() {
+    list.replaceChildren()
+    if (!revisions.length) {
+      list.append(element('li', 'dialog-help revision-empty', t('revisions.ideaEmpty')))
+      previewMeta.textContent = ''
+      previewText.textContent = ''
+      restoreBtn.disabled = true
+      return
+    }
+    for (const rev of revisions) {
+      const li = element('li')
+      const itemBtn = button('', 'revision-item')
+      itemBtn.setAttribute('data-rev-id', rev.id)
+      itemBtn.setAttribute('aria-pressed', String(rev.id === selectedId))
+      const topRow = element('span', 'revision-item-top')
+      topRow.append(
+        element('span', 'revision-item-time', formatRevisionTime(rev.createdAt)),
+        element('span', 'settings-badge', ideaRevisionSourceLabel(rev)),
+      )
+      const snippet = Array.from(rev.text.replace(/\s+/g, ' ').trim()).slice(0, 32).join('')
+      const subRow = element('span', 'revision-item-meta', snippet)
+      itemBtn.append(topRow, subRow)
+      itemBtn.addEventListener('click', () => selectRevision(rev))
+      li.append(itemBtn)
+      list.append(li)
+    }
+    const active = revisions.find((item) => item.id === selectedId) ?? revisions[0]
+    if (active) selectRevision(active)
+  }
+
+  restoreBtn.addEventListener('click', () => {
+    if (busy || !selectedId) return
+    const targetId = selectedId
+    busy = true
+    errBox.hidden = true
+    restoreBtn.disabled = true
+    cancelBtn.disabled = true
+    restoreLabel.textContent = t('revisions.restoring')
+    void (async () => {
+      try {
+        await restoreIdeaRevision(idea.id, targetId)
+        close()
+        showNotice(t('revisions.ideaRestored'))
+      } catch (cause) {
+        errBox.textContent = storageError(cause)
+        errBox.hidden = false
+        busy = false
+        restoreLabel.textContent = t('revisions.restoreThis')
+        restoreBtn.disabled = !selectedId
+        cancelBtn.disabled = false
+      }
+    })()
+  })
+
+  dialog.showModal()
+
+  try {
+    revisions = await listIdeaRevisions(idea.id)
+    if (revisions.length) selectedId = revisions[0].id
+    renderList()
+  } catch (cause) {
+    errBox.textContent = storageError(cause)
+    errBox.hidden = false
+  }
 }
 
 /** Moves an idea to another work, or to none, with a small dialog. */
@@ -60,22 +215,28 @@ function chooseWork(idea: Idea, books: Book[]) {
   select.focus()
 }
 
-export function ideaActions(idea: Idea, books: Book[], report: (message: string) => void): MenuItem[] {
+export function ideaActions(idea: Idea, books: Book[], report: (message: string) => void, revisionCount = 0): MenuItem[] {
   const run = (work: () => Promise<unknown>) => () => { work().catch((error) => report(storageError(error))) }
-  return [
+  const items: MenuItem[] = [
     idea.usedAt
       ? { label: t('ideas.markUnused'), icon: 'undo', action: run(() => setIdeaUsed(idea, false)) }
       : { label: t('ideas.markUsed'), icon: 'check', action: run(() => setIdeaUsed(idea, true)) },
     { label: t('ideas.link'), icon: 'book', action: () => chooseWork(idea, books) },
+  ]
+  if (revisionCount > 0) {
+    items.push({ label: t('revisions.button'), icon: 'history', action: () => { void showIdeaRevisionsDialog(idea, books) } })
+  }
+  items.push(
     { label: t('ideas.copy'), icon: 'copy', action: run(() => navigator.clipboard.writeText(idea.text)) },
     { label: t('shelf.delete'), icon: 'trash', danger: true, action: run(async () => {
       const entry = await deleteIdea(idea.id)
       if (entry) offerActionUndo(t('ideas.deleted'), () => restoreTrash(entry.id))
     }) },
-  ]
+  )
+  return items
 }
 
-function ideaRow(idea: Idea, books: Book[], report: (message: string) => void) {
+function ideaRow(idea: Idea, books: Book[], report: (message: string) => void, revisionCount: number) {
   const row = element('li', idea.usedAt ? 'idea-row idea-used' : 'idea-row')
   const text = element('p', 'idea-text', idea.text)
   const meta = element('div', 'file-details idea-meta')
@@ -84,16 +245,21 @@ function ideaRow(idea: Idea, books: Book[], report: (message: string) => void) {
   if (book) meta.append(link(bookPath(book.library, book.id), book.title, 'idea-work'))
   else meta.append(element('span', 'file-format', idea.bookId ? t('ideas.workGone') : t('ideas.unlinked')))
   if (idea.usedAt) meta.append(element('span', 'settings-badge', t('ideas.used')))
+  if (revisionCount > 0) {
+    const historyChip = button(t('revisions.ideaBadge', [revisionCount]), 'button button-quiet button-small idea-history-button', 'history')
+    historyChip.addEventListener('click', () => { void showIdeaRevisionsDialog(idea, books) })
+    meta.append(historyChip)
+  }
   const label = t('ideas.actionsFor')
   const more = button('', 'book-menu-toggle', 'chevron')
   more.setAttribute('aria-label', label)
   more.setAttribute('aria-haspopup', 'menu')
   more.setAttribute('aria-expanded', 'false')
-  more.addEventListener('click', () => openMenu(ideaActions(idea, books, report), more, label, more))
+  more.addEventListener('click', () => openMenu(ideaActions(idea, books, report, revisionCount), more, label, more))
   row.addEventListener('contextmenu', (event) => {
     if ((event.target as Element).closest('a')) return
     event.preventDefault()
-    openMenu(ideaActions(idea, books, report), { x: event.clientX, y: event.clientY }, label, more)
+    openMenu(ideaActions(idea, books, report, revisionCount), { x: event.clientX, y: event.clientY }, label, more)
   })
   const body = element('div', 'idea-body')
   body.append(text, meta)
@@ -127,7 +293,12 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
   async function refresh() {
     const turn = ++request
     try {
-      const [ideas, original, reference] = await Promise.all([listIdeas(), listBooks('original'), listBooks('reference')])
+      const [ideas, original, reference, revCounts] = await Promise.all([
+        listIdeas(),
+        listBooks('original'),
+        listBooks('reference'),
+        listIdeaRevisionCounts(),
+      ])
       if (signal.aborted || turn !== request) return
       const books = [...original, ...reference]
       if (ideas.length) {
@@ -135,7 +306,7 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
         list.setAttribute('aria-label', t('ideas.list'))
         // Ideas not used yet come first; used ones stay below for reference.
         const ordered = [...ideas.filter((idea) => !idea.usedAt), ...ideas.filter((idea) => idea.usedAt)]
-        list.append(...ordered.map((idea) => ideaRow(idea, books, report)))
+        list.append(...ordered.map((idea) => ideaRow(idea, books, report, revCounts.get(idea.id) ?? 0)))
         content.replaceChildren(arriving ? stagger(list) : list)
       } else {
         const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')

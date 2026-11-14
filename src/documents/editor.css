@@ -159,6 +159,8 @@
 
 .manage-dialog:has(.revision-layout) { width: min(860px, calc(100% - 32px)); }
 .revision-dialog .modal-head { margin-bottom: 8px; }
+.revision-storage-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 8px; }
+.revision-storage-summary { font-size: .82rem; color: var(--muted); }
 .revision-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
 .revision-section-title { margin-bottom: 8px; font-size: .88rem; font-weight: 800; color: var(--muted); }
 .revision-list { display: grid; align-content: start; gap: 6px; max-height: clamp(220px, 46svh, 390px); margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 2px solid var(--ink); border-radius: 9px; background: var(--surface); }
