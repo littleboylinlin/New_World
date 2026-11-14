@@ -12,9 +12,10 @@ New World runs locally on Windows and macOS using Electron (`desktop/main.cjs`) 
 
 - **Disabled by Default**: The HTTP server does not listen at all until you enable **AI 接入与权限 (AI Access & Permissions)** in New World Settings.
 - **Strictly Loopback**: Binds exclusively to `127.0.0.1`, validates loopback peer addresses, verifies `Host` headers (`127.0.0.1` / `localhost` / `[::1]`) against DNS rebinding, and rejects browser cross-origin (`Origin` / `Sec-Fetch-Site`) requests.
-- **Business-Layer Execution**: Every AI operation executes through New World's existing storage and domain logic (`library.ts`, `documents/store.ts`, `ideas.ts`, `schema.ts`, `text-preview.ts`), preserving backup compatibility, editor dirty-state locks, Trash recovery, and schema sanitization. Untrusted plugin code is never loaded inside the main process.
+- **Business-Layer Execution**: Every AI operation executes through New World's existing storage and domain logic (`library.ts`, `documents/store.ts`, `documents/revisions.ts`, `ideas.ts`, `schema.ts`, `text-preview.ts`), preserving backup compatibility, editor dirty-state locks, Trash recovery, pre-edit revision snapshots, and schema sanitization. Untrusted plugin code is never loaded inside the main process.
 - **Per-Client Isolation**: Each configured AI receives its own unique ID and Bearer token (`nw_ai_...`). New World stores only a SHA-256 hash (`tokenHash`) and compares tokens in constant time (`crypto.timingSafeEqual`). Client-supplied identity headers are ignored; identity is bound strictly to the verified token.
-- **Audit Logging**: Requests, denials, confirmation requests, user approvals/rejections, and execution outcomes are logged locally to `NewWorld-ai-audit.jsonl`.
+- **Recovery & History Isolation**: Trash (`/v1/trash*`), revision history (`/v1/revisions*`, `/v1/history*`), and backup endpoints (`/v1/backups*`) are unconditionally off-limits to AI (`403 recovery_data_forbidden`). Restoration and permanent deletion happen strictly through the New World UI.
+- **Audit Logging**: Requests, denials, confirmation requests, user approvals/rejections, and execution/recovery-snapshot outcomes are logged locally to `NewWorld-ai-audit.jsonl`.
 
 ---
 
@@ -173,9 +174,9 @@ curl -s -X POST http://127.0.0.1:47831/v1/works \
 | `GET /v1/works/:library/:bookId/editions/:editionId/chapters?offset=&limit=` | `read` | Paginated chapter list with word counts. |
 | `POST /v1/works/:library/:bookId/editions/:editionId/chapters` | `create` | Create a chapter (`title`, optional `content`, `format`, `insertAfterId`, or `position`). |
 | `GET /v1/works/:library/:bookId/editions/:editionId/chapters/:chapterId?format=` | `read` | Read chapter (`format`: `all` \| `markdown` \| `text` \| `html` \| `tiptap`). |
-| `PUT` or `PATCH /v1/works/:library/:bookId/editions/:editionId/chapters/:chapterId` | `update` | Update `title` and/or `content` (`format`: `markdown` \| `text` \| `html` \| `tiptap`). Subject to Destructive Update Guard & open-editor dirty check. |
+| `PUT` or `PATCH /v1/works/:library/:bookId/editions/:editionId/chapters/:chapterId` | `update` | Update `title` and/or `content` (`format`: `markdown` \| `text` \| `html` \| `tiptap`). Atomically snapshots pre-edit text into Chapter History before saving; subject to Destructive Update Guard & open-editor dirty check. |
 | `PATCH /v1/works/:library/:bookId/editions/:editionId/chapters/reorder` | `update` | Reorder chapters via `{ "chapterIds": [...] }` (exact permutation required) or `{ "chapterId": "...", "offset": -1 \| 1 }`. |
-| `PUT /v1/works/:library/:bookId/editions/:editionId/chapters` | `update` | Batch update `{ "chapters": [...] }`. Dropping chapters or massive word loss triggers Destructive Update Guard. |
+| `PUT /v1/works/:library/:bookId/editions/:editionId/chapters` | `update` | Atomically batch-update `{ "chapters": [...] }` with pre-edit revision snapshots. Dropping chapters (moved to Trash if confirmed), wholesale rewrites, or massive word loss triggers Destructive Update Guard. |
 | `DELETE /v1/works/:library/:bookId/editions/:editionId/chapters/:chapterId` | `delete` + UI Confirm | Move chapter to Trash after manual UI confirmation. |
 
 ### Continuation Sources (`reference` Library Originals)
@@ -195,29 +196,37 @@ curl -s -X POST http://127.0.0.1:47831/v1/works \
 | `GET /v1/ideas` | `read` | List authorized ideas. |
 | `POST /v1/ideas` | `create` | Create idea (`text`, optional `work: { library, bookId }`). Required in `selected` scope. |
 | `PATCH /v1/ideas/:ideaId` | `update` | Edit `text`, `work`, or `used` boolean. |
-| `DELETE /v1/ideas/:ideaId` | `delete` + UI Confirm | Delete idea permanently after manual UI confirmation. |
+| `DELETE /v1/ideas/:ideaId` | `delete` + UI Confirm | Move idea to Trash after manual UI confirmation. |
 
 ---
 
-## 6. Mandatory Human Confirmation & Destructive Update Guard
+## 6. Mandatory Human Confirmation, Recovery Protection & Destructive Update Guard
 
-### Why Delete Confirmation Cannot Be Bypassed
+### Why Delete Confirmation & Recovery Isolation Cannot Be Bypassed
 
 Even when a user grants `delete: true` to an AI client:
 
 1. Calling any `DELETE` endpoint only submits a **pending confirmation request** (`202 Accepted` with a unique `confirmationId`), bringing the New World desktop window to the foreground (`showWindow()`) and presenting a native modal confirmation dialog with exact details (AI name, action, work/edition/chapter names, chapter count, word count, countdown).
 2. **Only the human user clicking Confirm (`event.isTrusted === true`) in New World's native UI window triggers execution.**
-3. Each `confirmationId` and its internal execution grant are **single-use**, **bound to the exact requesting `clientId` and target fingerprint**, and **expire automatically** (60 seconds by default). Canceling, closing the dialog, timing out, or revoking permissions immediately aborts execution without changing data.
-4. Any attempt by an AI client to self-confirm via API (such as calling `POST /v1/confirmations/:id/confirm` or passing `{ "confirm": true }` / `{ "force": true }` / `{ "skipConfirmation": true }`) is **rejected or ignored**, logged in the audit trail, and never substitutes for manual UI confirmation.
-5. Pass `?wait=true` on a `DELETE` or destructive `PUT`/`PATCH` URL if your client prefers blocking up to the confirmation timeout (`200 OK` if approved, `403 confirmation_rejected` if canceled, `408 confirmation_timed_out` if expired) instead of polling `GET /v1/confirmations/:id`.
+3. Confirmed deletions atomically move complete recoverable payloads (works, originals, editions, chapters, **and ideas**) into New World's **Trash** (`new-world-library` -> `trash`). AI clients cannot view, restore, modify, or empty Trash (`/v1/trash*` -> `403 recovery_data_forbidden`); permanent deletion is strictly an independent manual UI flow with a second confirmation.
+4. Each `confirmationId` and its internal execution grant are **single-use**, **bound to the exact requesting `clientId` and target fingerprint**, and **expire automatically** (60 seconds by default). Canceling, closing the dialog, timing out, or revoking permissions immediately aborts execution without changing data.
+5. Any attempt by an AI client to self-confirm or skip recovery protection via API (such as calling `POST /v1/confirmations/:id/confirm`, sending `skipHistory: true` / `preserveHistory: false`, or passing `{ "confirm": true }` / `{ "force": true }` / `{ "skipConfirmation": true }`) is **rejected or ignored**, logged in the audit trail, and never substitutes for manual UI confirmation.
+6. Pass `?wait=true` on a `DELETE` or destructive `PUT`/`PATCH` URL if your client prefers blocking up to the confirmation timeout (`200 OK` if approved, `403 confirmation_rejected` if canceled, `408 confirmation_timed_out` if expired) instead of polling `GET /v1/confirmations/:id`.
+
+### Automatic Pre-Edit Revision Snapshots
+
+- Before every successful AI modification to existing chapter text (`chapters.update` and `chapters.replaceBatch`), New World saves a complete snapshot of the pre-edit chapter content and metadata inside the **same strict IndexedDB transaction**.
+- If saving the revision snapshot fails, the entire transaction aborts and the original chapter text remains untouched.
+- Consecutive AI edits append distinct revision snapshots rather than overwriting previous history, and restoring an earlier version from the editor **History** dialog automatically backs up the current text first.
 
 ### Anti-Bypass Protections on `Update` Operations
 
 New World inspects actual content impact, not just HTTP method names:
 
-- **Single-Step Wipe / Massive Reduction**: Clearing a chapter (`beforeWords >= 5 && afterWords === 0`), reducing a chapter to a stub (`beforeWords >= 20 && afterWords <= 3`), or losing `>= 50%` (and `>= 80` words) in one update triggers the **Destructive Update Guard**.
-- **Cumulative Slow-Drip Nibbling**: New World tracks per-client session word baselines (`chapterBaselines`); splitting deletions into multiple smaller edits (`>= 100` words and `>= 65%` lost from peak) triggers the guard once cumulative loss crosses threshold.
-- **Reorder & Batch Omission**: `chapters.reorder` rejects any ID list that omits, duplicates, or injects chapter IDs (`400 invalid_chapter_reorder`). `chapters.replaceBatch` treats omitted chapters or massive word loss as destructive.
+- **Single-Step Wipe / Short-Chapter Clearing / Massive Reduction**: Clearing **any** non-empty chapter (`beforeWords > 0 && afterWords === 0`, including 1–4 word chapters), reducing a chapter to a stub (`beforeWords >= 20 && afterWords <= 3`), or losing `>= 50%` (and `>= 80` words) in one update triggers the **Destructive Update Guard**.
+- **Wholesale Replacement at Similar Word Counts**: Replacing almost all original prose in a chapter even when the word count barely changes (`wholesale_content_replacement` / `cumulative_wholesale_replacement`) also triggers the Destructive Update Guard.
+- **Persistent Cumulative Slow-Drip Baselines**: New World persists per-client baselines (`aiBaselines` in IndexedDB) across restarts so splitting deletions or wholesale rewrites across multiple edits or app restarts still triggers once cumulative thresholds are crossed.
+- **Reorder & Batch Omission**: `chapters.reorder` rejects any ID list that omits, duplicates, or injects chapter IDs (`400 invalid_chapter_reorder`). `chapters.replaceBatch` runs atomically and treats omitted chapters, wholesale chapter rewrites, or massive word loss as destructive.
 - **Enforcement**: If `permissions.delete === false`, destructive updates are immediately rejected (`403 destructive_update_forbidden`). If `permissions.delete === true`, they require the same mandatory human confirmation modal as explicit `DELETE` requests.
 
 ---
@@ -231,7 +240,8 @@ New World inspects actual content impact, not just HTTP method names:
 | `403` | `client_disabled` | This AI client configuration is disabled in Settings. |
 | `403` | `permission_denied` | Required CRUD permission (`create`/`read`/`update`/`delete`) is not granted. Inform the user rather than retrying. |
 | `403` | `forbidden_scope` / `create_scope_forbidden` | Target work or operation is outside authorized scope. Do not guess or probe IDs. |
-| `403` | `destructive_update_forbidden` | Requested update would wipe/massively shrink text without `delete` permission. Keep existing content or write incremental edits instead. |
+| `403` | `recovery_data_forbidden` / `history_protection_non_bypassable` | Trash, revision history, and backup recovery storage cannot be accessed, cleared, or bypassed by AI. |
+| `403` | `destructive_update_forbidden` | Requested update would wipe/massively shrink/wholesale-replace text without `delete` permission. Keep existing content or make localized edits instead. |
 | `403` | `api_confirmation_forbidden` | API self-confirmation is forbidden. Ask the user to respond in the New World window. |
 | `403` | `confirmation_rejected` | User declined the confirmation dialog (or permission was revoked). |
 | `408` | `confirmation_timed_out` | Confirmation window expired before user responded; nothing was deleted. |

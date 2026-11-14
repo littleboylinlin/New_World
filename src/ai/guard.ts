@@ -15,6 +15,7 @@ export interface DestructiveAssessment {
   afterWords: number
   lostWords: number
   baselineWords: number
+  retention?: number
 }
 
 // Tracks per-client highest observed word baseline for each chapter so repeated small deletions
@@ -121,12 +122,57 @@ export function formatChapterOutput(chapter: ChapterRecord, title: string, reque
   }
 }
 
+function tokenizeForSimilarity(text: string): string[] {
+  const normalized = text.toLowerCase().normalize('NFKC')
+  const matches = normalized.match(/[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}]|[\p{L}\p{N}]+/gu)
+  return matches ?? []
+}
+
+function buildBigramCounts(tokens: string[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  if (tokens.length === 0) return counts
+  if (tokens.length === 1) {
+    counts.set(tokens[0], 1)
+    return counts
+  }
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const gram = `${tokens[i]}\u0000${tokens[i + 1]}`
+    counts.set(gram, (counts.get(gram) ?? 0) + 1)
+  }
+  return counts
+}
+
+/** Measures how much of baselineText's token-bigram multiset is retained in targetText (0..1). */
+export function computeTextRetention(baselineText: string, targetText: string): number {
+  const beforeTokens = tokenizeForSimilarity(baselineText)
+  if (beforeTokens.length === 0) return 1
+  const afterTokens = tokenizeForSimilarity(targetText)
+  if (afterTokens.length === 0) return 0
+  const beforeGrams = buildBigramCounts(beforeTokens)
+  const afterGrams = buildBigramCounts(afterTokens)
+  let totalBefore = 0
+  let overlap = 0
+  for (const [gram, count] of beforeGrams) {
+    totalBefore += count
+    const afterCount = afterGrams.get(gram) ?? 0
+    if (afterCount > 0) overlap += Math.min(count, afterCount)
+  }
+  return totalBefore === 0 ? 1 : overlap / totalBefore
+}
+
+export interface DestructiveEvaluation {
+  destructive: boolean
+  reason: string
+  retention?: number
+}
+
 export function evaluateDestructiveWords(beforeWords: number, afterWords: number, peakWords: number): { destructive: boolean; reason: string } {
   const lostFromBefore = Math.max(0, beforeWords - afterWords)
   const effectivePeak = Math.max(beforeWords, peakWords)
   const lostFromPeak = Math.max(0, effectivePeak - afterWords)
 
-  if (beforeWords >= 5 && afterWords === 0) {
+  // Clearing any non-empty chapter (even 1-4 words) to empty must require confirmation.
+  if (beforeWords > 0 && afterWords === 0) {
     return { destructive: true, reason: 'chapter_cleared_to_empty' }
   }
   if (beforeWords >= 20 && afterWords <= 3) {
@@ -144,6 +190,43 @@ export function evaluateDestructiveWords(beforeWords: number, afterWords: number
   return { destructive: false, reason: '' }
 }
 
+/** Evaluates word loss, empty clears, and equal-word wholesale text replacements against persistent baseline. */
+export function evaluateChapterMutation(params: {
+  beforeText: string
+  afterText: string
+  beforeWords: number
+  afterWords: number
+  peakWords: number
+  anchorText?: string
+  anchorWords?: number
+}): DestructiveEvaluation {
+  const { beforeText, afterText, beforeWords, afterWords, peakWords, anchorText, anchorWords } = params
+  if (beforeText.trim().length > 0 && afterText.trim().length === 0) {
+    return { destructive: true, reason: 'chapter_cleared_to_empty', retention: 0 }
+  }
+  const wordCheck = evaluateDestructiveWords(beforeWords, afterWords, peakWords)
+  if (wordCheck.destructive) {
+    return {
+      ...wordCheck,
+      retention: computeTextRetention(beforeText, afterText),
+    }
+  }
+  const singleRetention = computeTextRetention(beforeText, afterText)
+  if (beforeWords >= 20 && singleRetention < 0.25) {
+    return { destructive: true, reason: 'wholesale_content_replacement', retention: singleRetention }
+  }
+  if (beforeWords >= 10 && singleRetention < 0.15) {
+    return { destructive: true, reason: 'wholesale_content_replacement', retention: singleRetention }
+  }
+  if (anchorText && (anchorWords ?? 0) >= 40 && afterWords >= 20) {
+    const cumulativeRetention = computeTextRetention(anchorText, afterText)
+    if (cumulativeRetention < 0.20) {
+      return { destructive: true, reason: 'cumulative_wholesale_replacement', retention: cumulativeRetention }
+    }
+  }
+  return { destructive: false, reason: '', retention: singleRetention }
+}
+
 export function assessChapterUpdate(
   clientId: string,
   library: string,
@@ -151,14 +234,23 @@ export function assessChapterUpdate(
   editionId: string,
   chapter: ChapterRecord,
   nextContent: DocumentContent,
+  persistedBaseline?: { peakWords: number; anchorWords: number; anchorText: string },
 ): DestructiveAssessment {
   const key = baselineKey(clientId, library, bookId, editionId, chapter.id)
   const beforeWords = wordCount(chapter.content)
   const afterWords = wordCount(nextContent)
   const tracked = chapterBaselines.get(key)
-  const baselineWords = tracked === undefined ? beforeWords : Math.max(tracked, beforeWords)
+  const baselineWords = Math.max(tracked ?? 0, persistedBaseline?.peakWords ?? 0, beforeWords)
 
-  const check = evaluateDestructiveWords(beforeWords, afterWords, baselineWords)
+  const check = evaluateChapterMutation({
+    beforeText: chapterText(chapter.content, '\n\n'),
+    afterText: chapterText(nextContent, '\n\n'),
+    beforeWords,
+    afterWords,
+    peakWords: baselineWords,
+    anchorText: persistedBaseline?.anchorText,
+    anchorWords: persistedBaseline?.anchorWords,
+  })
   return {
     destructive: check.destructive,
     reason: check.reason,
@@ -166,6 +258,7 @@ export function assessChapterUpdate(
     afterWords,
     lostWords: Math.max(0, beforeWords - afterWords),
     baselineWords,
+    retention: check.retention,
   }
 }
 
@@ -192,7 +285,8 @@ export function assessBatchEditionUpdate(
   existingInfos: readonly ChapterInfo[],
   existingInputs: readonly ChapterInput[],
   incomingChapters: readonly { id?: string; content: DocumentContent }[],
-): { destructive: boolean; reason: string; beforeWords: number; afterWords: number; lostWords: number; removedChapters: number } {
+  persistedBaselines?: ReadonlyMap<string, { peakWords: number; anchorWords: number; anchorText: string }>,
+): { destructive: boolean; reason: string; beforeWords: number; afterWords: number; lostWords: number; removedChapters: number; retention?: number } {
   const existingById = new Map<string, ChapterInput>()
   existingInfos.forEach((info, index) => {
     const input = existingInputs[index]
@@ -220,9 +314,20 @@ export function assessBatchEditionUpdate(
     if (!incoming.id) continue
     const prior = existingById.get(incoming.id)
     if (!prior) continue
-    const single = evaluateDestructiveWords(wordCount(prior.content), wordCount(incoming.content), wordCount(prior.content))
+    const baseline = persistedBaselines?.get(incoming.id)
+    const priorWords = wordCount(prior.content)
+    const nextWords = wordCount(incoming.content)
+    const single = evaluateChapterMutation({
+      beforeText: chapterText(prior.content, '\n\n'),
+      afterText: chapterText(incoming.content, '\n\n'),
+      beforeWords: priorWords,
+      afterWords: nextWords,
+      peakWords: Math.max(baseline?.peakWords ?? 0, priorWords),
+      anchorText: baseline?.anchorText,
+      anchorWords: baseline?.anchorWords,
+    })
     if (single.destructive) {
-      return { destructive: true, reason: single.reason, beforeWords, afterWords, lostWords, removedChapters }
+      return { destructive: true, reason: single.reason, beforeWords, afterWords, lostWords, removedChapters, retention: single.retention }
     }
   }
 

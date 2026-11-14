@@ -7,6 +7,7 @@ import type { Book, LibraryId } from './library'
 import { openMenu } from './menu'
 import type { MenuItem } from './menu'
 import { stagger } from './motion'
+import { restoreTrash } from './trash'
 import { bookPath, button, element, icon, libraries, link, notice } from './ui'
 import { offerActionUndo } from './undo'
 
@@ -68,8 +69,8 @@ export function ideaActions(idea: Idea, books: Book[], report: (message: string)
     { label: t('ideas.link'), icon: 'book', action: () => chooseWork(idea, books) },
     { label: t('ideas.copy'), icon: 'copy', action: run(() => navigator.clipboard.writeText(idea.text)) },
     { label: t('shelf.delete'), icon: 'trash', danger: true, action: run(async () => {
-      await deleteIdea(idea.id)
-      offerActionUndo(t('ideas.deleted'), () => saveIdea(idea))
+      const entry = await deleteIdea(idea.id)
+      if (entry) offerActionUndo(t('ideas.deleted'), () => restoreTrash(entry.id))
     }) },
   ]
 }

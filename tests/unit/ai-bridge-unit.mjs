@@ -348,4 +348,139 @@ describe('desktop/ai-bridge', () => {
       await bridge.stop()
     }
   })
+
+  it('strictly isolates trash/revisions/backups, rejects history bypass flags, and records recovery audit receipts', async () => {
+    const dir = makeTempDir()
+    const store = createAiStore(dir)
+    store.setEnabled(true)
+    const fullClient = store.createClient({
+      name: 'FullAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: true },
+      scope: { mode: 'all', workIds: [] },
+    })
+
+    const dispatched = []
+    const bridge = createAiBridge({
+      store,
+      bindPort: 0,
+      confirmTimeoutMs: 5_000,
+      onPromptConfirmation: () => {},
+      onCloseConfirmation: () => {},
+      dispatchOperation: async (req) => {
+        dispatched.push(req)
+        if (req.phase === 'prepare-delete') {
+          return {
+            ok: false,
+            requiresConfirmation: true,
+            confirmedAction: req.action,
+            fingerprint: 'fp-trash-1',
+            targetSummary: 'Trashable Idea',
+            impact: { kind: 'idea', summary: 'Delete idea -> trash' },
+          }
+        }
+        if (req.phase === 'execute-confirmed') {
+          return {
+            ok: true,
+            auditReason: 'trashed:trash-idea-1',
+            data: { deleted: true, recoverableInTrash: true },
+          }
+        }
+        return {
+          ok: true,
+          auditReason: 'snapshot:rev-001',
+          data: { updated: true },
+        }
+      },
+    })
+
+    try {
+      const { port } = await bridge.sync()
+      const auth = { Authorization: `Bearer ${fullClient.token}`, 'Content-Type': 'application/json' }
+
+      // 1. Trash, revision history, and backup endpoints are unconditionally forbidden
+      const forbiddenRoutes = [
+        ['GET', '/v1/trash'],
+        ['POST', '/v1/trash/item-1/restore'],
+        ['DELETE', '/v1/trash/item-1'],
+        ['DELETE', '/v1/trash'],
+        ['GET', '/v1/revisions'],
+        ['GET', '/v1/works/original/book-1/revisions'],
+        ['DELETE', '/v1/works/original/book-1/editions/ed-1/chapters/ch-1/revisions/rev-1'],
+        ['GET', '/v1/history'],
+        ['GET', '/v1/backups'],
+        ['POST', '/v1/backups/restore'],
+      ]
+      for (const [method, urlPath] of forbiddenRoutes) {
+        const res = await rawHttpRequest({ port, method, urlPath, headers: auth })
+        assert.equal(res.status, 403, `${method} ${urlPath} -> ${res.status}`)
+        assert.equal(res.body.error.code, 'recovery_data_forbidden')
+      }
+      assert.equal(dispatched.length, 0)
+
+      // 2. Attempting to disable or skip revision history via body or query is rejected cleanly
+      const bypassAttempts = [
+        {
+          method: 'PUT',
+          urlPath: '/v1/works/original/book-1/editions/ed-1/chapters/ch-1',
+          body: { content: 'new text', skipHistory: true },
+        },
+        {
+          method: 'PUT',
+          urlPath: '/v1/works/original/book-1/editions/ed-1/chapters/ch-1',
+          body: { content: 'new text', preserveHistory: false },
+        },
+        {
+          method: 'PUT',
+          urlPath: '/v1/works/original/book-1/editions/ed-1/chapters/ch-1?skipHistory=true',
+          body: { content: 'new text' },
+        },
+        {
+          method: 'PUT',
+          urlPath: '/v1/works/original/book-1/editions/ed-1/chapters?preserveHistory=false',
+          body: { chapters: [{ id: 'ch-1', title: 'Ch1', format: 'text', content: 'x' }] },
+        },
+      ]
+      for (const req of bypassAttempts) {
+        const res = await rawHttpRequest({ port, ...req, headers: auth })
+        assert.equal(res.status, 403, `${req.method} ${req.urlPath}`)
+        assert.equal(res.body.error.code, 'history_protection_non_bypassable')
+      }
+      assert.equal(dispatched.length, 0)
+
+      // 3. Audit trail preserves snapshot & trash receipts on allowed / confirmed calls
+      const editRes = await rawHttpRequest({
+        port,
+        method: 'PUT',
+        urlPath: '/v1/works/original/book-1/editions/ed-1/chapters/ch-1',
+        headers: auth,
+        body: { content: 'safe edit' },
+      })
+      assert.equal(editRes.status, 200)
+
+      const delRes = await rawHttpRequest({
+        port,
+        method: 'DELETE',
+        urlPath: '/v1/ideas/idea-1',
+        headers: auth,
+      })
+      assert.equal(delRes.status, 202)
+      const confirmed = await bridge.handleConfirmDecision({
+        confirmationId: delRes.body.confirmationId,
+        approved: true,
+      })
+      assert.equal(confirmed.ok, true)
+
+      const audit = store.listAudit(50)
+      const allowedReasons = audit.filter((item) => item.outcome === 'allowed').map((item) => item.reason)
+      const confirmedReasons = audit.filter((item) => item.outcome === 'confirmed').map((item) => item.reason)
+      assert.equal(allowedReasons.includes('snapshot:rev-001'), true)
+      assert.equal(confirmedReasons.includes('trashed:trash-idea-1'), true)
+      const deniedReasons = audit.filter((item) => item.outcome === 'denied').map((item) => item.reason)
+      assert.equal(deniedReasons.includes('recovery_data_forbidden'), true)
+      assert.equal(deniedReasons.includes('history_protection_non_bypassable'), true)
+    } finally {
+      await bridge.stop()
+    }
+  })
 })

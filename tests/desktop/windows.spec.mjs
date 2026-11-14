@@ -928,3 +928,143 @@ test('AI 接入与权限：桌面端启用本地接口、写入作品并在人�
     await expect(fetch(`${baseUrl}/health`)).rejects.toThrow()
   } finally { await stop(app) }
 })
+
+test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可预览恢复历史正文与被删对象', async ({}, testInfo) => {
+  let app = await launch(testInfo)
+  try {
+    let page = await app.firstWindow()
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settingsDialog = page.getByRole('dialog', { name: '设置' })
+    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
+    await section.scrollIntoViewIfNeeded()
+    await section.locator('input[data-ai-global-enable="true"]').check()
+    await expect(section.locator('.ai-badge').first()).toContainText('本地监听 127.0.0.1:')
+    const portMatch = (await section.locator('.ai-endpoint-line').innerText()).match(/http:\/\/127\.0\.0\.1:(\d+)\/v1/)
+    expect(portMatch).toBeTruthy()
+    const baseUrl = `http://127.0.0.1:${portMatch[1]}/v1`
+
+    await section.getByLabel('AI 配置名称').fill('RecoveryDesktopAI')
+    await section.getByRole('button', { name: '添加 AI 配置' }).click()
+    await expect(section.locator('.ai-token-banner')).toBeVisible()
+    const token = (await section.locator('.ai-token-value').innerText()).trim()
+    expect(token.startsWith('nw_ai_')).toBe(true)
+    await section.getByRole('button', { name: '我已保存' }).click()
+
+    const card = section.locator('.ai-client-card').filter({ hasText: 'RecoveryDesktopAI' })
+    for (const perm of ['create', 'read', 'update', 'delete']) {
+      await card.locator(`input[data-ai-perm="${perm}"]`).check()
+      await expect(card.locator(`input[data-ai-perm="${perm}"]`)).toBeChecked()
+    }
+    await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
+    await expect(card.getByRole('radio', { name: '允许访问整个小说库' })).toBeChecked()
+    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+    const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+    const v0 = '桌面初版正文：灯塔守夜人检查了雾笛开关。'
+    const v1 = '桌面一版正文：灯塔守夜人检查并擦拭了雾笛开关。'
+    const v2 = '桌面二版正文：灯塔守夜人检查并重启了雾笛开关。'
+
+    const createRes = await fetch(`${baseUrl}/works`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        library: 'original',
+        title: '桌面历史与回收站恢复检验作品',
+        initialChapters: [
+          { title: '第一章', format: 'text', content: v0 },
+          { title: '将被删进回收站的章节', format: 'text', content: '桌面待删章正文，重启后必须从回收站找回。' },
+        ],
+      }),
+    })
+    expect(createRes.status).toBe(201)
+    const created = await createRes.json()
+    const workId = created.data.work.id
+    const editionId = created.data.editions[0].id
+    const edDetail = await (await fetch(`${baseUrl}/works/original/${workId}/editions/${editionId}`, { headers: { Authorization: `Bearer ${token}` } })).json()
+    const ch1Id = edDetail.data.edition.chapters[0].id
+    const ch2Id = edDetail.data.edition.chapters[1].id
+
+    const ideaCreateRes = await fetch(`${baseUrl}/ideas`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ text: '桌面重启后恢复的灵感', work: { library: 'original', bookId: workId } }),
+    })
+    expect(ideaCreateRes.status).toBe(201)
+    const ideaId = (await ideaCreateRes.json()).data.idea.id
+
+    // Consecutive AI edits create distinct snapshots v0, v1
+    expect((await fetch(`${baseUrl}/works/original/${workId}/editions/${editionId}/chapters/${ch1Id}`, {
+      method: 'PUT', headers: authHeaders, body: JSON.stringify({ content: v1 }),
+    })).status).toBe(200)
+    expect((await fetch(`${baseUrl}/works/original/${workId}/editions/${editionId}/chapters/${ch1Id}`, {
+      method: 'PUT', headers: authHeaders, body: JSON.stringify({ content: v2 }),
+    })).status).toBe(200)
+
+    // AI cannot access trash directly
+    const trashRes = await fetch(`${baseUrl}/trash`, { headers: { Authorization: `Bearer ${token}` } })
+    expect(trashRes.status).toBe(403)
+    expect((await trashRes.json()).error.code).toBe('recovery_data_forbidden')
+
+    // Confirmed deletes move chapter & idea into Trash
+    const confirmDialog = page.getByRole('dialog', { name: '确认 AI 请求的操作' })
+    const delChPromise = fetch(`${baseUrl}/works/original/${workId}/editions/${editionId}/chapters/${ch2Id}?wait=true`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    })
+    await expect(confirmDialog).toBeVisible()
+    await confirmDialog.getByRole('button', { name: '本人确认执行' }).click()
+    expect((await delChPromise).status).toBe(200)
+
+    const delIdeaPromise = fetch(`${baseUrl}/ideas/${ideaId}?wait=true`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    })
+    await expect(confirmDialog).toBeVisible()
+    await confirmDialog.getByRole('button', { name: '本人确认执行' }).click()
+    expect((await delIdeaPromise).status).toBe(200)
+
+    // Restart the Electron app cleanly to verify disk persistence of revisions & trash
+    await stop(app)
+    app = await launch(testInfo)
+    page = await app.firstWindow()
+    await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible()
+
+    // Open edition and restore v0 from History dialog (automatically backing up v2 first)
+    await page.evaluate((u) => { location.hash = u }, `#/original/${workId}/${editionId}`)
+    await expect(editor(page)).toHaveText(v2)
+    await expect(page.locator('button.history-toggle .history-count')).toHaveText('2')
+    await page.locator('button.history-toggle').click()
+    const revDialog = page.getByRole('dialog', { name: /历史版本/ })
+    await expect(revDialog).toBeVisible()
+    await revDialog.locator('button.revision-item').nth(1).click()
+    await expect(revDialog.locator('.revision-preview-text')).toHaveText(v0)
+    await revDialog.getByRole('button', { name: '恢复此版本' }).click()
+    await expect(editor(page)).toHaveText(v0)
+    await expect(page.locator('button.history-toggle .history-count')).toHaveText('3')
+
+    // Open Trash UI and restore both the deleted chapter and idea across restart
+    await page.evaluate(() => { location.hash = '#/trash' })
+    const trashList = page.getByRole('list', { name: '回收站内容' })
+    await expect(trashList).toContainText('将被删进回收站的章节')
+    await expect(trashList).toContainText('桌面重启后恢复的灵感')
+    const chRow = trashList.locator('.trash-row').filter({ has: page.locator('.book-title', { hasText: '将被删进回收站的章节' }) })
+    await chRow.getByRole('button', { name: '恢复' }).click()
+    await expect(chRow).toHaveCount(0)
+    const ideaRow = trashList.locator('.trash-row').filter({ has: page.locator('.book-title', { hasText: '桌面重启后恢复的灵感' }) })
+    await ideaRow.getByRole('button', { name: '恢复' }).click()
+    await expect(ideaRow).toHaveCount(0)
+
+    await page.evaluate((u) => { location.hash = u }, `#/original/${workId}/${editionId}`)
+    await expect(page.locator('.chapter-list')).toContainText('将被删进回收站的章节')
+    await page.evaluate(() => { location.hash = '#/ideas' })
+    await expect(page.getByRole('list', { name: '灵感列表' })).toContainText('桌面重启后恢复的灵感')
+
+    // Clean up AI config so profile returns to default disabled state
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const resetSection = page.getByRole('dialog', { name: '设置' }).getByRole('region', { name: 'AI 接入与权限', exact: true })
+    await resetSection.scrollIntoViewIfNeeded()
+    await resetSection.locator('.ai-client-card').filter({ hasText: 'RecoveryDesktopAI' }).getByRole('button', { name: '撤销配置' }).click()
+    await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
+    await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')
+  } finally { await stop(app) }
+})

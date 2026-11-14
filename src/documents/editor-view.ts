@@ -17,6 +17,8 @@ import { cleanMarkup, inertMarkup, rasterData } from './markup'
 import { countText, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './model'
 import { checkDocument, documentExtensions } from './schema'
+import { countChapterRevisions } from './revisions'
+import { showRevisionsDialog } from './revisions-view'
 import { replaceMatches, revealMatch, SearchHighlight, searchState, setSearch } from './search'
 import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
 import './editor.css'
@@ -130,7 +132,13 @@ export async function renderEdition(
   const counts = element('div', 'word-counts')
   counts.append(count, total)
   counts.title = t('editor.countRule')
-  chapterHeader.append(chapterTitle, counts)
+  const historyButton = button('', 'button button-quiet button-small history-toggle', 'history')
+  const historyCount = element('span', 'trash-count history-count')
+  historyButton.append(element('span', '', t('revisions.button')), historyCount)
+  historyButton.title = t('revisions.buttonTitle')
+  const headerMeta = element('div', 'writing-header-meta')
+  headerMeta.append(counts, historyButton)
+  chapterHeader.append(chapterTitle, headerMeta)
   const toolbar = element('div', 'format-toolbar')
   toolbar.setAttribute('role', 'group')
   toolbar.setAttribute('aria-label', t('editor.textFormatting'))
@@ -420,6 +428,18 @@ export async function renderEdition(
     applyMode()
     refreshChapters()
     refreshContents()
+    void refreshHistoryCount()
+  }
+
+  async function refreshHistoryCount() {
+    const targetChapterId = chapter.id
+    try {
+      const totalRevisions = await countChapterRevisions(edition, targetChapterId)
+      if (signal.aborted || chapter.id !== targetChapterId) return
+      historyCount.textContent = totalRevisions > 0 ? String(totalRevisions) : ''
+    } catch {
+      // Ignore transient count failure when leaving editor
+    }
   }
 
   async function switchChapter(id: string) {
@@ -617,6 +637,21 @@ export async function renderEdition(
       return { title: info.title, content }
     }, currentChapters)
   })
+  historyButton.addEventListener('click', () => {
+    void showRevisionsDialog({
+      root,
+      edition,
+      chapterId: chapter.id,
+      chapterTitle: chapterInfo().title,
+      onBeforeRestore: flush,
+      onRestored: async () => {
+        const restoredChapter = await readChapter(edition, chapter.id)
+        words = await chapterWordCounts(edition)
+        mountChapter(restoredChapter)
+      },
+    })
+  })
+  libraryChanges.addEventListener('update', () => { void refreshHistoryCount() }, { signal })
 
   window.addEventListener('keydown', (event) => {
     if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.isComposing || document.querySelector('dialog[open]')) return
