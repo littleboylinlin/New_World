@@ -2,11 +2,11 @@
 
 [English](README.en.md)
 
-New World v0.15.2 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.15.3 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
 ## Windows 桌面版
 
-Windows 与 macOS 当前正式版均为 [v0.15.2](https://github.com/littleboylinlin/New_World/releases/tag/v0.15.2)。进一步加固本地 AI 数据保护与恢复可靠性：取消回收站 30 天自动过期清理、为 AI 修改灵感增加原子历史快照与恢复、完整恢复章节原标题与正文、强化确认期间状态一致性与作用域收紧、引入章节历史去重压缩与备份 ZIP 炸弹防御，并加强桌面端 IPC 发送方隔离与更新体积校验（协议详见 `AI_INTEGRATION.md`）。检查更新时各自只选择本平台的安装包。
+Windows 与 macOS 当前正式版均为 [v0.15.3](https://github.com/littleboylinlin/New_World/releases/tag/v0.15.3)。进一步完善本地 AI 数据保护与系统可靠性：回收站彻底删除与清空可在同一事务内安全级联清理专属历史、基线与无引用的去重正文块并保留外部备份提示，将确认状态防篡改校验下沉至 IndexedDB 写事务并强化桥接队列复核，验证配额不足时的原子保护，并精修英文文案与单复数表达（协议详见 `AI_INTEGRATION.md`）。检查更新时各自只选择本平台的安装包。
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 
@@ -36,7 +36,7 @@ Mac 检查更新只匹配本机芯片的 DMG。点击「更新并重启」后，
 
 在「设置 → 语言」选择语言并应用。应用会先保存正文，再获取尚未下载的语言包；下载失败时保留当前语言。已下载的语言可离线使用，重新打开应用和升级时沿用已选语言。作品名、章节名和正文不会随界面语言改变。Web 版首次按浏览器语言选择，只请求当前所需的语言包。
 
-语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.15.2\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
+语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.15.3\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
 
 窗口顶部的应用栏同时是标题栏，可以拖动窗口；右上角的最小化、最大化／还原和关闭按钮由应用自绘，悬停不显示系统提示。缩放用 `Ctrl` 加 `+`、`-`、`0`，全屏用 `F11`。桌面书库与浏览器书库分开保存，现有浏览器数据仍可在原浏览器和地址中访问。
 
