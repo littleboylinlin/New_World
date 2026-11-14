@@ -7,17 +7,21 @@ import {
   listEditions,
   readBundle,
   readChapter,
+  readChapterRecords,
   saveChapter,
 } from '../documents/store'
 import {
   applyAiChapterUpdate,
   applyAiEditionReplaceBatch,
+  ConfirmStateConflictError,
   getAiBaseline,
+  hashDocumentContent,
   listEditionAiBaselines,
+  synchronousContentHash,
 } from '../documents/revisions'
 import { hasDirtyOpenChapter, syncOpenEditionFromExternal } from '../documents/editor-view'
 import { chapterText, wordCount } from '../documents/model'
-import type { ChapterInput, Edition } from '../documents/model'
+import type { ChapterInput, ChapterRecord, Edition } from '../documents/model'
 import { convertFile } from '../documents/import'
 import {
   deleteBook,
@@ -32,7 +36,7 @@ import {
   storageError,
 } from '../library'
 import type { Book, ImportedBook, LibraryId } from '../library'
-import { addIdea, deleteIdea, listIdeas, maxIdeaLength, saveIdea, setIdeaUsed } from '../ideas'
+import { addIdea, applyAiIdeaUpdate, deleteIdea, listIdeas, maxIdeaLength } from '../ideas'
 import type { Idea } from '../ideas'
 import { openText } from '../text-preview'
 import { currentStreak, readWritingDays } from '../writing-stats'
@@ -199,31 +203,80 @@ async function loadWorkInScope(
   }
 }
 
+async function editionChaptersSignature(edition: Edition) {
+  const records = await readChapterRecords(edition)
+  const byId = new Map<string, ChapterRecord>(records.map((rec) => [rec.id, rec]))
+  let totalWords = 0
+  const expectedChapters = edition.chapters.map((ch) => {
+    const rec = byId.get(ch.id)
+    if (rec) totalWords += wordCount(rec.content)
+    return {
+      id: ch.id,
+      title: ch.title,
+      revision: rec?.revision ?? 0,
+      contentHash: rec ? hashDocumentContent(rec.content) : 'missing',
+    }
+  })
+  return { totalWords, expectedChapters }
+}
+
 async function workImpactAndFingerprint(library: LibraryId, book: Book) {
-  const editions = await listEditions(library, book.id)
+  const editions = (await listEditions(library, book.id)).sort((a, b) => a.id.localeCompare(b.id))
   let totalChapters = 0
   let totalWords = 0
-  const editionParts: string[] = []
+  const editionSummaries: Array<{
+    id: string
+    name: string
+    revision: number
+    chapters: Array<{ id: string; title: string; revision: number; contentHash: string }>
+  }> = []
   for (const edition of editions) {
     totalChapters += edition.chapters.length
-    const counts = await chapterWordCounts(edition)
-    for (const value of counts.values()) totalWords += value
-    editionParts.push(`${edition.id}@${edition.revision}`)
+    const sig = await editionChaptersSignature(edition)
+    totalWords += sig.totalWords
+    editionSummaries.push({
+      id: edition.id,
+      name: edition.name,
+      revision: edition.revision,
+      chapters: sig.expectedChapters,
+    })
   }
+  const attachedSources = library === 'reference'
+    ? (await listBooks('reference'))
+      .filter((item): item is ImportedBook => item.workId === book.id && item.format !== 'draft')
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((src) => ({ id: src.id, title: src.title, originalName: src.originalName, size: src.size, digest: src.digest }))
+    : []
+  const stateHash = synchronousContentHash(JSON.stringify({
+    library,
+    id: book.id,
+    title: book.title,
+    archivedAt: book.archivedAt ?? 0,
+    coverSize: book.cover?.size ?? 0,
+    editions: editionSummaries,
+    sources: attachedSources,
+  }))
   return {
     editions,
     totalChapters,
     totalWords,
-    fingerprint: `work:${library}:${book.id}:${book.title}:${book.archivedAt ?? 0}:${editionParts.join(',')}`,
+    fingerprint: `work:${library}:${book.id}:${stateHash}`,
   }
 }
 
 async function editionImpactAndFingerprint(library: LibraryId, bookId: string, edition: Edition) {
-  const counts = await chapterWordCounts(edition)
-  const totalWords = Array.from(counts.values()).reduce((sum, n) => sum + n, 0)
+  const sig = await editionChaptersSignature(edition)
+  const stateHash = synchronousContentHash(JSON.stringify({
+    library,
+    bookId,
+    id: edition.id,
+    name: edition.name,
+    revision: edition.revision,
+    chapters: sig.expectedChapters,
+  }))
   return {
-    totalWords,
-    fingerprint: `edition:${library}:${bookId}:${edition.id}:${edition.revision}`,
+    totalWords: sig.totalWords,
+    fingerprint: `edition:${library}:${bookId}:${edition.id}:${stateHash}`,
   }
 }
 
@@ -242,6 +295,8 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
     action === 'recovery_access_forbidden'
     || action.startsWith('trash.')
     || action.startsWith('revisions.')
+    || action.startsWith('revisionBlobs')
+    || action.startsWith('ideaRevisions')
     || action.startsWith('history.')
     || action.startsWith('backup')
   ) {
@@ -715,7 +770,24 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           persistedBaseline,
         )
         const retentionPct = Math.round((assessment.retention ?? 1) * 100)
-        const fingerprint = `chapter-update:${loaded.library}:${loaded.book.id}:${edition.id}:${current.id}:${edition.revision}:${current.revision}:${assessment.beforeWords}:${assessment.afterWords}:${retentionPct}`
+        const currentHash = hashDocumentContent(current.content)
+        const nextHash = hashDocumentContent(nextContent)
+        const updateHash = synchronousContentHash(JSON.stringify({
+          library: loaded.library,
+          bookId: loaded.book.id,
+          editionId: edition.id,
+          chapterId: current.id,
+          editionRevision: edition.revision,
+          chapterRevision: current.revision,
+          currentTitle: info.title,
+          currentHash,
+          nextTitle,
+          nextHash,
+          beforeWords: assessment.beforeWords,
+          afterWords: assessment.afterWords,
+          retentionPct,
+        }))
+        const fingerprint = `chapter-update:${loaded.library}:${loaded.book.id}:${edition.id}:${current.id}:${updateHash}`
 
         if (phase === 'execute') {
           if (assessment.destructive) {
@@ -775,6 +847,15 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           nextContent: hasContent ? nextContent : undefined,
           action: 'chapters.update',
           resetBaseline: phase === 'execute-confirmed',
+          expected: phase === 'execute-confirmed'
+            ? {
+                editionRevision: edition.revision,
+                id: current.id,
+                title: info.title,
+                revision: current.revision,
+                contentHash: currentHash,
+              }
+            : undefined,
         })
         edition = applied.edition
         commitChapterBaseline(
@@ -812,7 +893,8 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           return fail(400, 'invalid_batch_payload', 'Expected "chapters" array.')
         }
 
-        const bundle = await readBundle(edition)
+        const sig = await editionChaptersSignature(edition)
+        const existingInputs = await readBundle(edition)
         const parsedIncoming = body.chapters.map((entry) => {
           if (!entry || typeof entry !== 'object') throw new Error('Each chapter entry must be an object.')
           const obj = entry as Record<string, unknown>
@@ -826,9 +908,24 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         })
 
         const persistedBaselines = await listEditionAiBaselines(client.id, edition)
-        const batchCheck = assessBatchEditionUpdate(edition.chapters, bundle.chapters, parsedIncoming, persistedBaselines)
+        const batchCheck = assessBatchEditionUpdate(edition.chapters, existingInputs.chapters, parsedIncoming, persistedBaselines)
         const retentionPct = Math.round((batchCheck.retention ?? 1) * 100)
-        const fingerprint = `batch:${loaded.library}:${loaded.book.id}:${edition.id}:${edition.revision}:${batchCheck.beforeWords}:${batchCheck.afterWords}:${parsedIncoming.length}:${retentionPct}`
+        const batchHash = synchronousContentHash(JSON.stringify({
+          library: loaded.library,
+          bookId: loaded.book.id,
+          editionId: edition.id,
+          editionRevision: edition.revision,
+          existingChapters: sig.expectedChapters,
+          incoming: parsedIncoming.map((item) => ({
+            id: item.id ?? '',
+            title: item.title,
+            contentHash: hashDocumentContent(item.content),
+          })),
+          beforeWords: batchCheck.beforeWords,
+          afterWords: batchCheck.afterWords,
+          retentionPct,
+        }))
+        const fingerprint = `batch:${loaded.library}:${loaded.book.id}:${edition.id}:${batchHash}`
 
         if (phase === 'execute') {
           if (batchCheck.destructive) {
@@ -874,6 +971,12 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           clientName: client.name,
           chapters: parsedIncoming,
           resetBaseline: phase === 'execute-confirmed',
+          expected: phase === 'execute-confirmed'
+            ? {
+                editionRevision: edition.revision,
+                chapters: sig.expectedChapters,
+              }
+            : undefined,
         })
         edition = applied.edition
         for (const ch of applied.chapters) {
@@ -948,8 +1051,16 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           return fail(409, 'chapter_dirty_in_editor', 'User has unsaved edits in this chapter.')
         }
         const record = await readChapter(edition, params.chapterId)
+        const chapterIndex = edition.chapters.findIndex((c) => c.id === params.chapterId)
         const words = wordCount(record.content)
-        const fingerprint = `chapter-delete:${loaded.library}:${loaded.book.id}:${edition.id}:${record.id}:${edition.revision}:${record.revision}`
+        const chHash = synchronousContentHash(JSON.stringify({
+          index: chapterIndex,
+          title: infoEntry.title,
+          editionRevision: edition.revision,
+          chapterRevision: record.revision,
+          contentHash: hashDocumentContent(record.content),
+        }))
+        const fingerprint = `chapter-delete:${loaded.library}:${loaded.book.id}:${edition.id}:${record.id}:${chHash}`
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -1050,7 +1161,17 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (!origRes || origRes.book.workId !== loaded.book.id) {
           return fail(404, 'source_not_found', 'Source not found on this continuation project.')
         }
-        const fingerprint = `source-delete:${loaded.book.id}:${origRes.book.id}:${origRes.book.importedAt}`
+        const src = origRes.book
+        const srcHash = synchronousContentHash(JSON.stringify({
+          id: src.id,
+          workId: src.workId ?? '',
+          title: src.title,
+          originalName: src.format === 'draft' ? '' : src.originalName,
+          size: src.format === 'draft' ? 0 : src.size,
+          digest: src.format === 'draft' ? '' : src.digest,
+          importedAt: src.importedAt,
+        }))
+        const fingerprint = `source-delete:${loaded.book.id}:${src.id}:${srcHash}`
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -1227,13 +1348,21 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (!isIdeaInScope(client, existing)) {
           return fail(403, 'forbidden_scope', 'Idea is outside AI client scope.')
         }
-        let next: Idea = existing
-        if (typeof body.text === 'string' || body.work !== undefined) {
+        const hasText = typeof body.text === 'string'
+        const hasWork = body.work !== undefined
+        const hasUsed = typeof body.used === 'boolean'
+        if (!hasText && !hasWork && !hasUsed) {
+          return fail(400, 'missing_update_fields', 'Provide "text", "work", and/or "used".')
+        }
+
+        let nextWork: { library: LibraryId; bookId: string } | null | undefined
+        if (hasText || hasWork) {
           let nextLib = existing.library
           let nextBookId = existing.bookId
           if (body.work === null) {
             nextLib = undefined
             nextBookId = undefined
+            nextWork = null
           } else if (body.work && typeof body.work === 'object') {
             const raw = body.work as { library?: unknown; bookId?: unknown }
             if (!isValidLibraryId(raw.library) || typeof raw.bookId !== 'string') {
@@ -1243,25 +1372,30 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
             if (!loaded.ok) return loaded.error
             nextLib = loaded.library
             nextBookId = loaded.book.id
+            nextWork = { library: loaded.library, bookId: loaded.book.id }
           }
           const linked = nextLib && nextBookId ? { library: nextLib, bookId: nextBookId } : undefined
           if (!canAssignIdeaWork(client, linked)) {
             return fail(403, 'forbidden_scope', 'Cannot unlink or reassign idea outside authorized scope.')
           }
-          const nextText = typeof body.text === 'string' ? body.text.trim() : existing.text
-          if (!nextText || nextText.length > maxIdeaLength) {
+        }
+        if (hasText) {
+          const clean = String(body.text).trim()
+          if (!clean || clean.length > maxIdeaLength) {
             return fail(400, 'invalid_idea_text', `Idea text must be 1-${maxIdeaLength} characters.`)
           }
-          next = await saveIdea({
-            ...existing,
-            text: nextText,
-            ...(linked ? { library: linked.library, bookId: linked.bookId } : { library: undefined, bookId: undefined }),
-          })
         }
-        if (typeof body.used === 'boolean') {
-          next = await setIdeaUsed(next, body.used)
-        }
-        return ok({ idea: next }, 200, next.id)
+
+        const updated = await applyAiIdeaUpdate({
+          id: existing.id,
+          clientId: client.id,
+          clientName: client.name,
+          ...(hasText ? { nextText: String(body.text) } : {}),
+          ...(nextWork !== undefined ? { nextWork } : {}),
+          ...(hasUsed ? { nextUsed: body.used as boolean } : {}),
+          action: 'ideas.update',
+        })
+        return ok({ idea: updated.idea, snapshotSaved: true }, 200, updated.idea.id, `snapshot:${updated.snapshot.id}`)
       }
 
       case 'ideas.delete': {
@@ -1274,7 +1408,15 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (!isIdeaInScope(client, existing)) {
           return fail(403, 'forbidden_scope', 'Idea is outside AI client scope.')
         }
-        const fingerprint = `idea-delete:${existing.id}:${existing.createdAt}:${existing.usedAt ?? 0}`
+        const ideaHash = synchronousContentHash(JSON.stringify({
+          id: existing.id,
+          text: existing.text,
+          library: existing.library ?? '',
+          bookId: existing.bookId ?? '',
+          createdAt: existing.createdAt,
+          usedAt: existing.usedAt ?? 0,
+        }))
+        const fingerprint = `idea-delete:${existing.id}:${ideaHash}`
         if (phase === 'prepare-delete') {
           return {
             ok: false,
@@ -1301,6 +1443,9 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         return fail(400, 'unsupported_action', `Unsupported action: ${action}`)
     }
   } catch (error) {
+    if (error instanceof ConfirmStateConflictError) {
+      return fail(409, 'stale_confirmation_target', error.message)
+    }
     const message = storageError(error) || (error instanceof Error ? error.message : String(error))
     return fail(400, 'operation_failed', message, undefined, undefined, message)
   }

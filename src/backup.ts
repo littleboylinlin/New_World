@@ -5,7 +5,7 @@ import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { t } from './i18n'
 import { committed, coverOf, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
-import type { Book, BookFile, ChapterRevision, LibraryId, TrashEntry } from './library'
+import type { Book, BookFile, ChapterRevision, IdeaRevision, LibraryId, RevisionBlobRecord, TrashEntry } from './library'
 import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
 import type { WritingDay } from './writing-stats'
@@ -15,11 +15,25 @@ const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
 const formatVersion = 1
 
+export const maxBackupZipEntries = 10_000
+export const maxBackupManifestBytes = 64 * 1024 * 1024
+export const maxBackupEntryBytes = 256 * 1024 * 1024
+export const maxBackupTotalUncompressedBytes = 2 * 1024 * 1024 * 1024
+
 interface StoredFile {
   library: LibraryId
   id: string
   path: string
   type: string
+}
+
+interface StoredRevisionBlob {
+  hash: string
+  encoding: 'gzip' | 'json'
+  rawBytes: number
+  storedBytes: number
+  createdAt: number
+  path: string
 }
 
 type StoredTrashEntry = Omit<TrashEntry, 'files'> & { files: StoredFile[] }
@@ -40,6 +54,10 @@ interface Manifest {
   ideas?: Idea[]
   /** Pre-edit chapter revision snapshots. Missing from backups made before v0.15.1. */
   revisions?: ChapterRevision[]
+  /** Deduplicated compressed revision payloads. Added in v0.15.2. */
+  revisionBlobs?: StoredRevisionBlob[]
+  /** Pre-edit idea revision snapshots. Added in v0.15.2. */
+  ideaRevisions?: IdeaRevision[]
 }
 
 export interface BackupSummary {
@@ -60,9 +78,11 @@ export interface BackupContents {
   writingDays: WritingDay[]
   ideas?: Idea[]
   revisions?: ChapterRevision[]
+  revisionBlobs?: RevisionBlobRecord[]
+  ideaRevisions?: IdeaRevision[]
 }
 
-export type BackupProblem = 'password' | 'format' | 'newer'
+export type BackupProblem = 'password' | 'format' | 'newer' | 'tooLarge'
 
 export class BackupError extends Error {
   constructor(readonly problem: BackupProblem) {
@@ -70,6 +90,7 @@ export class BackupError extends Error {
       password: t('backup.wrongPassword'),
       format: t('backup.notABackup'),
       newer: t('backup.newerBackup'),
+      tooLarge: t('backup.tooLarge'),
     }[problem])
   }
 }
@@ -94,9 +115,9 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions'])
-  const [books, files, editions, chapters, trash, writingDays, ideas, revisions]: [
-    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[],
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions'])
+  const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions]: [
+    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[],
   ] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
@@ -106,6 +127,8 @@ export async function createBackup(password?: string) {
     resultOf(tx.objectStore('writingDays').getAll()),
     resultOf(tx.objectStore('ideas').getAll()),
     resultOf(tx.objectStore('revisions').getAll()),
+    resultOf(tx.objectStore('revisionBlobs').getAll()),
+    resultOf(tx.objectStore('ideaRevisions').getAll()),
   ])
 
   const blobs: [string, Blob][] = []
@@ -114,6 +137,19 @@ export async function createBackup(password?: string) {
     blobs.push([path, file.blob])
     return { library: file.library, id: file.id, path, type: file.blob.type }
   }
+  const storedRevisionBlobs: StoredRevisionBlob[] = revisionBlobRows.map((row) => {
+    const path = `revision-blobs/${row.hash}`
+    const bytes = row.data instanceof Uint8Array ? Uint8Array.from(row.data) : new Uint8Array(row.data)
+    blobs.push([path, new Blob([bytes])])
+    return {
+      hash: row.hash,
+      encoding: row.encoding,
+      rawBytes: row.rawBytes,
+      storedBytes: row.storedBytes,
+      createdAt: row.createdAt,
+      path,
+    }
+  })
   // Cover images are blobs on the work records; they go beside the manifest like the original files.
   const pack = (book: Book, folder: string): Book => {
     const { cover: _stored, ...rest } = book
@@ -126,6 +162,8 @@ export async function createBackup(password?: string) {
   const manifest: Manifest = {
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
     editions, chapters, writingDays, ideas, revisions,
+    revisionBlobs: storedRevisionBlobs,
+    ideaRevisions,
     books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
     trash: trash.map((entry) => ({
@@ -143,14 +181,34 @@ export async function createBackup(password?: string) {
   return { blob, summary: summarize(manifest) }
 }
 
+function isSafeZipPath(filename: string): boolean {
+  if (!filename || filename.startsWith('/') || filename.includes('\\') || filename.includes('\0')) return false
+  return !filename.split('/').some((segment) => segment === '..')
+}
+
 async function openZip(file: Blob) {
+  if (file.size > maxBackupTotalUncompressedBytes) {
+    throw new BackupError('tooLarge')
+  }
   const zip = new ZipReader(new BlobReader(file), { useWebWorkers: false })
   try {
     const entries = new Map<string, FileEntry>()
-    for (const entry of await zip.getEntries()) if (!entry.directory) entries.set(entry.filename, entry)
+    let count = 0
+    for await (const entry of zip.getEntriesGenerator()) {
+      count++
+      if (count > maxBackupZipEntries) {
+        throw new BackupError('tooLarge')
+      }
+      if (entry.directory) continue
+      if (!isSafeZipPath(entry.filename) || entries.has(entry.filename)) {
+        throw new BackupError('format')
+      }
+      entries.set(entry.filename, entry)
+    }
     return { zip, entries }
-  } catch {
+  } catch (error) {
     await zip.close()
+    if (error instanceof BackupError) throw error
     throw new BackupError('format')
   }
 }
@@ -173,13 +231,34 @@ function list(value: unknown) {
 export async function readBackup(file: Blob, password?: string): Promise<BackupContents> {
   const { zip, entries } = await openZip(file)
   try {
-    const read = async (path: string, type = '') => {
+    let cumulativeBytes = 0
+    const read = async (path: string, type = '', entryLimit = maxBackupEntryBytes) => {
       const entry = entries.get(path)
       if (!entry) throw new BackupError('format')
       if (entry.encrypted && !password) throw new BackupError('password')
+      if (
+        typeof entry.uncompressedSize === 'number' &&
+        (entry.uncompressedSize > entryLimit || cumulativeBytes + entry.uncompressedSize > maxBackupTotalUncompressedBytes)
+      ) {
+        throw new BackupError('tooLarge')
+      }
+      const chunks: Uint8Array<ArrayBuffer>[] = []
+      let received = 0
+      const counter = new WritableStream<Uint8Array>({
+        write(chunk) {
+          received += chunk.byteLength
+          cumulativeBytes += chunk.byteLength
+          if (received > entryLimit || cumulativeBytes > maxBackupTotalUncompressedBytes) {
+            throw new BackupError('tooLarge')
+          }
+          chunks.push(Uint8Array.from(chunk))
+        },
+      })
       try {
-        return await entry.getData(new BlobWriter(type), { password, checkSignature: true })
+        await entry.getData(counter, { password, checkSignature: true })
+        return new Blob(chunks, type ? { type } : undefined)
       } catch (error) {
+        if (error instanceof BackupError) throw error
         const message = error instanceof Error ? error.message : ''
         if (entry.encrypted && /password/i.test(message)) throw new BackupError('password')
         throw new BackupError('format')
@@ -188,7 +267,7 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 
     let manifest: Manifest
     try {
-      manifest = JSON.parse(await (await read(manifestName)).text())
+      manifest = JSON.parse(await (await read(manifestName, 'application/json', maxBackupManifestBytes)).text())
     } catch (error) {
       if (error instanceof BackupError) throw error
       throw new BackupError('format')
@@ -224,6 +303,34 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       for (const book of list(entry.books) as unknown as Book[]) entryBooks.push(await unpack(book))
       trash.push({ ...entry, books: entryBooks, files: entryFiles })
     }
+    let revisionBlobs: RevisionBlobRecord[] | undefined
+    const validBlobHashes = new Set<string>()
+    if (Array.isArray(manifest.revisionBlobs)) {
+      revisionBlobs = []
+      for (const item of manifest.revisionBlobs) {
+        if (
+          !item ||
+          typeof item.hash !== 'string' ||
+          typeof item.path !== 'string' ||
+          (item.encoding !== 'gzip' && item.encoding !== 'json') ||
+          !Number.isFinite(item.rawBytes) ||
+          !Number.isFinite(item.storedBytes)
+        ) {
+          throw new BackupError('format')
+        }
+        const rawBlob = await read(item.path)
+        const bytes = new Uint8Array(await rawBlob.arrayBuffer())
+        revisionBlobs.push({
+          hash: item.hash,
+          encoding: item.encoding,
+          data: bytes,
+          rawBytes: item.rawBytes,
+          storedBytes: item.storedBytes,
+          createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+        })
+        validBlobHashes.add(item.hash)
+      }
+    }
     return {
       summary: summarize(manifest),
       books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
@@ -232,7 +339,17 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       ideas: Array.isArray(manifest.ideas)
         ? manifest.ideas.filter((idea) => typeof idea?.id === 'string' && typeof idea.text === 'string') : undefined,
       revisions: Array.isArray(manifest.revisions)
-        ? manifest.revisions.filter((rev) => typeof rev?.id === 'string' && typeof rev.chapterId === 'string' && rev.content?.type === 'doc') : undefined,
+        ? manifest.revisions.filter(
+          (rev) =>
+            typeof rev?.id === 'string' &&
+            typeof rev.chapterId === 'string' &&
+            (rev.content?.type === 'doc' || (typeof rev.blobHash === 'string' && validBlobHashes.has(rev.blobHash))),
+        )
+        : undefined,
+      revisionBlobs,
+      ideaRevisions: Array.isArray(manifest.ideaRevisions)
+        ? manifest.ideaRevisions.filter((rev) => typeof rev?.id === 'string' && typeof rev.ideaId === 'string' && typeof rev.text === 'string')
+        : undefined,
     }
   } finally {
     await zip.close()
@@ -242,16 +359,29 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'aiBaselines'], 'readwrite', { durability: 'strict' })
-  for (const name of [...libraryStores, 'revisions', 'aiBaselines']) tx.objectStore(name).clear()
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines'], 'readwrite', { durability: 'strict' })
+  for (const name of [...libraryStores, 'revisions', 'revisionBlobs', 'aiBaselines']) tx.objectStore(name).clear()
   if (contents.revisions) {
     const revisions = tx.objectStore('revisions')
     for (const revision of contents.revisions) revisions.add(revision)
+  }
+  if (contents.revisionBlobs) {
+    const revisionBlobs = tx.objectStore('revisionBlobs')
+    for (const blob of contents.revisionBlobs) revisionBlobs.put(blob)
   }
   if (contents.ideas) {
     const ideas = tx.objectStore('ideas')
     ideas.clear()
     for (const idea of contents.ideas) ideas.add(idea)
+    const ideaRevisions = tx.objectStore('ideaRevisions')
+    ideaRevisions.clear()
+    if (contents.ideaRevisions) {
+      for (const rev of contents.ideaRevisions) ideaRevisions.add(rev)
+    }
+  } else if (contents.ideaRevisions) {
+    const ideaRevisions = tx.objectStore('ideaRevisions')
+    ideaRevisions.clear()
+    for (const rev of contents.ideaRevisions) ideaRevisions.add(rev)
   }
   // Writing history is kept across restores: each day keeps the larger of the two counts.
   const days = tx.objectStore('writingDays')

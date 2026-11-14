@@ -120,6 +120,11 @@ export async function readBundle(key: EditionKey): Promise<EditionBundle> {
   }) }
 }
 
+export async function readChapterRecords(key: EditionKey): Promise<ChapterRecord[]> {
+  const db = await openDatabase()
+  return resultOf(db.transaction('chapters').objectStore('chapters').index('byEdition').getAll(editionKey(key)))
+}
+
 type ChapterChange = { type: 'add'; title: string } | { type: 'rename'; id: string; title: string }
   | { type: 'move'; id: string; offset: -1 | 1 } | { type: 'reorder'; order: string[] } | { type: 'delete'; id: string }
 

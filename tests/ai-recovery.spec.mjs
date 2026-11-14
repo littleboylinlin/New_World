@@ -7,6 +7,7 @@ import { expect, test } from './app-test.mjs'
 const require = createRequire(import.meta.url)
 const { createAiStore } = require('../desktop/ai-store.cjs')
 const { createAiBridge } = require('../desktop/ai-bridge.cjs')
+const { shouldCancelClientConfirmations } = require('../desktop/ipc-guard.cjs')
 
 async function mountAiHarness(page, options = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nw-ai-rec-e2e-'))
@@ -71,8 +72,9 @@ async function mountAiHarness(page, options = {}) {
         return { state: { ...store.getPublicState(), bridge: bridge.getStatus() }, client: created.client, token: created.token }
       }
       case 'updateAiClient': {
+        const prev = store.getClientById?.(args[0]) ?? store.getPublicState().clients.find((c) => c.id === args[0])
         const updated = store.updateClient(args[0], args[1])
-        if (!updated.client.enabled || !updated.client.permissions.delete) {
+        if (shouldCancelClientConfirmations(prev, updated.client)) {
           bridge.cancelClientPending(args[0], 'client_updated')
         }
         return { state: { ...store.getPublicState(), bridge: bridge.getStatus() }, client: updated.client }
@@ -817,6 +819,368 @@ test('9. 保存恢复快照失败时原子中止修改：单章更新与批量�
     await expect(page.getByRole('heading', { name: '回收站是空的' })).toBeVisible()
   } finally {
     await page.evaluate(() => { window.__restoreIdbAdd?.() }).catch(() => {})
+    await harness.cleanup()
+  }
+})
+
+test('10. ideas.update 原子快照保护、多版本叠加恢复与灵感历史严格隔离', async ({ page }) => {
+  const harness = await mountAiHarness(page, { confirmTimeoutMs: 30_000 })
+  try {
+    harness.store.setEnabled(true)
+    const ai = harness.store.createClient({
+      name: 'IdeaGuardAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: false },
+      scope: { mode: 'all', workIds: [] },
+    })
+    await harness.bridge.sync()
+    await gotoReady(page, '/')
+
+    const { workId } = await createWorkWithChapters(harness, ai.token, '灵感归属小说', [
+      { title: '第一章', format: 'text', content: '小说起步内容。' },
+    ])
+
+    const createdIdea = await harness.api('POST', '/ideas', ai.token, {
+      text: '初始灵感：雨夜钟楼其实是一台大型留声机',
+      work: { library: 'original', bookId: workId },
+    })
+    expect(createdIdea.status).toBe(201)
+    const ideaId = createdIdea.json.data.idea.id
+
+    // Continuous AI updates preserve each prior state before modifying
+    const up1 = await harness.api('PATCH', `/ideas/${ideaId}`, ai.token, {
+      text: '第二版灵感：钟楼在停电后会倒放十年前的录音',
+      used: true,
+      work: null,
+    })
+    expect(up1.status).toBe(200)
+    expect(up1.json.data.snapshotSaved).toBe(true)
+
+    const up2 = await harness.api('PATCH', `/ideas/${ideaId}`, ai.token, {
+      text: '第三版灵感：被删掉的时间段都被存在地下铜盘里',
+      used: false,
+      work: { library: 'original', bookId: workId },
+    })
+    expect(up2.status).toBe(200)
+    expect(up2.json.data.snapshotSaved).toBe(true)
+
+    // AI cannot read or tamper with idea history routes
+    for (const [method, urlPath] of [
+      ['GET', `/ideas/${ideaId}/revisions`],
+      ['GET', '/idea-revisions'],
+      ['GET', '/revision-blobs'],
+    ]) {
+      const forbidden = await harness.api(method, urlPath, ai.token)
+      expect(forbidden.status).toBe(403)
+      expect(forbidden.json.error.code).toBe('recovery_data_forbidden')
+    }
+
+    // Survive reload + UI preview & restore backs up current idea state first
+    await page.reload()
+    await page.waitForFunction(() => Boolean(window.__nwAiEvents?.dispatch))
+    await page.goto('/#/ideas')
+    const badge = page.locator('.idea-history-button')
+    await expect(badge).toContainText('2 个历史版本')
+    await badge.click()
+
+    const dialog = page.getByRole('dialog', { name: '灵感历史版本' })
+    const items = dialog.locator('button.revision-item')
+    await expect(items).toHaveCount(2)
+    await expect(dialog.locator('.revision-preview-text')).toHaveText('第二版灵感：钟楼在停电后会倒放十年前的录音')
+    await items.nth(1).click()
+    await expect(dialog.locator('.revision-preview-text')).toHaveText('初始灵感：雨夜钟楼其实是一台大型留声机')
+
+    await dialog.getByRole('button', { name: '恢复此版本' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '已恢复所选灵感版本，当前状态已自动备份。' })).toBeVisible()
+    await expect(page.locator('.idea-text')).toHaveText('初始灵感：雨夜钟楼其实是一台大型留声机')
+    await expect(badge).toContainText('3 个历史版本')
+
+    // Pre-restore state (v3) must be saved as the newest history entry
+    await badge.click()
+    await expect(dialog.locator('button.revision-item')).toHaveCount(3)
+    await expect(dialog.locator('.revision-preview-text')).toHaveText('第三版灵感：被删掉的时间段都被存在地下铜盘里')
+    await dialog.getByRole('button', { name: '关闭' }).first().click()
+
+    // Fault inject QuotaExceededError on ideaRevisions.add -> ideas.update aborts atomically
+    await page.evaluate(() => {
+      const origAdd = IDBObjectStore.prototype.add
+      window.__restoreIdeaAdd = () => { IDBObjectStore.prototype.add = origAdd }
+      IDBObjectStore.prototype.add = function patched(value, key) {
+        if (this.name === 'ideaRevisions') {
+          throw new DOMException('Simulated quota exceeded on ideaRevisions', 'QuotaExceededError')
+        }
+        return origAdd.call(this, value, key)
+      }
+    })
+    const failedUpdate = await harness.api('PATCH', `/ideas/${ideaId}`, ai.token, {
+      text: '故障注入下绝不能写进去的内容',
+    })
+    expect(failedUpdate.status).toBeGreaterThanOrEqual(400)
+    expect(failedUpdate.json.ok).toBe(false)
+
+    await page.evaluate(() => { window.__restoreIdeaAdd?.() })
+    const listAfterFail = await harness.api('GET', '/ideas', ai.token)
+    expect(listAfterFail.status).toBe(200)
+    expect(listAfterFail.json.data.ideas.find((item) => item.id === ideaId).text).toBe('初始灵感：雨夜钟楼其实是一台大型留声机')
+  } finally {
+    await page.evaluate(() => { window.__restoreIdeaAdd?.() }).catch(() => {})
+    await harness.cleanup()
+  }
+})
+
+test('11. restoreChapterRevision 在统一事务内完整恢复原章节标题与正文，并同步目录与编辑区', async ({ page }) => {
+  const harness = await mountAiHarness(page, { confirmTimeoutMs: 30_000 })
+  try {
+    harness.store.setEnabled(true)
+    const ai = harness.store.createClient({
+      name: 'TitleRestoreAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: false },
+      scope: { mode: 'all', workIds: [] },
+    })
+    await harness.bridge.sync()
+    await gotoReady(page, '/')
+
+    const shared = '海风吹过灯塔外墙时总带着潮湿的铁锈气息，值守人把今晚的航标记录摊开在长桌上，仔细核对每一个刻度与潮汐时间。'
+    const origText = `${shared} 原始第一版段落结尾保持完整。`
+    const nextText = `${shared} 经过 AI 润色后的段落结尾也保持足够重合。`
+    const { workId, editionId, chapters } = await createWorkWithChapters(harness, ai.token, '标题与正文联动书', [
+      { title: '最初的序章标题', format: 'text', content: origText },
+    ])
+    const chId = chapters[0].id
+
+    const updated = await harness.api('PUT', `/works/original/${workId}/editions/${editionId}/chapters/${chId}`, ai.token, {
+      title: 'AI 改写后的章名',
+      content: nextText,
+    })
+    expect(updated.status).toBe(200)
+
+    await page.goto(`/#/original/${workId}/${editionId}`)
+    await expect(page.locator('.writing-header h3')).toHaveText('AI 改写后的章名')
+    await expect(page.getByRole('list', { name: '章节' }).getByRole('button').first()).toContainText('AI 改写后的章名')
+    await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(nextText)
+
+    await page.locator('button.history-toggle').click()
+    const dialog = page.getByRole('dialog', { name: /历史版本/ })
+    await expect(dialog.locator('.revision-preview-text')).toHaveText(origText)
+    await dialog.getByRole('button', { name: '恢复此版本' }).click()
+
+    // Title in heading & sidebar AND body content AND backup snapshot all update cleanly
+    await expect(page.locator('.writing-header h3')).toHaveText('最初的序章标题')
+    await expect(page.getByRole('list', { name: '章节' }).getByRole('button').first()).toContainText('最初的序章标题')
+    await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(origText)
+    await expect(page.locator('button.history-toggle .history-count')).toHaveText('2')
+
+    await page.reload()
+    await page.waitForFunction(() => Boolean(window.__nwAiEvents?.dispatch))
+    await expect(page.locator('.writing-header h3')).toHaveText('最初的序章标题')
+    await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(origText)
+
+    await page.locator('button.history-toggle').click()
+    await expect(dialog.locator('.revision-preview-text')).toHaveText(nextText)
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('12. 删除/破坏性修改确认期间目标内容变化返回 409，权限范围缩小即时终止待确认', async ({ page }) => {
+  const harness = await mountAiHarness(page, { confirmTimeoutMs: 30_000 })
+  try {
+    harness.store.setEnabled(true)
+    const { client: readerClient, token: editorToken } = harness.store.createClient({
+      name: 'ConcurrentEditorAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: false },
+      scope: { mode: 'all', workIds: [] },
+    })
+    const { client: aiClient, token: deleterToken } = harness.store.createClient({
+      name: 'DeleterConfirmAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: true },
+      scope: { mode: 'all', workIds: [] },
+    })
+    await harness.bridge.sync()
+    await gotoReady(page, '/')
+
+    const baseWords = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ')
+    const { workId, editionId, chapters } = await createWorkWithChapters(harness, editorToken, '确认一致性作品', [
+      { title: '第一章', format: 'text', content: baseWords },
+    ])
+    const chId = chapters[0].id
+
+    // 1. Destructive chapters.update interrupted by another edit while waiting for confirmation
+    const dialog = page.getByRole('dialog', { name: '确认 AI 请求的操作' })
+    const destructivePromise = harness.api('PUT', `/works/original/${workId}/editions/${editionId}/chapters/${chId}?wait=true`, deleterToken, {
+      content: '被缩水成一句话',
+    })
+    await expect(dialog).toBeVisible()
+    const newerBody = `${baseWords} concurrent_addition`
+    expect((await harness.api('PUT', `/works/original/${workId}/editions/${editionId}/chapters/${chId}`, editorToken, {
+      content: newerBody,
+    })).status).toBe(200)
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const staleUpdate = await destructivePromise
+    expect(staleUpdate.status).toBe(409)
+    expect(staleUpdate.json.error.code).toBe('stale_confirmation_target')
+
+    // 2. chapters.delete interrupted by edit while waiting -> 409 and chapter preserved
+    const chDeletePromise = harness.api('DELETE', `/works/original/${workId}/editions/${editionId}/chapters/${chId}?wait=true`, deleterToken)
+    await expect(dialog).toBeVisible()
+    expect((await harness.api('PUT', `/works/original/${workId}/editions/${editionId}/chapters/${chId}`, editorToken, {
+      title: '第一章（已修改）',
+    })).status).toBe(200)
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const staleChDelete = await chDeletePromise
+    expect(staleChDelete.status).toBe(409)
+    expect(staleChDelete.json.error.code).toBe('stale_confirmation_target')
+
+    // 3. ideas.delete interrupted by ideas.update -> 409 and idea preserved
+    const ideaCreated = await harness.api('POST', '/ideas', editorToken, {
+      text: '等待删除确认前的灵感',
+      work: { library: 'original', bookId: workId },
+    })
+    const ideaId = ideaCreated.json.data.idea.id
+    const ideaDelPromise = harness.api('DELETE', `/ideas/${ideaId}?wait=true`, deleterToken)
+    await expect(dialog).toBeVisible()
+    expect((await harness.api('PATCH', `/ideas/${ideaId}`, editorToken, { text: '用户刚修改过这条灵感' })).status).toBe(200)
+    await dialog.getByRole('button', { name: '本人确认执行' }).click()
+    const staleIdeaDel = await ideaDelPromise
+    expect(staleIdeaDel.status).toBe(409)
+    expect(staleIdeaDel.json.error.code).toBe('stale_confirmation_target')
+
+    // 4. Shrinking client scope from 'all' to 'selected' excluding target cancels pending delete immediately
+    const { workId: otherWorkId } = await createWorkWithChapters(harness, editorToken, '另一部安全作品', [
+      { title: '第一章', format: 'text', content: '安全内容' },
+    ])
+    const workDelPromise = harness.api('DELETE', `/works/original/${workId}?wait=true`, deleterToken)
+    await expect(dialog).toBeVisible()
+    await page.evaluate(async ([id, keepWork]) => {
+      await window.newWorldDesktop.updateAiClient(id, { scope: { mode: 'selected', workIds: [keepWork] } })
+    }, [aiClient.id, `original:${otherWorkId}`])
+    await expect(dialog).toBeHidden()
+    const canceledRes = await workDelPromise
+    expect(canceledRes.status).toBeGreaterThanOrEqual(400)
+    expect(canceledRes.json.ok).toBe(false)
+
+    // Verify work & idea are intact
+    expect((await harness.api('GET', `/works/original/${workId}`, editorToken)).status).toBe(200)
+    const remainingIdeas = await harness.api('GET', '/ideas', editorToken)
+    expect(remainingIdeas.json.data.ideas.some((item) => item.id === ideaId)).toBe(true)
+    void readerClient
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('13. 章节历史去重压缩存储、空间统计与超阈值提示、用户确认清理旧历史并保留最新可恢复版本', async ({ page }) => {
+  const harness = await mountAiHarness(page, { confirmTimeoutMs: 30_000 })
+  try {
+    harness.store.setEnabled(true)
+    const ai = harness.store.createClient({
+      name: 'DedupPruneAI',
+      enabled: true,
+      permissions: { read: true, create: true, update: true, delete: false },
+      scope: { mode: 'all', workIds: [] },
+    })
+    await harness.bridge.sync()
+    await gotoReady(page, '/')
+
+    const commonLead = '这是一个用来验证内容去重与压缩机制的较长公共前缀正文，反复出现在多次版本迭代中以确保能够切实压缩并命中同一个内容寻址块。'
+    const textA = `${commonLead} 分支版本 Alpha 段落。`
+    const textB = `${commonLead} 分支版本 Beta 段落。`
+    const { workId, editionId, chapters } = await createWorkWithChapters(harness, ai.token, '历史空间治理作品', [
+      { title: '测试章', format: 'text', content: textA },
+    ])
+    const chId = chapters[0].id
+
+    // Produce 7 snapshots alternating between textA and textB
+    for (let i = 0; i < 7; i++) {
+      const next = i % 2 === 0 ? textB : textA
+      const res = await harness.api('PUT', `/works/original/${workId}/editions/${editionId}/chapters/${chId}`, ai.token, {
+        content: next,
+      })
+      expect(res.status).toBe(200)
+    }
+
+    // Deduplication check in IndexedDB: 7 revisions reference only 2 unique blobs
+    const counts = await page.evaluate(async () => {
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('new-world-library')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      const revs = await new Promise((r) => { const q = db.transaction('revisions').objectStore('revisions').getAll(); q.onsuccess = () => r(q.result) })
+      const blobs = await new Promise((r) => { const q = db.transaction('revisionBlobs').objectStore('revisionBlobs').getAll(); q.onsuccess = () => r(q.result) })
+      db.close()
+      return { revs: revs.length, blobs: blobs.length, hasInline: revs.some((r) => Boolean(r.content)) }
+    })
+    expect(counts.revs).toBe(7)
+    expect(counts.blobs).toBe(2)
+    expect(counts.hasInline).toBe(false)
+
+    // UI stats + cancel + confirmed pruning down to 5 -> then 1 -> button hides so >=1 stays protected
+    await page.goto(`/#/original/${workId}/${editionId}`)
+    await page.locator('button.history-toggle').click()
+    const histDialog = page.getByRole('dialog', { name: /历史版本/ })
+    await expect(histDialog.locator('.revision-storage-summary')).toContainText('本章 7 条 · 历史库共 7 条')
+
+    const pruneBtn = histDialog.getByRole('button', { name: '清理较早历史…' })
+    await pruneBtn.click()
+    const confirmPruneDialog = page.getByRole('dialog', { name: '清理较早历史版本？' })
+    await confirmPruneDialog.getByRole('button', { name: '取消' }).click()
+    await expect(histDialog.locator('button.revision-item')).toHaveCount(7)
+
+    await pruneBtn.click()
+    await confirmPruneDialog.getByRole('button', { name: '确认清理较早历史' }).click()
+    await expect(page.getByRole('status').filter({ hasText: '已清理 2 条较早历史，当前保留最近 5 个可恢复版本。' })).toBeVisible()
+    await expect(histDialog.locator('button.revision-item')).toHaveCount(5)
+
+    await pruneBtn.click()
+    await confirmPruneDialog.getByRole('button', { name: '确认清理较早历史' }).click()
+    await expect(histDialog.locator('button.revision-item')).toHaveCount(1)
+    await expect(pruneBtn).toBeHidden()
+    await histDialog.getByRole('button', { name: '关闭' }).first().click()
+
+    // Seeding 205 revisions triggers soft capacity warning banner cleanly
+    await page.evaluate(async ([wId, edId, chapterId]) => {
+      const db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('new-world-library')
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      const existingBlobs = await new Promise((r) => {
+        const q = db.transaction('revisionBlobs').objectStore('revisionBlobs').getAll()
+        q.onsuccess = () => r(q.result)
+      })
+      const blob = existingBlobs[0]
+      const tx = db.transaction('revisions', 'readwrite', { durability: 'strict' })
+      const store = tx.objectStore('revisions')
+      const baseTime = Date.now() - 1_000_000
+      for (let i = 0; i < 205; i++) {
+        store.add({
+          id: `seed-${i}-${crypto.randomUUID()}`,
+          library: 'original',
+          bookId: wId,
+          editionId: edId,
+          chapterId,
+          chapterTitle: '测试章',
+          contentHash: blob.hash,
+          blobHash: blob.hash,
+          rawBytes: blob.rawBytes,
+          storedBytes: blob.storedBytes,
+          words: 50,
+          source: 'ai',
+          action: 'chapters.update',
+          createdAt: baseTime + i,
+        })
+      }
+      await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error) })
+      db.close()
+    }, [workId, editionId, chId])
+
+    await page.locator('button.history-toggle').click()
+    await expect(histDialog.getByRole('status')).toContainText('历史快照已累积 206 条')
+  } finally {
     await harness.cleanup()
   }
 })

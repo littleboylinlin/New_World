@@ -411,6 +411,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .idea-body { flex: 1; min-width: 0; }
 .idea-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .idea-meta { margin-top: 8px; }
+.idea-history-button { min-height: 26px; padding: 2px 8px; font-size: .78rem; }
 .idea-used { background: var(--surface); }
 .idea-used .idea-text { color: var(--muted); }
 .ideas-toggle[aria-expanded="true"] { color: var(--on-yellow); background: var(--yellow); }

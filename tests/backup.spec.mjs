@@ -1,5 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
-import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
+import { TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import { expect, test } from './app-test.mjs'
 import { bookAction } from './fixtures.mjs'
 
@@ -155,4 +155,184 @@ test('加密备份需要正确密码才能恢复，损坏的文件会被拒绝',
   await writeFile(broken, 'not a zip at all')
   await chooseBackup(page, broken)
   await expect(backupSection(page).getByRole('alert')).toHaveText('这不是 New World 备份文件，或文件已损坏。')
+})
+
+test('备份恢复拦截超量条目与超限解压体积的 ZIP 炸弹且保留现有书库', async ({ page }, testInfo) => {
+  await newNovel(page, '安全书库', '炸弹文件不能擦掉原有内容。')
+
+  // 1. Entry count exceeds maxBackupZipEntries (10,000)
+  const manyEntriesPath = testInfo.outputPath('too-many-entries.zip')
+  const entryWriter = new ZipWriter(new Uint8ArrayWriter())
+  await entryWriter.add('new-world-backup.json', new TextReader(JSON.stringify({
+    format: 'new-world-library-backup',
+    version: 1,
+    app: '0.15.2',
+    createdAt: Date.now(),
+    books: [],
+    files: [],
+    editions: [],
+    chapters: [],
+    trash: [],
+    writingDays: [],
+    ideas: [],
+  })), { level: 0 })
+  for (let i = 0; i < 10_005; i++) {
+    await entryWriter.add(`junk/${i}`, new TextReader('x'), { level: 0 })
+  }
+  await writeFile(manyEntriesPath, await entryWriter.close())
+  await chooseBackup(page, manyEntriesPath)
+  await expect(backupSection(page).getByRole('alert')).toHaveText('备份文件太大，无法打开。')
+  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+
+  // 2. Deflated manifest exceeds maxBackupManifestBytes (64 MiB) while ZIP on disk is tiny
+  const inflatedBombPath = testInfo.outputPath('manifest-bomb.zip')
+  const bombWriter = new ZipWriter(new Uint8ArrayWriter())
+  const hugePadding = ' '.repeat(65 * 1024 * 1024)
+  await bombWriter.add('new-world-backup.json', new TextReader(`{"format":"new-world-library-backup","version":1,${hugePadding.slice(0, 10)}}` + hugePadding), { level: 9 })
+  await writeFile(inflatedBombPath, await bombWriter.close())
+  await chooseBackup(page, inflatedBombPath)
+  await expect(backupSection(page).getByRole('alert')).toHaveText('备份文件太大，无法打开。')
+  await settings(page).getByRole('button', { name: '关闭', exact: true }).click()
+
+  // Existing library must still be completely untouched
+  await page.goto('/#/original')
+  await page.getByRole('link', { name: '查看 安全书库', exact: true }).click()
+  await expect(textArea(page)).toHaveText('炸弹文件不能擦掉原有内容。')
+})
+
+test('备份与恢复完整保留章节去重历史与灵感历史，并兼容旧版内联历史备份', async ({ page }, testInfo) => {
+  await newNovel(page, '时光备份集', '当前正在连载的正文。')
+  await keepIdea(page, '最新的灵感文本')
+
+  // Seed a v7 deduplicated revision + idea revision in IndexedDB (gzip/json encoded)
+  const seeded = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('new-world-library')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const books = await new Promise((r) => {
+      const q = db.transaction('books').objectStore('books').getAll()
+      q.onsuccess = () => r(q.result)
+    })
+    const editions = await new Promise((r) => {
+      const q = db.transaction('editions').objectStore('editions').getAll()
+      q.onsuccess = () => r(q.result)
+    })
+    const ideas = await new Promise((r) => {
+      const q = db.transaction('ideas').objectStore('ideas').getAll()
+      q.onsuccess = () => r(q.result)
+    })
+    const ed = editions[0]
+    const chId = ed.chapters[0].id
+    const revContent = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '被去重压缩保存的旧章节内容。' }] }] }
+    const raw = new TextEncoder().encode(JSON.stringify(revContent))
+    const blobHash = 'deadbeefcafebabe'
+    const tx = db.transaction(['revisionBlobs', 'revisions', 'ideaRevisions'], 'readwrite', { durability: 'strict' })
+    tx.objectStore('revisionBlobs').put({
+      hash: blobHash,
+      encoding: 'json',
+      data: raw,
+      rawBytes: raw.byteLength,
+      storedBytes: raw.byteLength,
+      createdAt: Date.now() - 20_000,
+    })
+    tx.objectStore('revisions').add({
+      id: crypto.randomUUID(),
+      library: ed.library,
+      bookId: ed.bookId,
+      editionId: ed.id,
+      chapterId: chId,
+      chapterTitle: '旧章节原名',
+      contentHash: blobHash,
+      blobHash,
+      rawBytes: raw.byteLength,
+      storedBytes: raw.byteLength,
+      words: 13,
+      source: 'ai',
+      action: 'chapters.update',
+      clientId: 'c1',
+      clientName: 'TestAI',
+      createdAt: Date.now() - 20_000,
+    })
+    tx.objectStore('ideaRevisions').add({
+      id: crypto.randomUUID(),
+      ideaId: ideas[0].id,
+      text: '最早的灵感历史快照',
+      createdAt: Date.now() - 20_000,
+      source: 'ai',
+      action: 'ideas.update',
+      clientId: 'c1',
+      clientName: 'TestAI',
+    })
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error) })
+    db.close()
+    return { bookId: books[0].id, editionId: ed.id, chapterId: chId }
+  })
+
+  const v7Path = await backUp(page, testInfo, 'v7-history-backup.zip')
+  const zipBytes = await readFile(v7Path)
+  const reader = new ZipReader(new Uint8ArrayReader(zipBytes))
+  const entry = (await reader.getEntries()).find((item) => item.filename === 'new-world-backup.json')
+  const manifest = JSON.parse(await entry.getData(new TextWriter()))
+  await reader.close()
+  expect(manifest.revisionBlobs?.length).toBe(1)
+  expect(manifest.revisions?.length).toBe(1)
+  expect(manifest.ideaRevisions?.length).toBe(1)
+
+  // Wipe existing data by deleting novel & idea, then restore v7 backup
+  await page.goto('/#/original')
+  await bookAction(page, '删除')
+  await page.getByRole('button', { name: '确认删除' }).click()
+  await chooseBackup(page, v7Path)
+  await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
+  await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
+
+  // Verify chapter history from restored v7 blob works cleanly
+  await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
+  await expect(page.locator('button.history-toggle .history-count')).toHaveText('1')
+  await page.locator('button.history-toggle').click()
+  await expect(page.getByRole('dialog', { name: /历史版本/ }).locator('.revision-preview-text')).toHaveText('被去重压缩保存的旧章节内容。')
+  await page.getByRole('dialog', { name: /历史版本/ }).getByRole('button', { name: '关闭' }).first().click()
+
+  // Verify idea history restored cleanly
+  await page.goto('/#/ideas')
+  await expect(page.locator('.idea-history-button')).toContainText('1 个历史版本')
+  await page.locator('.idea-history-button').click()
+  await expect(page.getByRole('dialog', { name: /灵感历史版本/ })).toContainText('最早的灵感历史快照')
+  await page.getByRole('dialog', { name: /灵感历史版本/ }).getByRole('button', { name: '关闭' }).first().click()
+
+  // Simulate pre-v0.15.2 legacy backup (inline revisions without revisionBlobs/ideaRevisions)
+  const legacyManifest = {
+    ...manifest,
+    revisions: [{
+      id: 'legacy-rev-1',
+      library: 'original',
+      bookId: seeded.bookId,
+      editionId: seeded.editionId,
+      chapterId: seeded.chapterId,
+      chapterTitle: '旧版第一章',
+      content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '来自旧版备份的内联正文。' }] }] },
+      plainText: '来自旧版备份的内联正文。',
+      contentHash: 'legacyhash1',
+      words: 12,
+      source: 'ai',
+      action: 'chapters.update',
+      createdAt: Date.now() - 40_000,
+    }],
+  }
+  delete legacyManifest.revisionBlobs
+  delete legacyManifest.ideaRevisions
+  const legacyZipPath = testInfo.outputPath('legacy-backup.zip')
+  const legacyWriter = new ZipWriter(new Uint8ArrayWriter())
+  await legacyWriter.add('new-world-backup.json', new TextReader(JSON.stringify(legacyManifest)))
+  await writeFile(legacyZipPath, await legacyWriter.close())
+
+  await chooseBackup(page, legacyZipPath)
+  await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
+  await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
+
+  await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
+  await page.locator('button.history-toggle').click()
+  await expect(page.getByRole('dialog', { name: /历史版本/ }).locator('.revision-preview-text')).toHaveText('来自旧版备份的内联正文。')
 })

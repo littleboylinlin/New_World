@@ -37,6 +37,10 @@ async function saveVerifiedInstaller(request, installer, path, progress) {
   try {
     const response = await request(installer.url, { redirect: 'follow', signal })
     if (!response.ok || !response.body) throw new UpdateError(downloadFailed)
+    const declaredLength = response.headers?.get?.('content-length')
+    if (declaredLength !== null && declaredLength !== undefined && declaredLength !== '' && Number(declaredLength) !== installer.size) {
+      throw new UpdateError(invalidPackage)
+    }
     timeout.refresh()
     progress(0, installer.size)
     const count = new Transform({

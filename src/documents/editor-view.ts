@@ -645,6 +645,9 @@ export async function renderEdition(
       chapterTitle: chapterInfo().title,
       onBeforeRestore: flush,
       onRestored: async () => {
+        const currentEditions = await listEditions(edition.library, edition.bookId)
+        const latest = currentEditions.find((item) => item.id === edition.id)
+        if (latest) edition = latest
         const restoredChapter = await readChapter(edition, chapter.id)
         words = await chapterWordCounts(edition)
         mountChapter(restoredChapter)

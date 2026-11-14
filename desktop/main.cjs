@@ -11,6 +11,11 @@ const backups = require('./backup.cjs')
 const capture = require('./capture.cjs')
 const { createAiStore } = require('./ai-store.cjs')
 const { createAiBridge } = require('./ai-bridge.cjs')
+const {
+  isTrustedMainRenderer,
+  isTrustedAppRenderer,
+  shouldCancelClientConfirmations,
+} = require('./ipc-guard.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
@@ -60,11 +65,6 @@ async function serveApp(request) {
   }
 }
 
-function trustedFrame(event) {
-  const frame = event.senderFrame
-  return frame === event.sender.mainFrame && frame?.url.startsWith(appUrl)
-}
-
 let desktopUpdater
 let languages
 let macInstaller
@@ -80,7 +80,11 @@ function fullAiState() {
 }
 
 function trustedMainRenderer(event) {
-  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents && trustedFrame(event))
+  return isTrustedMainRenderer(event, { appUrl, mainWindow })
+}
+
+function trustedAppRenderer(event) {
+  return isTrustedAppRenderer(event, { appUrl, mainWindow, captureWindow })
 }
 
 function rejectPendingAiDispatches(reason) {
@@ -126,11 +130,11 @@ function languageNetworkFor(manifest, partition) {
 }
 
 ipcMain.on('new-world:ready', (event) => {
-  if (trustedFrame(event) && event.sender === mainWindow?.webContents) {
+  if (trustedMainRenderer(event)) {
     aiRendererReady = true
     flushCommands()
   }
-  if (!trustedFrame(event) || !languages || maintenanceStarted) return
+  if (!trustedAppRenderer(event) || !languages || maintenanceStarted) return
   maintenanceStarted = true
   const token = process.env.NEW_WORLD_UPDATE_TOKEN
   delete process.env.NEW_WORLD_UPDATE_TOKEN
@@ -151,7 +155,7 @@ ipcMain.on('new-world:ready', (event) => {
 })
 
 async function performUpdate(event, action) {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidUpdateRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidUpdateRequest'))
   if (!desktopUpdater) return { ok: false, message: t(process.platform === 'darwin' ? 'macUpdate.installedAppRequired' : 'main.inAppUpdatesRequireAnInstalledWindowsX64') }
   try {
     const result = await action()
@@ -175,7 +179,7 @@ ipcMain.handle('new-world:install-update', (event, tag) => performUpdate(event, 
 
 ipcMain.handle('new-world:save-pdf', async (event, name) => {
   const window = BrowserWindow.fromWebContents(event.sender)
-  if (!trustedFrame(event) || !window || typeof name !== 'string' || name.length > 130) throw new Error(t('main.invalidPdfFilename'))
+  if (!trustedMainRenderer(event) || !window || typeof name !== 'string' || name.length > 130) throw new Error(t('main.invalidPdfFilename'))
   const filename = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || t('export.newWorldManuscript')
   const { canceled, filePath } = await dialog.showSaveDialog(window, {
     title: t('main.savePdf'), defaultPath: join(app.getPath('documents'), `${filename}.pdf`),
@@ -195,13 +199,13 @@ function scheduleRestart() {
 }
 
 ipcMain.handle('new-world:get-storage-location', (event) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidStorageLocationRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidStorageLocationRequest'))
   return { path: profile, defaultPath: defaultProfile, custom: profile !== defaultProfile }
 })
 
 ipcMain.handle('new-world:set-storage-location', async (event) => {
   const window = BrowserWindow.fromWebContents(event.sender)
-  if (!trustedFrame(event) || !window) throw new Error(t('main.invalidStorageLocationRequest'))
+  if (!trustedMainRenderer(event) || !window) throw new Error(t('main.invalidStorageLocationRequest'))
   const { canceled, filePaths } = await dialog.showOpenDialog(window, {
     title: t('main.chooseALibraryStorageFolder'),
     defaultPath: app.getPath('documents'),
@@ -215,7 +219,7 @@ ipcMain.handle('new-world:set-storage-location', async (event) => {
 })
 
 ipcMain.handle('new-world:reset-storage-location', (event) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidStorageLocationRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidStorageLocationRequest'))
   const result = storageLocation.resetLocation(appData)
   if (result.error) throw new Error(t(result.error))
   if (result.unchanged) return null
@@ -224,29 +228,29 @@ ipcMain.handle('new-world:reset-storage-location', (event) => {
 })
 
 ipcMain.handle('new-world:get-language', (event) => {
-  if (!trustedFrame(event) || !languages?.current) throw new Error('Invalid language request')
+  if (!trustedAppRenderer(event) || !languages?.current) throw new Error('Invalid language request')
   return languages.current
 })
 
 ipcMain.handle('new-world:set-language', async (event, locale) => {
-  if (!trustedFrame(event) || !languages) throw new Error('Invalid language request')
+  if (!trustedMainRenderer(event) || !languages) throw new Error('Invalid language request')
   const pack = await languages.activate(locale)
   refreshMenus()
   return pack
 })
 
 ipcMain.handle('new-world:reload-language', (event) => {
-  if (!trustedFrame(event)) throw new Error('Invalid language request')
+  if (!trustedMainRenderer(event)) throw new Error('Invalid language request')
   setImmediate(() => { if (!event.sender.isDestroyed()) event.sender.reload() })
 })
 
 ipcMain.handle('new-world:get-close-behavior', (event) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
   return behavior
 })
 
 ipcMain.handle('new-world:set-close-behavior', (event, mode) => {
-  if (!trustedFrame(event) || !closeBehavior.isMode(mode)) throw new Error(t('closeBehavior.invalidCloseBehavior'))
+  if (!trustedMainRenderer(event) || !closeBehavior.isMode(mode)) throw new Error(t('closeBehavior.invalidCloseBehavior'))
   try {
     closeBehavior.writeBehavior(appData, mode)
   } catch {
@@ -258,7 +262,7 @@ ipcMain.handle('new-world:set-close-behavior', (event, mode) => {
 
 // The page reports its theme so the next window opens with the same background.
 ipcMain.handle('new-world:set-window-theme', (event, next) => {
-  if (!trustedFrame(event) || !windowTheme.isTheme(next)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event) || !windowTheme.isTheme(next)) throw new Error(t('main.invalidSettingsRequest'))
   if (next !== theme) {
     try { windowTheme.writeTheme(appData, next) } catch (error) { console.warn('New World theme:', error.code || error.message) }
     theme = next
@@ -292,12 +296,12 @@ function dictionaryError(error) {
 }
 
 ipcMain.handle('new-world:spelling-state', (event) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
   return spellingState()
 })
 
 ipcMain.handle('new-world:spelling-import', async (event) => {
-  if (!trustedFrame(event) || process.platform === 'darwin') throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event) || process.platform === 'darwin') throw new Error(t('main.invalidSettingsRequest'))
   const picked = await dialog.showOpenDialog(mainWindow, {
     title: t('spelling.importTitle'), properties: ['openFile', 'multiSelections'],
     filters: [{ name: t('spelling.dictionaryFiles'), extensions: ['bdic'] }],
@@ -316,7 +320,7 @@ ipcMain.handle('new-world:spelling-import', async (event) => {
 })
 
 ipcMain.handle('new-world:spelling-download', async (event, link) => {
-  if (!trustedFrame(event) || process.platform === 'darwin' || typeof link !== 'string' || link.length > 2048) {
+  if (!trustedMainRenderer(event) || process.platform === 'darwin' || typeof link !== 'string' || link.length > 2048) {
     throw new Error(t('main.invalidSettingsRequest'))
   }
   if (downloadingDictionary) return dictionaryResult([], 'busy')
@@ -349,7 +353,7 @@ ipcMain.handle('new-world:spelling-download', async (event, link) => {
 })
 
 ipcMain.handle('new-world:spelling-remove', async (event, language) => {
-  if (!trustedFrame(event) || process.platform === 'darwin' || typeof language !== 'string') throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event) || process.platform === 'darwin' || typeof language !== 'string') throw new Error(t('main.invalidSettingsRequest'))
   spelling.removeDictionary(profile, language)
   // Chromium lets go of the file once the language is no longer used; Windows keeps it locked until then.
   useDictionaries()
@@ -380,7 +384,7 @@ function updateBackups(change) {
 }
 
 function backupRequest(event) {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
 }
 
 ipcMain.handle('new-world:backup-state', (event) => {
@@ -536,12 +540,12 @@ function trayMenu() {
 }
 
 ipcMain.handle('new-world:capture-state', (event) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
   return captureState()
 })
 
 ipcMain.handle('new-world:set-capture-shortcut', (event, shortcut) => {
-  if (!trustedFrame(event) || !capture.shortcuts.includes(shortcut)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event) || !capture.shortcuts.includes(shortcut)) throw new Error(t('main.invalidSettingsRequest'))
   captureShortcut = capture.writeShortcut(appData, shortcut)
   registerCapture()
   refreshMenus()
@@ -549,12 +553,12 @@ ipcMain.handle('new-world:set-capture-shortcut', (event, shortcut) => {
 })
 
 ipcMain.handle('new-world:hide-capture', (event) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedAppRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
   if (captureWindow && !captureWindow.isDestroyed()) captureWindow.hide()
 })
 
 ipcMain.handle('new-world:set-recent-works', (event, works) => {
-  if (!trustedFrame(event)) throw new Error(t('main.invalidSettingsRequest'))
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
   recentWorks = capture.recentWorks(works)
   if (tray) tray.setContextMenu(trayMenu())
 })
@@ -700,7 +704,7 @@ function openWindow() {
 
 // The custom Windows caption buttons. Close goes through the same save-before-close flow as the native button.
 function windowControl(event, action) {
-  if (!mainWindow || event.sender !== mainWindow.webContents || !trustedFrame(event)) return
+  if (!trustedMainRenderer(event)) return
   action(mainWindow)
 }
 
@@ -711,11 +715,11 @@ ipcMain.on('new-world:window-maximize', (event) => windowControl(event, (window)
 }))
 ipcMain.on('new-world:window-close', (event) => windowControl(event, (window) => window.close()))
 ipcMain.handle('new-world:window-is-maximized', (event) => (
-  mainWindow && event.sender === mainWindow.webContents && trustedFrame(event) ? mainWindow.isMaximized() : false
+  trustedMainRenderer(event) ? mainWindow.isMaximized() : false
 ))
 
 ipcMain.on('new-world:close-result', (event, saved) => {
-  if (!closing || !mainWindow || event.sender !== mainWindow.webContents || !trustedFrame(event)) return
+  if (!closing || !trustedMainRenderer(event)) return
   closing = false
   if (saved === true) mainWindow.close()
 })
@@ -756,8 +760,9 @@ ipcMain.handle('new-world:ai-create-client', (event, input) => {
 
 ipcMain.handle('new-world:ai-update-client', (event, id, patch) => {
   if (!trustedMainRenderer(event) || !aiStore || !aiBridge) return null
+  const previousClient = aiStore.getClientById(id)
   const updated = aiStore.updateClient(id, patch)
-  if (!updated.client.enabled || !updated.client.permissions.delete) {
+  if (shouldCancelClientConfirmations(previousClient, updated.client)) {
     aiBridge.cancelClientPending(id, 'client_updated')
   }
   return { state: fullAiState(), client: updated.client }

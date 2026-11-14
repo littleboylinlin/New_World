@@ -1,10 +1,18 @@
+import { formDialog } from '../dialogs'
 import { locale, t } from '../i18n'
 import { storageError } from '../library'
 import type { ChapterRevision } from '../library'
 import { button, element } from '../ui'
 import { showNotice } from '../undo'
 import type { Edition } from './model'
-import { listChapterRevisions, restoreChapterRevision } from './revisions'
+import {
+  defaultPruneKeepCount,
+  getHistoryStorageStats,
+  listChapterRevisions,
+  pruneChapterRevisions,
+  resolveRevisionPayload,
+  restoreChapterRevision,
+} from './revisions'
 
 export interface RevisionsDialogOptions {
   root: HTMLElement
@@ -23,6 +31,12 @@ function formatRevisionTime(timestamp: number): string {
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+function formatStorageBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 function revisionSourceLabel(rev: ChapterRevision): string {
@@ -44,6 +58,16 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
   head.append(heading, closeIcon)
 
   const hint = element('p', 'dialog-help', t('revisions.hint'))
+  const statsRow = element('div', 'revision-storage-row')
+  const statsText = element('span', 'revision-storage-summary')
+  const pruneBtn = button(t('revisions.pruneOld'), 'button button-quiet button-small', 'trash')
+  pruneBtn.hidden = true
+  statsRow.append(statsText, pruneBtn)
+
+  const capacityWarn = element('p', 'notice')
+  capacityWarn.setAttribute('role', 'status')
+  capacityWarn.hidden = true
+
   const errBox = element('p', 'notice notice-error')
   errBox.setAttribute('role', 'alert')
   errBox.hidden = true
@@ -73,7 +97,7 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
   restoreBtn.disabled = true
   controls.append(cancelBtn, restoreBtn)
 
-  dialog.append(head, hint, errBox, body, controls)
+  dialog.append(head, hint, statsRow, capacityWarn, errBox, body, controls)
   document.body.append(dialog)
 
   const close = () => {
@@ -86,24 +110,67 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
   let revisions: ChapterRevision[] = []
   let selectedId: string | null = null
   let busy = false
+  let previewTurn = 0
+  const textCache = new Map<string, string>()
 
-  function selectRevision(rev: ChapterRevision) {
+  async function refreshStats() {
+    try {
+      const stats = await getHistoryStorageStats(edition, chapterId)
+      statsText.textContent = t('revisions.storageStats', [
+        stats.chapterCount,
+        stats.totalRevisions,
+        formatStorageBytes(stats.totalStoredBytes),
+      ])
+      if (stats.warn) {
+        capacityWarn.textContent = t('revisions.storageWarning', [stats.totalRevisions, formatStorageBytes(stats.totalStoredBytes)])
+        capacityWarn.hidden = false
+      } else {
+        capacityWarn.hidden = true
+      }
+      pruneBtn.hidden = revisions.length <= 1
+      pruneBtn.disabled = busy || revisions.length <= 1
+    } catch {
+      statsRow.hidden = true
+    }
+  }
+
+  async function selectRevision(rev: ChapterRevision) {
     selectedId = rev.id
     for (const btn of list.querySelectorAll('button.revision-item')) {
       btn.setAttribute('aria-pressed', String(btn.getAttribute('data-rev-id') === rev.id))
     }
     previewMeta.textContent = `${formatRevisionTime(rev.createdAt)} · ${revisionSourceLabel(rev)} · ${t('revisions.words', [rev.words.toLocaleString()])} · ${rev.chapterTitle}`
-    previewText.textContent = rev.plainText.trim() || t('revisions.emptyChapterPreview')
     restoreBtn.disabled = busy
+    const turn = ++previewTurn
+    const cached = textCache.get(rev.id) ?? rev.plainText
+    if (cached !== undefined) {
+      textCache.set(rev.id, cached)
+      previewText.textContent = cached.trim() || t('revisions.emptyChapterPreview')
+      return
+    }
+    previewText.textContent = ''
+    try {
+      const resolved = await resolveRevisionPayload(rev)
+      textCache.set(rev.id, resolved.plainText)
+      if (turn === previewTurn && selectedId === rev.id) {
+        previewText.textContent = resolved.plainText.trim() || t('revisions.emptyChapterPreview')
+      }
+    } catch (cause) {
+      if (turn === previewTurn && selectedId === rev.id) {
+        errBox.textContent = storageError(cause)
+        errBox.hidden = false
+      }
+    }
   }
 
-  function renderList() {
+  async function renderList() {
     list.replaceChildren()
     if (!revisions.length) {
       list.append(element('li', 'dialog-help revision-empty', t('revisions.empty')))
       previewMeta.textContent = ''
       previewText.textContent = ''
       restoreBtn.disabled = true
+      pruneBtn.hidden = true
       return
     }
     for (const rev of revisions) {
@@ -118,13 +185,39 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
       )
       const subRow = element('span', 'revision-item-meta', `${t('revisions.words', [rev.words.toLocaleString()])} · ${rev.chapterTitle}`)
       itemBtn.append(topRow, subRow)
-      itemBtn.addEventListener('click', () => selectRevision(rev))
+      itemBtn.addEventListener('click', () => { void selectRevision(rev) })
       li.append(itemBtn)
       list.append(li)
     }
     const active = revisions.find((item) => item.id === selectedId) ?? revisions[0]
-    if (active) selectRevision(active)
+    if (active) await selectRevision(active)
   }
+
+  async function reloadRevisions() {
+    revisions = await listChapterRevisions(edition, chapterId)
+    selectedId = revisions.find((item) => item.id === selectedId)?.id ?? revisions[0]?.id ?? null
+    await Promise.all([renderList(), refreshStats()])
+  }
+
+  pruneBtn.addEventListener('click', () => {
+    if (busy || revisions.length <= 1) return
+    const keepCount = revisions.length > defaultPruneKeepCount ? defaultPruneKeepCount : 1
+    const deleteCount = revisions.length - keepCount
+    formDialog(
+      dialog,
+      {
+        title: t('revisions.pruneTitle'),
+        action: t('revisions.pruneConfirm'),
+        danger: true,
+        description: t('revisions.pruneDescription', [keepCount, deleteCount]),
+      },
+      async () => {
+        const result = await pruneChapterRevisions(edition, chapterId, keepCount)
+        await reloadRevisions()
+        showNotice(t('revisions.pruned', [result.deleted, result.remaining]))
+      },
+    )
+  })
 
   restoreBtn.addEventListener('click', () => {
     if (busy || !selectedId) return
@@ -133,6 +226,7 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
     errBox.hidden = true
     restoreBtn.disabled = true
     cancelBtn.disabled = true
+    pruneBtn.disabled = true
     restoreLabel.textContent = t('revisions.restoring')
     void (async () => {
       try {
@@ -151,6 +245,7 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
         restoreLabel.textContent = t('revisions.restoreThis')
         restoreBtn.disabled = !selectedId
         cancelBtn.disabled = false
+        pruneBtn.disabled = revisions.length <= 1
       }
     })()
   })
@@ -158,9 +253,7 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
   dialog.showModal()
 
   try {
-    revisions = await listChapterRevisions(edition, chapterId)
-    if (revisions.length) selectedId = revisions[0].id
-    renderList()
+    await reloadRevisions()
   } catch (cause) {
     errBox.textContent = storageError(cause)
     errBox.hidden = false

@@ -64,9 +64,40 @@ export interface ChapterRevision {
   chapterTitle: string
   editionName: string
   chapterRevision: number
-  content: DocumentContent
-  plainText: string
+  /** Inline content (legacy v0.15.1 rows/backups or direct callers); omitted when stored in `revisionBlobs`. */
+  content?: DocumentContent
+  /** Inline preview text (legacy v0.15.1 rows); reconstructed dynamically from `blobHash` otherwise. */
+  plainText?: string
+  /** Content-addressed reference to deduplicated compressed payload in `revisionBlobs`. */
+  blobHash?: string
+  rawBytes?: number
+  storedBytes?: number
   words: number
+  createdAt: number
+  source: RevisionSource
+  clientId?: string
+  clientName?: string
+  action: string
+  contentHash: string
+}
+
+export interface RevisionBlobRecord {
+  hash: string
+  encoding: 'gzip' | 'json'
+  data: Uint8Array
+  rawBytes: number
+  storedBytes: number
+  createdAt: number
+}
+
+export interface IdeaRevision {
+  id: string
+  ideaId: string
+  text: string
+  library?: LibraryId
+  bookId?: string
+  usedAt?: number
+  ideaCreatedAt: number
   createdAt: number
   source: RevisionSource
   clientId?: string
@@ -96,7 +127,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 6)
+    const request = indexedDB.open('new-world-library', 7)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -130,6 +161,14 @@ export function openDatabase() {
         })
         baselines.createIndex('byEdition', ['library', 'bookId', 'editionId'])
         baselines.createIndex('byBook', ['library', 'bookId'])
+      }
+      if (event.oldVersion < 7) {
+        // Content-addressed compressed payloads deduplicate chapter snapshots across edits and restores.
+        db.createObjectStore('revisionBlobs', { keyPath: 'hash' })
+        // Pre-edit snapshots for ideas ensure AI note edits are recoverable and atomic.
+        const ideaRevisions = db.createObjectStore('ideaRevisions', { keyPath: 'id' })
+        ideaRevisions.createIndex('byIdea', 'ideaId')
+        ideaRevisions.createIndex('byBook', ['library', 'bookId'])
       }
     }
     request.onsuccess = () => {
