@@ -2,19 +2,19 @@
 
 [简体中文](README.md)
 
-New World v0.15.3 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.16.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.15.3](https://github.com/littleboylinlin/New_World/releases/tag/v0.15.3). Further refines local AI data protection and reliability: permanent deletion in Trash atomically cascades to exclusive histories, baselines, and unreferenced deduplicated blobs with external-backup notices, enforces confirmation fingerprints inside strict IndexedDB write transactions with queued permission re-checks, verifies quota-safe aborts, and polishes English permissions, backup hints, and pluralization (see `AI_INTEGRATION.md`). Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.16.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.16.0). Redesigns Settings into a standalone categorized page (`#/settings/<category>`) with a bottom-left entry dock, and reorganizes the desktop Home screen into a one-screen workbench with no vertical scrolling while keeping all local storage, AI access, revision recovery, and backup capabilities intact (see `AI_INTEGRATION.md`). Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
 The setup wizard accepts a new or empty install directory. Upgrades keep the existing install location by default. The finish page shows the actual path and offers "Create a desktop shortcut" and "Launch New World". A Start Menu entry is always created.
 
-Both libraries, editing, and export work offline. Desktop data is stored in `%APPDATA%\NewWorld` by default; overwrite installs and normal uninstalls keep this directory. Use "Settings" in the header to change the library storage location and to choose whether closing the window quits the app or keeps it running in the background. The footer shows the current storage location.
+Both libraries, editing, and export work offline. Desktop data is stored in `%APPDATA%\NewWorld` by default; overwrite installs and normal uninstalls keep this directory. Use "Settings" in the bottom-left to change the library storage location and to choose whether closing the window quits the app or keeps it running in the background. The footer shows the current storage location.
 
-"Settings" lists language, close-window behavior, storage location, and help & updates in one place. The web version explains that closing and storage are managed by the browser.
+The standalone Settings page organizes General, Appearance, Quick capture, Storage, Backup & restore, AI integration, and Updates & about. The web version explains that closing and storage are managed by the browser.
 
 ## macOS desktop
 
@@ -24,7 +24,7 @@ The app is locally signed, not yet signed or notarized with an Apple Developer I
 
 Libraries are stored in `~/Library/Application Support/NewWorld` by default; language selection and cache live in `~/Library/Application Support/NewWorld-languages`. Replacing or deleting the app does not delete your libraries. On first launch the app downloads only the language pack matching the system language, and works offline afterwards.
 
-The title bar leaves room for the red/yellow/green window buttons. "Settings" in the app menu opens with `⌘ + ,`; editing and saving use `⌘` shortcuts. Close behavior, storage location, and Chinese/English switching are all in the same settings list; after choosing "Keep running", reopen the app from the menu bar icon or the Dock.
+The title bar leaves room for the red/yellow/green window buttons. "Settings" in the app menu opens with `⌘ + ,`; editing and saving use `⌘` shortcuts. Close behavior, storage location, and Chinese/English switching are all in the same settings page; after choosing "Keep running", reopen the app from the menu bar icon or the Dock.
 
 Mac update checks match only the DMG for the current chip. After clicking "Update and restart", downloading and verification happen in the app cache while you can keep writing. The app prepares the complete new app bundle and the selected language pack, saves your text, quits, and atomically swaps the whole bundle; the old bundle is removed only after the new interface opens successfully, and a failed launch restores the old version. The install location must be writable — you cannot update directly from a read-only DMG. Windows installers and DMGs for other chips never trigger a Mac update.
 
@@ -34,9 +34,9 @@ Mac users upgrading from v0.9.x still follow the old flow once: download the DMG
 
 Simplified Chinese and English are supported. The first Windows install or first Mac launch needs network access to download exactly one language pack based on the system language: Chinese systems get Simplified Chinese, everything else gets English. Language packs are published separately from the installers; the installer verifies size and SHA-256, retries failed downloads, and only continues after verification passes.
 
-Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
+Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.15.3\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.16.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -68,7 +68,7 @@ Open the local address printed in the terminal in a browser. `npm run build` pro
 
 On every launch the app checks this repository's GitHub Releases once in the background. The running version shown in the interface comes from `package.json` at build time. Checks compare by SemVer; ordinary commits, standalone Git tags, drafts, and prereleases never trigger update notifications. If there is no update or the network fails, the library opens normally.
 
-"Help & updates" in Settings offers a manual check, the version number, and release notes. When a new version is found, a non-modal notice appears; you can dismiss the same version for the current session. "View update" opens the release notes in Settings directly.
+"Updates & about" in Settings offers a manual check, the version number, and release notes. When a new version is found, a non-modal notice appears; you can dismiss the same version for the current session. "View update" opens the release notes in Settings directly.
 
 - The Windows version picks the stable Windows x64 installer with a SHA-256 checksum from the latest 100 GitHub Releases. After clicking "Update and restart", download progress is shown in the app. You can keep writing during the download. Once the installer passes verification, the app saves your text, closes the window, and overwrites the original install directory, then launches automatically after installation.
 - If saving fails, the window stays open; save or save-as, then continue the update. Versions v0.6.0 and earlier need one manual overwrite install of v0.7.0 or newer first.
@@ -103,7 +103,7 @@ Each work card on the shelves shows the cover with the title below it. Click the
 
 Jot an idea down the moment it comes, and pick it up later while writing.
 
-- Desktop: press the global shortcut anywhere (`Ctrl + Alt + N` by default, `⌃⌥N` on a Mac) to open a small window. `Enter` saves, `Shift + Enter` adds a line, `Esc` closes. "Settings → Quick notes" switches it to `Ctrl + Shift + Space`, `Alt + Shift + N` or off, and warns when another app already uses it. The tray menu, the right-click menu of the Windows taskbar icon and the Mac Dock menu open it too.
+- Desktop: press the global shortcut anywhere (`Ctrl + Alt + N` by default, `⌃⌥N` on a Mac) to open a small window. `Enter` saves, `Shift + Enter` adds a line, `Esc` closes. "Settings → Quick capture" switches it to `Ctrl + Shift + Space`, `Alt + Shift + N` or off, and warns when another app already uses it. The tray menu, the right-click menu of the Windows taskbar icon and the Mac Dock menu open it too.
 - Web: press `Ctrl + Alt + N` on a New World page to open the quick note dialog.
 - A note is linked to the work opened most recently, or to none. "Notes" on the home page lists every note with unused ones first; mark them used, link them to another work, copy them, or delete them (with undo).
 - "Notes for this work" sits under the chapter list and stays beside the text as it scrolls. "Insert" puts a note at the cursor and marks it used, and a new note can be written there too; the "Notes" toolbar button shows how many are unused and folds the list.
@@ -137,7 +137,7 @@ Every work card's menu has "Archive". Archived works disappear from the original
 
 ## Backup and restore
 
-"Settings → Backups" packs both libraries, every edition, the original files, custom covers, the trash, quick notes and writing stats into one `.zip` file.
+"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes and writing stats into one `.zip` file.
 
 - Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
 - Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
