@@ -1,4 +1,5 @@
 import { t } from './i18n'
+import { ConfirmStateConflictError, computeSourceDeleteFingerprint, computeWorkDeleteFingerprint } from './confirm-state'
 import { fileFormat, maxImportSize } from './formats'
 import type { Format } from './formats'
 import type { ChapterRecord, DocumentContent, Edition } from './documents/model'
@@ -377,7 +378,7 @@ export async function renameBook(library: LibraryId, id: string, value: string) 
 }
 
 // Deleting moves a work with its originals, editions and chapters to the trash in one transaction.
-export async function deleteBook(library: LibraryId, id: string) {
+export async function deleteBook(library: LibraryId, id: string, expectedFingerprint?: string) {
   const db = await openDatabase()
   const tx = db.transaction(libraryStores, 'readwrite', { durability: 'strict' })
   const books = tx.objectStore('books')
@@ -386,11 +387,15 @@ export async function deleteBook(library: LibraryId, id: string) {
   const chapters = tx.objectStore('chapters')
   const key = [library, id]
   const { step, done } = writing<TrashEntry>(tx)
+  const conflictMsg = 'The target work changed before confirmation completed; nothing was deleted.'
   const members = books.index('byLibrary').getAll(library)
   members.onsuccess = step(() => {
     const owned: Book[] = members.result.filter((book: Book) => book.id === id || book.workId === id)
     const root = owned.find((book) => book.id === id)
-    if (!root) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+    if (!root) {
+      if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+      throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+    }
     const entry = trashEntry('book', library, id, root.title)
     entry.books = owned
     // Requests on one transaction finish in order, so the last read sees every earlier result.
@@ -401,9 +406,17 @@ export async function deleteBook(library: LibraryId, id: string) {
       if (owned.some((book, i) => book.format !== 'draft' && !storedFiles[i].result)) {
         throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
       }
+      const editionRows = storedEditions.result as Edition[]
+      const chapterRows = storedChapters.result as ChapterRecord[]
+      if (
+        expectedFingerprint !== undefined &&
+        computeWorkDeleteFingerprint(library, root, owned, editionRows, chapterRows) !== expectedFingerprint
+      ) {
+        throw new ConfirmStateConflictError(conflictMsg)
+      }
       entry.files = storedFiles.map((request) => request.result).filter(Boolean)
-      entry.editions = storedEditions.result
-      entry.chapters = storedChapters.result
+      entry.editions = editionRows
+      entry.chapters = chapterRows
       for (const book of owned) {
         books.delete([library, book.id])
         files.delete([library, book.id])
@@ -418,19 +431,26 @@ export async function deleteBook(library: LibraryId, id: string) {
   return announced(done())
 }
 
-export async function removeWorkOriginal(workId: string, id: string) {
+export async function removeWorkOriginal(workId: string, id: string, expectedFingerprint?: string) {
   const db = await openDatabase()
   const tx = db.transaction(['books', 'files', 'trash'], 'readwrite', { durability: 'strict' })
   const books = tx.objectStore('books')
   const files = tx.objectStore('files')
   const key = ['reference', id]
   const { step, done } = writing<TrashEntry>(tx)
+  const conflictMsg = 'Work source changed before confirmation completed; nothing was removed.'
   const request = books.get(key)
   const stored = files.get(key)
   stored.onsuccess = step(() => {
     const book: Book | undefined = request.result
-    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) throw new Error(t('library.thisSourceHasBeenRemoved'))
+    if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) {
+      if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+      throw new Error(t('library.thisSourceHasBeenRemoved'))
+    }
     if (!stored.result) throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
+    if (expectedFingerprint !== undefined && computeSourceDeleteFingerprint(workId, book) !== expectedFingerprint) {
+      throw new ConfirmStateConflictError(conflictMsg)
+    }
     const entry = trashEntry('original', 'reference', workId, book.originalName)
     entry.books = [book]
     entry.files = [stored.result]

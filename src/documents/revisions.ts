@@ -1,9 +1,12 @@
 import { t } from '../i18n'
+import { ConfirmStateConflictError, hashDocumentContent, synchronousContentHash } from '../confirm-state'
 import { announced, maxTitleLength, openDatabase, resultOf, trashEntry, writing } from '../library'
 import type { AiChapterBaseline, ChapterRevision, LibraryId, RevisionBlobRecord, RevisionSource, TrashEntry } from '../library'
 import { recordWriting } from '../writing-stats'
 import { chapterText, maxChapters, wordCount } from './model'
 import type { ChapterInfo, ChapterRecord, DocumentContent, Edition, EditionKey } from './model'
+
+export { ConfirmStateConflictError, hashDocumentContent, synchronousContentHash }
 
 export const historyWarningCount = 200
 export const historyWarningBytes = 16 * 1024 * 1024
@@ -13,13 +16,6 @@ const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
 class RetryRevisionPrepError extends Error {}
-
-export class ConfirmStateConflictError extends Error {
-  constructor(message = 'Target state changed while awaiting confirmation') {
-    super(message)
-    this.name = 'ConfirmStateConflictError'
-  }
-}
 
 export interface ExpectedChapterState {
   id: string
@@ -51,24 +47,8 @@ export interface HistoryStorageStats {
   warn: boolean
 }
 
-/** Fast synchronous 64-bit FNV-1a hex fingerprint, safe inside IDB transaction handlers. */
-export function synchronousContentHash(text: string): string {
-  let h1 = 0x811c9dc5
-  let h2 = 0x811c9dc5 ^ 0x9e3779b9
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i)
-    h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0
-    h2 = Math.imul(h2 ^ (code + i), 0x85ebca6b) >>> 0
-  }
-  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')
-}
-
 export function cloneDocumentContent(content: DocumentContent): DocumentContent {
   return JSON.parse(JSON.stringify(content)) as DocumentContent
-}
-
-export function hashDocumentContent(content: DocumentContent): string {
-  return synchronousContentHash(JSON.stringify(content))
 }
 
 async function compressSnapshotJson(json: string): Promise<{

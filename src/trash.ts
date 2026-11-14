@@ -124,11 +124,118 @@ export async function restoreTrash(id: string) {
   }
 }
 
+function chapterTupleKey(library: string, bookId: string, editionId: string, chapterId: string) {
+  return `${library}\0${bookId}\0${editionId}\0${chapterId}`
+}
+
+/**
+ * Permanently deletes one trash entry (`id`) or empties the entire trash in one strict
+ * IndexedDB transaction, cascading cleanup to exclusively owned `revisions`, `aiBaselines`,
+ * and `ideaRevisions` while preserving shared deduplicated `revisionBlobs` still referenced
+ * by surviving active or remaining-trashed revisions.
+ */
 export async function emptyTrash(id?: string) {
   const db = await openDatabase()
-  const tx = db.transaction('trash', 'readwrite', { durability: 'strict' })
-  if (id) tx.objectStore('trash').delete(id)
-  else tx.objectStore('trash').clear()
-  await committed(tx)
+  const tx = db.transaction(
+    ['chapters', 'ideas', 'trash', 'revisions', 'revisionBlobs', 'aiBaselines', 'ideaRevisions'],
+    'readwrite',
+    { durability: 'strict' },
+  )
+  const chaptersStore = tx.objectStore('chapters')
+  const ideasStore = tx.objectStore('ideas')
+  const trashStore = tx.objectStore('trash')
+  const revisionsStore = tx.objectStore('revisions')
+  const blobsStore = tx.objectStore('revisionBlobs')
+  const baselinesStore = tx.objectStore('aiBaselines')
+  const ideaRevsStore = tx.objectStore('ideaRevisions')
+
+  const chaptersReq = chaptersStore.getAll()
+  const ideasReq = ideasStore.getAll()
+  const trashReq = trashStore.getAll()
+  const revsReq = revisionsStore.getAll()
+  const blobsReq = blobsStore.getAll()
+  const baselinesReq = baselinesStore.getAll()
+  const ideaRevsReq = ideaRevsStore.getAll()
+
+  let stepError: unknown
+  ideaRevsReq.onsuccess = () => {
+    try {
+      const allTrash = trashReq.result as Array<{
+        id: string
+        chapters?: Array<{ library: string; bookId: string; editionId: string; id: string }>
+        ideas?: Array<{ id: string }>
+      }>
+      const remainingTrash = id ? allTrash.filter((entry) => entry.id !== id) : []
+      if (id) trashStore.delete(id)
+      else trashStore.clear()
+
+      const reachableChapters = new Set<string>()
+      for (const ch of chaptersReq.result as Array<{ library: string; bookId: string; editionId: string; id: string }>) {
+        reachableChapters.add(chapterTupleKey(ch.library, ch.bookId, ch.editionId, ch.id))
+      }
+      const reachableIdeas = new Set<string>()
+      for (const idea of ideasReq.result as Array<{ id: string }>) {
+        reachableIdeas.add(idea.id)
+      }
+
+      for (const entry of remainingTrash) {
+        for (const ch of entry.chapters ?? []) {
+          reachableChapters.add(chapterTupleKey(ch.library, ch.bookId, ch.editionId, ch.id))
+        }
+        for (const idea of entry.ideas ?? []) {
+          reachableIdeas.add(idea.id)
+        }
+      }
+
+      const survivingBlobHashes = new Set<string>()
+      for (const rev of revsReq.result as Array<{
+        id: string
+        library: string
+        bookId: string
+        editionId: string
+        chapterId: string
+        blobHash?: string
+      }>) {
+        if (reachableChapters.has(chapterTupleKey(rev.library, rev.bookId, rev.editionId, rev.chapterId))) {
+          if (rev.blobHash) survivingBlobHashes.add(rev.blobHash)
+        } else {
+          revisionsStore.delete(rev.id)
+        }
+      }
+
+      for (const blob of blobsReq.result as Array<{ hash: string }>) {
+        if (!survivingBlobHashes.has(blob.hash)) {
+          blobsStore.delete(blob.hash)
+        }
+      }
+
+      for (const baseline of baselinesReq.result as Array<{
+        clientId: string
+        library: string
+        bookId: string
+        editionId: string
+        chapterId: string
+      }>) {
+        if (!reachableChapters.has(chapterTupleKey(baseline.library, baseline.bookId, baseline.editionId, baseline.chapterId))) {
+          baselinesStore.delete([baseline.clientId, baseline.library, baseline.bookId, baseline.editionId, baseline.chapterId])
+        }
+      }
+
+      for (const ideaRev of ideaRevsReq.result as Array<{ id: string; ideaId: string }>) {
+        if (!reachableIdeas.has(ideaRev.ideaId)) {
+          ideaRevsStore.delete(ideaRev.id)
+        }
+      }
+    } catch (error) {
+      stepError = error
+      try { tx.abort() } catch { /* Transaction may already be aborting. */ }
+    }
+  }
+
+  try {
+    await committed(tx)
+  } catch (error) {
+    throw stepError ?? error
+  }
   libraryChanges.dispatchEvent(new Event('update'))
 }

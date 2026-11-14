@@ -1,7 +1,7 @@
 // Ideas: short notes jotted down the moment they come, with or without the work they belong to.
 
 import { t } from './i18n'
-import { ConfirmStateConflictError, synchronousContentHash } from './documents/revisions'
+import { computeIdeaDeleteFingerprint, ConfirmStateConflictError, synchronousContentHash } from './confirm-state'
 import { committed, libraryChanges, openDatabase, resultOf, trashEntry, writing } from './library'
 import type { IdeaRevision, LibraryId, RevisionSource, TrashEntry } from './library'
 
@@ -242,15 +242,22 @@ export async function restoreIdeaRevision(ideaId: string, revisionId: string): P
   return result
 }
 
-export async function deleteIdea(id: string): Promise<TrashEntry | undefined> {
+export async function deleteIdea(id: string, expectedFingerprint?: string): Promise<TrashEntry | undefined> {
   const db = await openDatabase()
   const tx = db.transaction(['ideas', 'trash'], 'readwrite', { durability: 'strict' })
   const ideas = tx.objectStore('ideas')
   const { step, done } = writing<TrashEntry | undefined>(tx)
+  const conflictMsg = 'Idea changed before confirmation completed.'
   const request = ideas.get(id)
   request.onsuccess = step(() => {
     const idea: Idea | undefined = request.result
-    if (!idea) return undefined
+    if (!idea) {
+      if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
+      return undefined
+    }
+    if (expectedFingerprint !== undefined && computeIdeaDeleteFingerprint(idea) !== expectedFingerprint) {
+      throw new ConfirmStateConflictError(conflictMsg)
+    }
     const preview = Array.from(idea.text.replace(/\s+/g, ' ').trim()).slice(0, 48).join('')
     const entry = trashEntry('idea', idea.library ?? 'original', idea.bookId ?? '', preview || t('ideas.title'))
     entry.ideas = [idea]

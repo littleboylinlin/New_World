@@ -258,7 +258,8 @@ export function mountAiSettings(container: HTMLElement): () => Promise<void> {
       if (!libraryWorks.length) {
         picker.append(element('p', 'dialog-help', t('ai.noWorksAvailable')))
       } else {
-        picker.append(element('p', 'dialog-help ai-selected-count', t('ai.selectedCount', [client.scope.workIds.length])))
+        const selectedKey = client.scope.workIds.length === 1 ? 'ai.selectedCountOne' : 'ai.selectedCount'
+        picker.append(element('p', 'dialog-help ai-selected-count', t(selectedKey, [client.scope.workIds.length])))
         const list = element('div', 'ai-work-list')
         const selectedSet = new Set(client.scope.workIds)
         for (const work of libraryWorks) {
