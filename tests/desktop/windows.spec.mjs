@@ -940,20 +940,25 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
     await section.scrollIntoViewIfNeeded()
     await section.locator('input[data-ai-global-enable="true"]').check()
+    await expect(section.locator('.ai-badge').first()).toContainText('本地监听 127.0.0.1:')
     const portMatch = (await section.locator('.ai-endpoint-line').innerText()).match(/http:\/\/127\.0\.0\.1:(\d+)\/v1/)
     expect(portMatch).toBeTruthy()
     const baseUrl = `http://127.0.0.1:${portMatch[1]}/v1`
 
     await section.getByLabel('AI 配置名称').fill('RecoveryDesktopAI')
     await section.getByRole('button', { name: '添加 AI 配置' }).click()
+    await expect(section.locator('.ai-token-banner')).toBeVisible()
     const token = (await section.locator('.ai-token-value').innerText()).trim()
+    expect(token.startsWith('nw_ai_')).toBe(true)
     await section.getByRole('button', { name: '我已保存' }).click()
 
     const card = section.locator('.ai-client-card').filter({ hasText: 'RecoveryDesktopAI' })
     for (const perm of ['create', 'read', 'update', 'delete']) {
       await card.locator(`input[data-ai-perm="${perm}"]`).check()
+      await expect(card.locator(`input[data-ai-perm="${perm}"]`)).toBeChecked()
     }
     await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
+    await expect(card.getByRole('radio', { name: '允许访问整个小说库' })).toBeChecked()
     await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
 
     const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
