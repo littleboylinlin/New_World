@@ -837,3 +837,94 @@ test('灵感速记：全局快捷键可在设置里更换，任务栏的速记�
     await expect(page.getByRole('list', { name: '灵感列表' })).toContainText('桌面小窗记下的灵感')
   } finally { await stop(app) }
 })
+
+test('AI 接入与权限：桌面端启用本地接口、写入作品并在人工二次确认后才允许删除', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settingsDialog = page.getByRole('dialog', { name: '设置' })
+    const section = settingsDialog.getByRole('region', { name: 'AI 接入与权限', exact: true })
+    await section.scrollIntoViewIfNeeded()
+
+    await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
+    await section.locator('input[data-ai-global-enable="true"]').check()
+    await expect(section.locator('.ai-badge').first()).toContainText('本地监听 127.0.0.1:')
+    const endpointText = await section.locator('.ai-endpoint-line').innerText()
+    const portMatch = endpointText.match(/http:\/\/127\.0\.0\.1:(\d+)\/v1/)
+    expect(portMatch).toBeTruthy()
+    const baseUrl = `http://127.0.0.1:${portMatch[1]}/v1`
+
+    await section.getByLabel('AI 配置名称').fill('DesktopAgent')
+    await section.getByRole('button', { name: '添加 AI 配置' }).click()
+    await expect(section.locator('.ai-token-banner')).toBeVisible()
+    const token = (await section.locator('.ai-token-value').innerText()).trim()
+    expect(token.startsWith('nw_ai_')).toBe(true)
+    await section.getByRole('button', { name: '我已保存' }).click()
+
+    const card = section.locator('.ai-client-card').filter({ hasText: 'DesktopAgent' })
+    for (const perm of ['create', 'read', 'update', 'delete']) {
+      await card.locator(`input[data-ai-perm="${perm}"]`).check()
+    }
+    await card.getByRole('radio', { name: '允许访问整个小说库' }).check()
+    await settingsDialog.getByRole('button', { name: '关闭', exact: true }).click()
+
+    // Verify secret token is hashed cleanly on disk and never stored in plaintext
+    const storedAiConfig = await app.evaluate(({ app }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return readFileSync(join(app.getPath('appData'), 'NewWorld-ai.json'), 'utf8')
+    })
+    expect(storedAiConfig).not.toContain(token)
+    expect(storedAiConfig).toContain('tokenHash')
+
+    // Real HTTP call through Electron Main Process -> IPC -> Renderer IndexedDB business layer
+    const createRes = await fetch(`${baseUrl}/works`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        library: 'original',
+        title: '桌面 AI 联调作品',
+        initialChapters: [{ title: '第一章', format: 'text', content: '桌面端主进程真实调用写入的正文。' }],
+      }),
+    })
+    expect(createRes.status).toBe(201)
+    const createdJson = await createRes.json()
+    const workId = createdJson.data.work.id
+
+    await page.evaluate(() => { location.hash = '#/original' })
+    await expect(page.locator('.book-title', { hasText: '桌面 AI 联调作品' })).toBeVisible()
+
+    // Delete requires manual human confirmation inside native Electron dialog
+    const confirmDialog = page.getByRole('dialog', { name: '确认 AI 请求的操作' })
+    const delPromise = fetch(`${baseUrl}/works/original/${workId}?wait=true`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    await expect(confirmDialog).toBeVisible()
+    await expect(confirmDialog).toContainText('桌面 AI 联调作品')
+    await confirmDialog.getByRole('button', { name: '本人确认执行' }).click()
+    const delRes = await delPromise
+    expect(delRes.status).toBe(200)
+    await expect(page.locator('.book-title', { hasText: '桌面 AI 联调作品' })).toHaveCount(0)
+
+    const auditText = await app.evaluate(({ app }) => {
+      const { readFileSync } = process.getBuiltinModule('node:fs')
+      const { join } = process.getBuiltinModule('node:path')
+      return readFileSync(join(app.getPath('appData'), 'NewWorld-ai-audit.jsonl'), 'utf8')
+    })
+    expect(auditText).toContain('DesktopAgent')
+    expect(auditText).toContain('works.delete')
+
+    // Reset AI config so shared profile starts disabled again
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await section.scrollIntoViewIfNeeded()
+    await section.locator('.ai-client-card').filter({ hasText: 'DesktopAgent' }).getByRole('button', { name: '撤销配置' }).click()
+    await expect(section.locator('.ai-client-card')).toHaveCount(0)
+    await section.locator('input[data-ai-global-enable="true"]').uncheck()
+    await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
+    await expect(fetch(`${baseUrl}/health`)).rejects.toThrow()
+  } finally { await stop(app) }
+})
