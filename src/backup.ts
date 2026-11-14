@@ -5,7 +5,7 @@ import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { t } from './i18n'
 import { committed, coverOf, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
-import type { Book, BookFile, LibraryId, TrashEntry } from './library'
+import type { Book, BookFile, ChapterRevision, LibraryId, TrashEntry } from './library'
 import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
 import type { WritingDay } from './writing-stats'
@@ -38,6 +38,8 @@ interface Manifest {
   writingDays?: WritingDay[]
   /** Quick notes. Missing from backups made before v0.14.0, which then leave the current ideas alone. */
   ideas?: Idea[]
+  /** Pre-edit chapter revision snapshots. Missing from backups made before v0.15.1. */
+  revisions?: ChapterRevision[]
 }
 
 export interface BackupSummary {
@@ -57,6 +59,7 @@ export interface BackupContents {
   trash: TrashEntry[]
   writingDays: WritingDay[]
   ideas?: Idea[]
+  revisions?: ChapterRevision[]
 }
 
 export type BackupProblem = 'password' | 'format' | 'newer'
@@ -91,8 +94,10 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas'])
-  const [books, files, editions, chapters, trash, writingDays, ideas]: [Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[]] = await Promise.all([
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions'])
+  const [books, files, editions, chapters, trash, writingDays, ideas, revisions]: [
+    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[],
+  ] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
     resultOf(tx.objectStore('editions').getAll()),
@@ -100,6 +105,7 @@ export async function createBackup(password?: string) {
     resultOf(tx.objectStore('trash').getAll()),
     resultOf(tx.objectStore('writingDays').getAll()),
     resultOf(tx.objectStore('ideas').getAll()),
+    resultOf(tx.objectStore('revisions').getAll()),
   ])
 
   const blobs: [string, Blob][] = []
@@ -119,7 +125,7 @@ export async function createBackup(password?: string) {
   }
   const manifest: Manifest = {
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
-    editions, chapters, writingDays, ideas,
+    editions, chapters, writingDays, ideas, revisions,
     books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
     trash: trash.map((entry) => ({
@@ -225,6 +231,8 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
         .filter((day) => typeof day?.date === 'string' && Number.isFinite(day.words)),
       ideas: Array.isArray(manifest.ideas)
         ? manifest.ideas.filter((idea) => typeof idea?.id === 'string' && typeof idea.text === 'string') : undefined,
+      revisions: Array.isArray(manifest.revisions)
+        ? manifest.revisions.filter((rev) => typeof rev?.id === 'string' && typeof rev.chapterId === 'string' && rev.content?.type === 'doc') : undefined,
     }
   } finally {
     await zip.close()
@@ -234,8 +242,12 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas'], 'readwrite', { durability: 'strict' })
-  for (const name of libraryStores) tx.objectStore(name).clear()
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'aiBaselines'], 'readwrite', { durability: 'strict' })
+  for (const name of [...libraryStores, 'revisions', 'aiBaselines']) tx.objectStore(name).clear()
+  if (contents.revisions) {
+    const revisions = tx.objectStore('revisions')
+    for (const revision of contents.revisions) revisions.add(revision)
+  }
   if (contents.ideas) {
     const ideas = tx.objectStore('ideas')
     ideas.clear()

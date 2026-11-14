@@ -2,6 +2,7 @@ export interface AiExecutionSuccess {
   ok: true
   statusCode?: number
   targetSummary?: string
+  auditReason?: string
   data: unknown
 }
 
@@ -12,6 +13,7 @@ export interface AiExecutionFailure {
   code: string
   message: string
   targetSummary?: string
+  auditReason?: string
   details?: Record<string, unknown>
 }
 

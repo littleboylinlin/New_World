@@ -1,6 +1,7 @@
 import { t } from './i18n'
 import { maxChapters } from './documents/model'
 import type { Edition } from './documents/model'
+import { announceIdeas } from './ideas'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
 import type { Book, TrashEntry } from './library'
 
@@ -19,6 +20,11 @@ export async function listTrash(): Promise<TrashItem[]> {
   entries.sort((left, right) => right.deletedAt - left.deletedAt)
   return Promise.all(entries.map(async (entry) => {
     if (entry.kind === 'book') return { entry, place: '' }
+    if (entry.kind === 'idea') {
+      if (!entry.bookId) return { entry, place: '' }
+      const book: Book | undefined = await resultOf(tx.objectStore('books').get([entry.library, entry.bookId]))
+      return { entry, place: book ? book.title : t('ideas.workGone') }
+    }
     const book: Book | undefined = await resultOf(tx.objectStore('books').get([entry.library, entry.bookId]))
     if (!book) return { entry, place: t('trash.parentWorkDeleted') }
     if (!entry.position) return { entry, place: book.title }
@@ -35,11 +41,12 @@ export async function countTrash() {
 // Restoring puts the saved rows back in one transaction, or changes nothing when their place is gone.
 export async function restoreTrash(id: string) {
   const db = await openDatabase()
-  const tx = db.transaction(libraryStores, 'readwrite', { durability: 'strict' })
+  const tx = db.transaction([...libraryStores, 'ideas'], 'readwrite', { durability: 'strict' })
   const books = tx.objectStore('books')
   const files = tx.objectStore('files')
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
+  const ideas = tx.objectStore('ideas')
   const trash = tx.objectStore('trash')
   const { step, done } = writing<{ entry: TrashEntry; edition?: Edition }>(tx)
   const request = trash.get(id)
@@ -48,6 +55,12 @@ export async function restoreTrash(id: string) {
     if (!entry) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
     const key = [entry.library, entry.bookId]
     trash.delete(id)
+    if (entry.kind === 'idea') {
+      const items = entry.ideas ?? []
+      if (!items.length) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
+      for (const idea of items) ideas.put(idea)
+      return { entry }
+    }
     if (entry.kind === 'book') {
       for (const book of entry.books) books.add(book)
       for (const file of entry.files) files.add(file)
@@ -104,7 +117,8 @@ export async function restoreTrash(id: string) {
   })
   try {
     const restored = await done()
-    libraryChanges.dispatchEvent(new Event('update'))
+    if (restored.entry.kind === 'idea') announceIdeas()
+    else libraryChanges.dispatchEvent(new Event('update'))
     return restored
   } catch (error) {
     // Ids are unique, so a constraint can only come from an identical original imported after the deletion.

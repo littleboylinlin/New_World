@@ -707,5 +707,21 @@
   "ai.confirmImpactSummary": "Impact",
   "ai.confirmExpiresIn": "This request expires and is automatically rejected in {0}s.",
   "ai.confirmCancel": "Reject & Cancel",
-  "ai.confirmApprove": "Confirm Execution"
+  "ai.confirmApprove": "Confirm Execution",
+  "revisions.button": "History",
+  "revisions.buttonTitle": "View and restore saved revisions of this chapter",
+  "revisions.dialogTitle": "History · {0}",
+  "revisions.hint": "A full pre-edit copy is saved here automatically before any AI edit. Restoring an older revision also backs up your current text first.",
+  "revisions.empty": "No saved revisions for this chapter yet.",
+  "revisions.listLabel": "Saved revisions",
+  "revisions.previewLabel": "Revision preview",
+  "revisions.sourceAi": "Before AI edit ({0})",
+  "revisions.sourceAiGeneric": "Before AI edit",
+  "revisions.sourceRestore": "Backup before restore",
+  "revisions.words": "{0} words",
+  "revisions.emptyChapterPreview": "(Empty chapter)",
+  "revisions.restoreThis": "Restore this version",
+  "revisions.restoring": "Restoring…",
+  "revisions.restored": "Selected revision restored. The previous text was backed up to History.",
+  "revisions.notFound": "This revision snapshot was not found for the current chapter."
 }

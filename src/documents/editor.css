@@ -40,6 +40,8 @@
 .outline-jump { min-height: 32px; color: var(--muted); font-size: .8rem; }
 .writing-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px 14px; padding: 14px 18px 12px; border-bottom: 2px solid var(--ink); }
 .writing-header h3 { font-size: 1.16rem; font-weight: 900; overflow-wrap: anywhere; }
+.writing-header-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.history-toggle .history-count { margin-inline-start: 2px; }
 .word-count, .word-total, .match-count { color: var(--muted); font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 .word-counts { display: flex; flex-wrap: wrap; gap: 6px; }
 .word-count, .word-total { padding: 1px 9px; border-radius: 20px; color: var(--ink); background: var(--tint); }
@@ -153,4 +155,28 @@
 @media (max-width: 779px) {
   .focus-toggle { font-size: 0; gap: 0; }
   .focus-toggle svg { width: 20px; height: 20px; }
+}
+
+.manage-dialog:has(.revision-layout) { width: min(860px, calc(100% - 32px)); }
+.revision-dialog .modal-head { margin-bottom: 8px; }
+.revision-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
+.revision-section-title { margin-bottom: 8px; font-size: .88rem; font-weight: 800; color: var(--muted); }
+.revision-list { display: grid; align-content: start; gap: 6px; max-height: clamp(220px, 46svh, 390px); margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 2px solid var(--ink); border-radius: 9px; background: var(--surface); }
+.revision-item { display: grid; gap: 4px; width: 100%; padding: 8px 10px; border: 2px solid transparent; border-radius: 7px; color: var(--ink); background: var(--sheet); text-align: start; cursor: pointer; }
+.revision-item:hover { background: var(--tint); }
+.revision-item[aria-pressed="true"] { border-color: var(--ink); background: var(--yellow); color: var(--on-yellow); }
+.revision-item-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: .82rem; font-weight: 750; }
+.revision-item-time { font-variant-numeric: tabular-nums; }
+.revision-item-meta { font-size: .78rem; color: var(--muted); overflow-wrap: anywhere; }
+.revision-item[aria-pressed="true"] .revision-item-meta { color: var(--on-yellow); }
+.revision-empty { padding: 14px; text-align: center; }
+.revision-preview-col { min-width: 0; }
+.revision-preview-meta { margin-bottom: 8px; font-size: .82rem; color: var(--muted); overflow-wrap: anywhere; }
+.revision-preview-page { height: clamp(200px, 42svh, 360px); }
+.revision-preview-text { margin: 0; padding: 14px; font: .92rem/1.75 var(--text-font); color: #111; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 660px) {
+  .revision-layout { grid-template-columns: minmax(0, 1fr); }
+  .revision-list { max-height: 180px; }
+  .revision-preview-page { height: 200px; }
 }

@@ -1,8 +1,8 @@
 // Ideas: short notes jotted down the moment they come, with or without the work they belong to.
 
 import { t } from './i18n'
-import { committed, libraryChanges, openDatabase, resultOf } from './library'
-import type { LibraryId } from './library'
+import { committed, libraryChanges, openDatabase, resultOf, trashEntry, writing } from './library'
+import type { LibraryId, TrashEntry } from './library'
 
 export interface Idea {
   id: string
@@ -19,7 +19,7 @@ const channelName = 'new-world-ideas'
 const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(channelName) : undefined
 
 // The quick note window and the main window are separate pages, so a change is announced to both.
-function announce() {
+export function announceIdeas() {
   libraryChanges.dispatchEvent(new Event('update'))
   channel?.postMessage('changed')
 }
@@ -30,7 +30,7 @@ async function write(change: (store: IDBObjectStore) => void) {
   const tx = db.transaction('ideas', 'readwrite', { durability: 'strict' })
   change(tx.objectStore('ideas'))
   await committed(tx)
-  announce()
+  announceIdeas()
 }
 
 export async function addIdea(text: string, work?: { library: LibraryId; bookId: string }) {
@@ -59,8 +59,25 @@ export async function setIdeaUsed(idea: Idea, used: boolean) {
   return saveIdea(used ? { ...rest, usedAt: Date.now() } : rest)
 }
 
-export async function deleteIdea(id: string) {
-  await write((store) => store.delete(id))
+export async function deleteIdea(id: string): Promise<TrashEntry | undefined> {
+  const db = await openDatabase()
+  const tx = db.transaction(['ideas', 'trash'], 'readwrite', { durability: 'strict' })
+  const ideas = tx.objectStore('ideas')
+  const { step, done } = writing<TrashEntry | undefined>(tx)
+  const request = ideas.get(id)
+  request.onsuccess = step(() => {
+    const idea: Idea | undefined = request.result
+    if (!idea) return undefined
+    const preview = Array.from(idea.text.replace(/\s+/g, ' ').trim()).slice(0, 48).join('')
+    const entry = trashEntry('idea', idea.library ?? 'original', idea.bookId ?? '', preview || t('ideas.title'))
+    entry.ideas = [idea]
+    ideas.delete(id)
+    tx.objectStore('trash').add(entry)
+    return entry
+  })
+  const entry = await done()
+  if (entry) announceIdeas()
+  return entry
 }
 
 const lastWorkKey = 'new-world:last-work'

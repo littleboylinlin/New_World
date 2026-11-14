@@ -182,12 +182,11 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
         chapters[target] = moved
       }
       if (change.type === 'delete') {
-        if (removed?.result) {
-          trashed = trashEntry('chapter', stored.library, stored.bookId, chapters[index].title)
-          trashed.chapters = [removed.result]
-          trashed.position = { editionId: stored.id, index }
-          tx.objectStore('trash').add(trashed)
-        }
+        if (!removed?.result) throw new Error(t('store.theChapterWasNotFoundInThisEditable'))
+        trashed = trashEntry('chapter', stored.library, stored.bookId, chapters[index].title)
+        trashed.chapters = [removed.result]
+        trashed.position = { editionId: stored.id, index }
+        tx.objectStore('trash').add(trashed)
         chapters.splice(index, 1)
         records.delete(chapterKey(stored, change.id))
         selected = chapters.length ? chapters[Math.min(index, chapters.length - 1)].id : append(t('editor.firstChapter'))

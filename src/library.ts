@@ -1,7 +1,8 @@
 import { t } from './i18n'
 import { fileFormat, maxImportSize } from './formats'
 import type { Format } from './formats'
-import type { ChapterRecord, Edition } from './documents/model'
+import type { ChapterRecord, DocumentContent, Edition } from './documents/model'
+import type { Idea } from './ideas'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -39,7 +40,7 @@ export interface BookFile {
 // A deleted item keeps every record it owned, so restoring puts the same rows back.
 export interface TrashEntry {
   id: string
-  kind: 'book' | 'original' | 'edition' | 'chapter'
+  kind: 'book' | 'original' | 'edition' | 'chapter' | 'idea'
   library: LibraryId
   bookId: string
   title: string
@@ -48,7 +49,42 @@ export interface TrashEntry {
   files: BookFile[]
   editions: Edition[]
   chapters: ChapterRecord[]
+  ideas?: Idea[]
   position?: { editionId: string; index: number }
+}
+
+export type RevisionSource = 'ai' | 'user-restore'
+
+export interface ChapterRevision {
+  id: string
+  library: LibraryId
+  bookId: string
+  editionId: string
+  chapterId: string
+  chapterTitle: string
+  editionName: string
+  chapterRevision: number
+  content: DocumentContent
+  plainText: string
+  words: number
+  createdAt: number
+  source: RevisionSource
+  clientId?: string
+  clientName?: string
+  action: string
+  contentHash: string
+}
+
+export interface AiChapterBaseline {
+  clientId: string
+  library: LibraryId
+  bookId: string
+  editionId: string
+  chapterId: string
+  peakWords: number
+  anchorWords: number
+  anchorText: string
+  updatedAt: number
 }
 
 export const libraryChanges = new EventTarget()
@@ -60,7 +96,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 5)
+    const request = indexedDB.open('new-world-library', 6)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -83,6 +119,18 @@ export function openDatabase() {
       if (event.oldVersion < 4) db.createObjectStore('writingDays', { keyPath: 'date' })
       // Ideas noted down for later, with or without a work they belong to.
       if (event.oldVersion < 5) db.createObjectStore('ideas', { keyPath: 'id' })
+      if (event.oldVersion < 6) {
+        // Pre-edit chapter snapshots and persistent AI cumulative-loss baselines survive restarts.
+        const revisions = db.createObjectStore('revisions', { keyPath: 'id' })
+        revisions.createIndex('byChapter', ['library', 'bookId', 'editionId', 'chapterId'])
+        revisions.createIndex('byEdition', ['library', 'bookId', 'editionId'])
+        revisions.createIndex('byBook', ['library', 'bookId'])
+        const baselines = db.createObjectStore('aiBaselines', {
+          keyPath: ['clientId', 'library', 'bookId', 'editionId', 'chapterId'],
+        })
+        baselines.createIndex('byEdition', ['library', 'bookId', 'editionId'])
+        baselines.createIndex('byBook', ['library', 'bookId'])
+      }
     }
     request.onsuccess = () => {
       const db = request.result
@@ -311,6 +359,9 @@ export async function deleteBook(library: LibraryId, id: string) {
     const storedEditions = editions.index('byBook').getAll(key)
     const storedChapters = chapters.index('byBook').getAll(key)
     storedChapters.onsuccess = step(() => {
+      if (owned.some((book, i) => book.format !== 'draft' && !storedFiles[i].result)) {
+        throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
+      }
       entry.files = storedFiles.map((request) => request.result).filter(Boolean)
       entry.editions = storedEditions.result
       entry.chapters = storedChapters.result
@@ -340,9 +391,10 @@ export async function removeWorkOriginal(workId: string, id: string) {
   stored.onsuccess = step(() => {
     const book: Book | undefined = request.result
     if (!book || book.format === 'draft' || (book.workId ?? book.id) !== workId) throw new Error(t('library.thisSourceHasBeenRemoved'))
+    if (!stored.result) throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
     const entry = trashEntry('original', 'reference', workId, book.originalName)
     entry.books = [book]
-    if (stored.result) entry.files = [stored.result]
+    entry.files = [stored.result]
     if (book.workId) books.delete(key)
     else books.put({ library: book.library, id, title: book.title, importedAt: book.importedAt, format: 'draft' } satisfies WrittenBook)
     files.delete(key)

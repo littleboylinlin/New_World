@@ -9,6 +9,12 @@ import {
   readChapter,
   saveChapter,
 } from '../documents/store'
+import {
+  applyAiChapterUpdate,
+  applyAiEditionReplaceBatch,
+  getAiBaseline,
+  listEditionAiBaselines,
+} from '../documents/revisions'
 import { hasDirtyOpenChapter, syncOpenEditionFromExternal } from '../documents/editor-view'
 import { chapterText, wordCount } from '../documents/model'
 import type { ChapterInput, Edition } from '../documents/model'
@@ -60,12 +66,13 @@ function fail(
   message: string,
   details?: Record<string, unknown>,
   targetSummary?: string,
+  auditReason?: string,
 ): AiExecutionFailure {
-  return { ok: false, statusCode, code, message, details, targetSummary }
+  return { ok: false, statusCode, code, message, details, targetSummary, auditReason }
 }
 
-function ok(data: unknown, statusCode = 200, targetSummary?: string): AiExecutionResult {
-  return { ok: true, statusCode, data, targetSummary }
+function ok(data: unknown, statusCode = 200, targetSummary?: string, auditReason?: string): AiExecutionResult {
+  return { ok: true, statusCode, data, targetSummary, auditReason }
 }
 
 function requiredPermissionForAction(action: string): PermissionKey | null {
@@ -229,6 +236,41 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
 
   if (!client || !client.enabled) {
     return fail(403, 'client_disabled', 'AI client is disabled.')
+  }
+
+  if (
+    action === 'recovery_access_forbidden'
+    || action.startsWith('trash.')
+    || action.startsWith('revisions.')
+    || action.startsWith('history.')
+    || action.startsWith('backup')
+  ) {
+    return fail(
+      403,
+      'recovery_data_forbidden',
+      'Trash, revision history, and backup recovery storage cannot be accessed by AI.',
+      undefined,
+      undefined,
+      'recovery_data_forbidden',
+    )
+  }
+
+  if (
+    body?.skipHistory === true
+    || body?.preserveHistory === false
+    || query?.skipHistory === 'true'
+    || query?.skipHistory === '1'
+    || query?.preserveHistory === 'false'
+    || query?.preserveHistory === '0'
+  ) {
+    return fail(
+      403,
+      'history_protection_non_bypassable',
+      'Automatic pre-edit revision history protection cannot be skipped or disabled.',
+      undefined,
+      undefined,
+      'history_protection_non_bypassable',
+    )
   }
 
   const requiredPerm = requiredPermissionForAction(action)
@@ -420,9 +462,14 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (info.fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'The target work changed before confirmation completed; nothing was deleted.')
         }
-        await deleteBook(loaded.library, loaded.book.id)
+        const entry = await deleteBook(loaded.library, loaded.book.id)
         notifyLibraryUpdated()
-        return ok({ deleted: true, library: loaded.library, bookId: loaded.book.id, title: loaded.book.title }, 200, `${loaded.library}:${loaded.book.title}`)
+        return ok(
+          { deleted: true, movedToTrash: true, library: loaded.library, bookId: loaded.book.id, title: loaded.book.title },
+          200,
+          `${loaded.library}:${loaded.book.title}`,
+          `trashed:${entry.id}`,
+        )
       }
 
       case 'editions.list': {
@@ -535,10 +582,10 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (info.fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Edition changed before confirmation completed.')
         }
-        await deleteEdition(edition)
+        const entry = await deleteEdition(edition)
         notifyLibraryUpdated()
         await syncOpenEditionFromExternal(loaded.library, loaded.book.id, edition.id)
-        return ok({ deleted: true, editionId: edition.id }, 200, `${loaded.book.title} / ${edition.name}`)
+        return ok({ deleted: true, movedToTrash: true, editionId: edition.id }, 200, `${loaded.book.title} / ${edition.name}`, `trashed:${entry.id}`)
       }
 
       case 'chapters.list': {
@@ -657,8 +704,18 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         const current = await readChapter(edition, params.chapterId)
         const nextTitle = hasTitle ? String(body.title).trim() : info.title
         const nextContent = hasContent ? parseDocumentInput(body.content, body.format) : current.content
-        const assessment = assessChapterUpdate(client.id, loaded.library, loaded.book.id, edition.id, current, nextContent)
-        const fingerprint = `chapter-update:${loaded.library}:${loaded.book.id}:${edition.id}:${current.id}:${edition.revision}:${current.revision}:${assessment.beforeWords}:${assessment.afterWords}`
+        const persistedBaseline = await getAiBaseline(client.id, edition, current.id)
+        const assessment = assessChapterUpdate(
+          client.id,
+          loaded.library,
+          loaded.book.id,
+          edition.id,
+          current,
+          nextContent,
+          persistedBaseline,
+        )
+        const retentionPct = Math.round((assessment.retention ?? 1) * 100)
+        const fingerprint = `chapter-update:${loaded.library}:${loaded.book.id}:${edition.id}:${current.id}:${edition.revision}:${current.revision}:${assessment.beforeWords}:${assessment.afterWords}:${retentionPct}`
 
         if (phase === 'execute') {
           if (assessment.destructive) {
@@ -666,16 +723,21 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
               return fail(
                 403,
                 'destructive_update_forbidden',
-                'Destructive content reduction or clearing is blocked without delete permission.',
+                'Destructive content reduction, wholesale rewrite, or clearing is blocked without delete permission.',
                 {
                   reason: assessment.reason,
                   beforeWords: assessment.beforeWords,
                   afterWords: assessment.afterWords,
                   lostWords: assessment.lostWords,
+                  retention: assessment.retention,
                 },
                 `${loaded.book.title} / ${info.title}`,
               )
             }
+            const replacedPct = Math.max(0, 100 - retentionPct)
+            const reasonDetail = assessment.reason.includes('replacement')
+              ? `${assessment.reason}, ~${replacedPct}% replaced`
+              : assessment.reason
             return {
               ok: false,
               requiresConfirmation: true,
@@ -694,7 +756,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
                 beforeWords: assessment.beforeWords,
                 afterWords: assessment.afterWords,
                 lostWords: assessment.lostWords,
-                summary: `${loaded.book.title} / ${info.title}: ${assessment.beforeWords} -> ${assessment.afterWords} words (${assessment.reason})`,
+                summary: `${loaded.book.title} / ${info.title}: ${assessment.beforeWords} -> ${assessment.afterWords} words (${reasonDetail})`,
               },
             }
           }
@@ -704,14 +766,17 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           }
         }
 
-        if (hasTitle && nextTitle !== info.title) {
-          const renamed = await changeChapters(edition, { type: 'rename', id: current.id, title: nextTitle })
-          edition = renamed.edition
-        }
-        if (hasContent) {
-          const latestRecord = await readChapter(edition, current.id)
-          await saveChapter(edition, latestRecord, nextContent)
-        }
+        const applied = await applyAiChapterUpdate({
+          edition,
+          chapterId: current.id,
+          clientId: client.id,
+          clientName: client.name,
+          nextTitle: hasTitle ? nextTitle : undefined,
+          nextContent: hasContent ? nextContent : undefined,
+          action: 'chapters.update',
+          resetBaseline: phase === 'execute-confirmed',
+        })
+        edition = applied.edition
         commitChapterBaseline(
           client.id,
           loaded.library,
@@ -722,14 +787,16 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           assessment.afterWords,
           phase === 'execute-confirmed',
         )
-        const updatedRecord = await readChapter(edition, current.id)
+        const updatedRecord = applied.chapter
         const updatedTitle = chapterTitleInEdition(edition, current.id)
         notifyLibraryUpdated()
         await syncOpenEditionFromExternal(loaded.library, loaded.book.id, edition.id)
         return ok({
           editionRevision: edition.revision,
+          snapshotSaved: true,
+          snapshotId: applied.snapshot.id,
           chapter: formatChapterOutput(updatedRecord, updatedTitle, query.format),
-        }, 200, `${loaded.book.title} / ${updatedTitle}`)
+        }, 200, `${loaded.book.title} / ${updatedTitle}`, `snapshot:${applied.snapshot.id}`)
       }
 
       case 'chapters.replaceBatch': {
@@ -758,8 +825,10 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           }
         })
 
-        const batchCheck = assessBatchEditionUpdate(edition.chapters, bundle.chapters, parsedIncoming)
-        const fingerprint = `batch:${loaded.library}:${loaded.book.id}:${edition.id}:${edition.revision}:${batchCheck.beforeWords}:${batchCheck.afterWords}:${parsedIncoming.length}`
+        const persistedBaselines = await listEditionAiBaselines(client.id, edition)
+        const batchCheck = assessBatchEditionUpdate(edition.chapters, bundle.chapters, parsedIncoming, persistedBaselines)
+        const retentionPct = Math.round((batchCheck.retention ?? 1) * 100)
+        const fingerprint = `batch:${loaded.library}:${loaded.book.id}:${edition.id}:${edition.revision}:${batchCheck.beforeWords}:${batchCheck.afterWords}:${parsedIncoming.length}:${retentionPct}`
 
         if (phase === 'execute') {
           if (batchCheck.destructive) {
@@ -767,7 +836,7 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
               return fail(
                 403,
                 'destructive_update_forbidden',
-                'Batch update that drops chapters or massively reduces content is blocked without delete permission.',
+                'Batch update that drops chapters, wholesale-rewrites chapters, or massively reduces content is blocked without delete permission.',
                 { ...batchCheck },
                 `${loaded.book.title} / ${edition.name}`,
               )
@@ -799,29 +868,33 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
           }
         }
 
-        const keepIds = new Set(parsedIncoming.map((c) => c.id).filter((id): id is string => typeof id === 'string'))
-        for (const existing of [...edition.chapters]) {
-          if (!keepIds.has(existing.id)) {
-            const removed = await changeChapters(edition, { type: 'delete', id: existing.id })
-            edition = removed.edition
-          }
-        }
-        for (const incoming of parsedIncoming) {
-          if (incoming.id && edition.chapters.some((c) => c.id === incoming.id)) {
-            const renamed = await changeChapters(edition, { type: 'rename', id: incoming.id, title: incoming.title })
-            edition = renamed.edition
-            const record = await readChapter(edition, incoming.id)
-            await saveChapter(edition, record, incoming.content)
-          } else {
-            const added = await changeChapters(edition, { type: 'add', title: incoming.title })
-            edition = added.edition
-            const record = await readChapter(edition, added.selected)
-            await saveChapter(edition, record, incoming.content)
-          }
+        const applied = await applyAiEditionReplaceBatch({
+          edition,
+          clientId: client.id,
+          clientName: client.name,
+          chapters: parsedIncoming,
+          resetBaseline: phase === 'execute-confirmed',
+        })
+        edition = applied.edition
+        for (const ch of applied.chapters) {
+          const words = wordCount(ch.content)
+          commitChapterBaseline(client.id, loaded.library, loaded.book.id, edition.id, ch.id, words, words, phase === 'execute-confirmed')
         }
         notifyLibraryUpdated()
         await syncOpenEditionFromExternal(loaded.library, loaded.book.id, edition.id)
-        return ok({ editionRevision: edition.revision, chapterCount: edition.chapters.length }, 200, `${loaded.book.title} / ${edition.name}`)
+        const reasonParts = [`snapshots:${applied.snapshots.length}`]
+        if (applied.trashed.length) reasonParts.push(`trashed:${applied.trashed.length}`)
+        return ok(
+          {
+            editionRevision: edition.revision,
+            chapterCount: edition.chapters.length,
+            snapshotCount: applied.snapshots.length,
+            trashedCount: applied.trashed.length,
+          },
+          200,
+          `${loaded.book.title} / ${edition.name}`,
+          reasonParts.join(';'),
+        )
       }
 
       case 'chapters.reorder': {
@@ -905,7 +978,12 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         const deleted = await changeChapters(edition, { type: 'delete', id: params.chapterId })
         notifyLibraryUpdated()
         await syncOpenEditionFromExternal(loaded.library, loaded.book.id, deleted.edition.id)
-        return ok({ deleted: true, chapterId: params.chapterId, editionRevision: deleted.edition.revision }, 200, `${loaded.book.title} / ${infoEntry.title}`)
+        return ok(
+          { deleted: true, movedToTrash: Boolean(deleted.trashed), chapterId: params.chapterId, editionRevision: deleted.edition.revision },
+          200,
+          `${loaded.book.title} / ${infoEntry.title}`,
+          deleted.trashed ? `trashed:${deleted.trashed.id}` : undefined,
+        )
       }
 
       case 'sources.create': {
@@ -994,9 +1072,9 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Work changed before confirmation completed.')
         }
-        await removeWorkOriginal(loaded.book.id, params.sourceId)
+        const entry = await removeWorkOriginal(loaded.book.id, params.sourceId)
         notifyLibraryUpdated()
-        return ok({ deleted: true, bookId: loaded.book.id, sourceId: params.sourceId }, 200, `${loaded.book.title} / ${origRes.book.title}`)
+        return ok({ deleted: true, movedToTrash: true, bookId: loaded.book.id, sourceId: params.sourceId }, 200, `${loaded.book.title} / ${origRes.book.title}`, `trashed:${entry.id}`)
       }
 
       case 'search': {
@@ -1215,8 +1293,8 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
         if (fingerprint !== request.expectedFingerprint) {
           return fail(409, 'stale_confirmation_target', 'Idea changed before confirmation completed.')
         }
-        await deleteIdea(existing.id)
-        return ok({ deleted: true, ideaId: existing.id }, 200, existing.text.slice(0, 80))
+        const entry = await deleteIdea(existing.id)
+        return ok({ deleted: true, movedToTrash: Boolean(entry), ideaId: existing.id }, 200, existing.text.slice(0, 80), entry ? `trashed:${entry.id}` : 'already_deleted')
       }
 
       default:
@@ -1224,6 +1302,6 @@ export async function executeAiDispatch(request: AiDispatchRequest): Promise<AiE
     }
   } catch (error) {
     const message = storageError(error) || (error instanceof Error ? error.message : String(error))
-    return fail(400, 'operation_failed', message)
+    return fail(400, 'operation_failed', message, undefined, undefined, message)
   }
 }

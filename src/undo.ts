@@ -5,7 +5,7 @@ import { restoreTrash } from './trash'
 import { leave } from './motion'
 import { button, element } from './ui'
 
-export const trashKinds = { book: t('content.work'), original: t('content.source'), edition: t('content.edition'), chapter: t('content.chapters') } as const
+export const trashKinds = { book: t('content.work'), original: t('content.source'), edition: t('content.edition'), chapter: t('content.chapters'), idea: t('ideas.title') } as const
 type Restored = Awaited<ReturnType<typeof restoreTrash>>
 
 let shown: HTMLElement | undefined

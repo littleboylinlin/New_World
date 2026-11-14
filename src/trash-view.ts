@@ -15,9 +15,12 @@ function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (messa
   const details = element('div', 'file-details')
   const left = Math.max(1, Math.ceil((entry.deletedAt + trashDays * day - Date.now()) / day))
   const deleted = new Date(entry.deletedAt).toLocaleString(locale, { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const placeText = entry.kind === 'idea' && !entry.bookId
+    ? t('ideas.unlinked')
+    : place ? `${libraries[entry.library].name} · ${place}` : libraries[entry.library].name
   details.append(
     element('span', 'file-format', trashKinds[entry.kind]),
-    element('span', 'filename', place ? `${libraries[entry.library].name} · ${place}` : libraries[entry.library].name),
+    element('span', 'filename', placeText),
     element('span', 'file-size', t('trash.deletedDaySRemaining', [deleted, left])),
   )
   copy.append(element('strong', 'book-title', entry.title), details)

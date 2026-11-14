@@ -707,5 +707,21 @@
   "ai.confirmImpactSummary": "影响摘要",
   "ai.confirmExpiresIn": "此确认请求将在 {0} 秒后自动超时并拒绝执行。",
   "ai.confirmCancel": "拒绝并取消",
-  "ai.confirmApprove": "本人确认执行"
+  "ai.confirmApprove": "本人确认执行",
+  "revisions.button": "历史版本",
+  "revisions.buttonTitle": "查看并恢复本章的历史版本",
+  "revisions.dialogTitle": "历史版本 · {0}",
+  "revisions.hint": "每次通过 AI 修改已有正文前都会自动保留修改前内容；恢复旧版本前也会先自动备份当前正文。",
+  "revisions.empty": "本章还没有保存过历史版本。",
+  "revisions.listLabel": "已保存的历史版本",
+  "revisions.previewLabel": "版本内容预览",
+  "revisions.sourceAi": "AI 修改前（{0}）",
+  "revisions.sourceAiGeneric": "AI 修改前",
+  "revisions.sourceRestore": "恢复前自动备份",
+  "revisions.words": "{0} 字",
+  "revisions.emptyChapterPreview": "（空章节）",
+  "revisions.restoreThis": "恢复此版本",
+  "revisions.restoring": "正在恢复…",
+  "revisions.restored": "已恢复所选历史版本，原正文已自动备份到历史记录。",
+  "revisions.notFound": "未找到该历史版本，可能已被清理或不属于当前章节。"
 }

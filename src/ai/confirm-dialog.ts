@@ -89,7 +89,9 @@ export function createConfirmController(sendDecision: ConfirmDecisionSender) {
       row(t('ai.confirmAffectedWords'), impact.affectedWords.toLocaleString())
     }
     if (impact.beforeWords !== undefined && impact.afterWords !== undefined) {
-      row(t('ai.confirmWordChange'), `${impact.beforeWords.toLocaleString()} -> ${impact.afterWords.toLocaleString()} (-${(impact.lostWords ?? 0).toLocaleString()})`)
+      const loss = impact.lostWords ?? 0
+      const suffix = loss > 0 ? ` (-${loss.toLocaleString()})` : ''
+      row(t('ai.confirmWordChange'), `${impact.beforeWords.toLocaleString()} -> ${impact.afterWords.toLocaleString()}${suffix}`)
     }
     row(t('ai.confirmImpactSummary'), impact.summary)
 

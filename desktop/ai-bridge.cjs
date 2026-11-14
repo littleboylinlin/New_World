@@ -145,6 +145,21 @@ function matchRoute(method, pathname) {
     return { action: 'self_confirm_attempt', permission: null, parts }
   }
 
+  // Trash, revision history, and backup recovery storage are strictly off-limits to AI clients.
+  if (
+    parts[1] === 'trash'
+    || parts[1] === 'revisions'
+    || parts[1] === 'history'
+    || parts[1] === 'backups'
+    || (parts[1] === 'works' && (
+      ['trash', 'revisions', 'history'].includes(parts[4])
+      || ['revisions', 'history'].includes(parts[6])
+      || ['revisions', 'history'].includes(parts[8])
+    ))
+  ) {
+    return { action: 'recovery_access_forbidden', permission: null, parts }
+  }
+
   if (parts.length === 2 && parts[1] === 'health' && method === 'GET') {
     return { action: 'health', permission: null, public: true }
   }
@@ -583,9 +598,9 @@ function createAiBridge({
           action: entry.action,
           outcome: 'error',
           statusCode,
-          targetSummary: entry.targetSummary,
+          targetSummary: execution?.targetSummary || entry.targetSummary,
           confirmId: confirmationId,
-          reason: errCode,
+          reason: execution?.auditReason || errCode,
         })
         if (done) {
           resolveWaiters(done.entry, statusCode, errorPayload(errCode, errMessage, { confirmationId }))
@@ -604,8 +619,9 @@ function createAiBridge({
         action: entry.action,
         outcome: 'confirmed',
         statusCode: 200,
-        targetSummary: entry.targetSummary,
+        targetSummary: execution.targetSummary || entry.targetSummary,
         confirmId: confirmationId,
+        reason: execution.auditReason || '',
       })
       if (done) {
         resolveWaiters(done.entry, 200, {
@@ -717,6 +733,19 @@ function createAiBridge({
       return
     }
 
+    if (route.action === 'recovery_access_forbidden') {
+      formatAudit(client, req, route.action, 'denied', 403, { reason: 'recovery_data_forbidden' })
+      writeJson(
+        res,
+        403,
+        errorPayload(
+          'recovery_data_forbidden',
+          'Trash, revision history, and backup recovery storage are isolated from the AI API and can only be managed in the New_World window.',
+        ),
+      )
+      return
+    }
+
     if (!client.enabled) {
       formatAudit(client, req, route.action, 'denied', 403, { reason: 'client_disabled' })
       writeJson(res, 403, errorPayload('client_disabled', 'This AI client configuration is currently disabled.'))
@@ -816,6 +845,26 @@ function createAiBridge({
 
     const query = Object.fromEntries(urlObj.searchParams.entries())
 
+    if (
+      body.skipHistory === true
+      || body.preserveHistory === false
+      || query.skipHistory === 'true'
+      || query.skipHistory === '1'
+      || query.preserveHistory === 'false'
+      || query.preserveHistory === '0'
+    ) {
+      formatAudit(client, req, route.action, 'denied', 403, { reason: 'history_protection_non_bypassable' })
+      writeJson(
+        res,
+        403,
+        errorPayload(
+          'history_protection_non_bypassable',
+          'Automatic pre-edit revision history protection cannot be skipped or disabled.',
+        ),
+      )
+      return
+    }
+
     try {
       const result = await serializeOperation(() =>
         dispatchOperation({
@@ -857,7 +906,7 @@ function createAiBridge({
         const outcome = statusCode === 403 || statusCode === 401 ? 'denied' : statusCode === 409 ? 'conflict' : 'error'
         formatAudit(client, req, route.action, outcome, statusCode, {
           targetSummary: result.targetSummary || '',
-          reason: result.code || 'request_failed',
+          reason: result.auditReason || result.code || 'request_failed',
         })
         writeJson(res, statusCode, errorPayload(result.code || 'request_failed', result.message || 'Operation rejected.', result.details))
         return
@@ -865,6 +914,7 @@ function createAiBridge({
 
       formatAudit(client, req, route.action, 'allowed', result.statusCode || 200, {
         targetSummary: result.targetSummary || '',
+        reason: result.auditReason || '',
       })
       writeJson(res, result.statusCode || 200, {
         ok: true,
