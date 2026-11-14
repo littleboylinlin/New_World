@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.15.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.15.2 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.15.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.15.1). Adds an offline localhost `/v1` AI interface (off by default), fine-grained per-AI permissions in Settings, mandatory manual confirmation for deletions, strict trash/history isolation, and automatic pre-edit revision snapshots for recovery (see `AI_INTEGRATION.md`). Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.15.2](https://github.com/littleboylinlin/New_World/releases/tag/v0.15.2). Hardens local AI data protection and recovery reliability: removes automatic 30-day trash expiration, adds atomic pre-edit snapshots and recovery UI for ideas, restores original chapter titles alongside body content, enforces confirmation-time target consistency and live scope revocation, adds lossless deduplicated revision storage and backup ZIP-bomb limits, and strengthens desktop IPC sender isolation and updater size checks (see `AI_INTEGRATION.md`). Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,7 +36,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → Language" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.15.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.15.2\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -127,7 +127,7 @@ The home page shows writing stats below the library lists: a heatmap that record
 
 Deleting a work, a continuation project's source, an edited version, or a chapter moves the content to the trash. The notice at the bottom of the page right after deletion can undo it directly. "Trash" in the header lists deleted content, which can be restored to its original place, permanently deleted, or emptied all at once.
 
-- Trash keeps content for 30 days; expired items are cleaned up the next time the app opens. Trashed content still occupies local storage.
+- Trash keeps deleted items indefinitely without automatic expiration until you restore them or permanently delete them after secondary confirmation. Trashed content still occupies local storage.
 - Restored chapters return to their original order. When restoring an edited version whose name already exists, "restored" is appended to the name.
 - If the owning work or version was also deleted, restore it first. If the same source file was re-imported after deletion, delete the newly imported copy first.
 
