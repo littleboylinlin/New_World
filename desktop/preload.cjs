@@ -50,4 +50,33 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
       ipcRenderer.send('new-world:close-result', saved === true)
     })
   },
+  getAiState: () => ipcRenderer.invoke('new-world:ai-state'),
+  setAiEnabled: (enabled) => ipcRenderer.invoke('new-world:ai-set-enabled', enabled === true),
+  setAiPort: (port) => ipcRenderer.invoke('new-world:ai-set-port', port),
+  createAiClient: (input) => ipcRenderer.invoke('new-world:ai-create-client', input),
+  updateAiClient: (id, patch) => ipcRenderer.invoke('new-world:ai-update-client', id, patch),
+  rotateAiToken: (id) => ipcRenderer.invoke('new-world:ai-rotate-token', id),
+  deleteAiClient: (id) => ipcRenderer.invoke('new-world:ai-delete-client', id),
+  listAiAudit: (limit) => ipcRenderer.invoke('new-world:ai-list-audit', limit),
+  clearAiAudit: () => ipcRenderer.invoke('new-world:ai-clear-audit'),
+  onAiDispatch: (handler) => {
+    const listener = (_event, packet) => handler(packet)
+    ipcRenderer.on('new-world:ai-dispatch', listener)
+    return () => ipcRenderer.removeListener('new-world:ai-dispatch', listener)
+  },
+  sendAiDispatchResult: (callId, result) => ipcRenderer.send('new-world:ai-dispatch-result', { callId, result }),
+  onAiConfirmOpen: (handler) => {
+    const listener = (_event, request) => handler(request)
+    ipcRenderer.on('new-world:ai-confirm-open', listener)
+    return () => ipcRenderer.removeListener('new-world:ai-confirm-open', listener)
+  },
+  onAiConfirmClose: (handler) => {
+    const listener = (_event, detail) => handler(detail)
+    ipcRenderer.on('new-world:ai-confirm-close', listener)
+    return () => ipcRenderer.removeListener('new-world:ai-confirm-close', listener)
+  },
+  sendAiConfirmDecision: (confirmationId, approved) => ipcRenderer.invoke('new-world:ai-confirm-decision', {
+    confirmationId,
+    approved: approved === true,
+  }),
 })
