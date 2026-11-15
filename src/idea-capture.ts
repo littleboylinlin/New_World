@@ -1,7 +1,7 @@
 import { t } from './i18n'
 import { addIdea, lastWork, maxIdeaLength } from './ideas'
-import { listShelf, storageError } from './library'
-import type { LibraryId } from './library'
+import { listBooks, storageError } from './library'
+import type { Book, LibraryId } from './library'
 import { button, element, libraries } from './ui'
 
 const libraryIds: LibraryId[] = ['original', 'reference']
@@ -35,31 +35,65 @@ export function captureForm(done: () => void, cancel?: () => void) {
 
   // The list of works loads after the form opens; saving waits for it so a quick Enter keeps the work.
   let loading: Promise<void> = Promise.resolve()
+  let request = 0
+  let userChanged = false
+  let loadError = ''
+  work.addEventListener('change', () => { userChanged = true })
+
   function refresh(selected = lastWork()) {
-    loading = fillWorks(selected)
+    const turn = ++request
+    userChanged = false
+    loading = fillWorks(selected, turn)
     return loading
   }
-  async function fillWorks(selected: ReturnType<typeof lastWork>) {
-    const options: HTMLOptionElement[] = []
-    const none = element('option', '', t('ideas.noWork'))
-    none.value = ''
-    options.push(none)
-    for (const library of libraryIds) {
-      let books: Awaited<ReturnType<typeof listShelf>> = []
-      try { books = await listShelf(library) } catch { continue }
-      if (!books.length) continue
-      const group = element('optgroup')
-      group.label = libraries[library].name
-      for (const book of books) {
-        const option = element('option', '', book.title)
-        option.value = `${library}:${book.id}`
-        group.append(option)
+  async function fillWorks(selected: ReturnType<typeof lastWork>, turn: number) {
+    try {
+      const loaded = await Promise.all(libraryIds.map(async (library) => [library, await listBooks(library)] as const))
+      if (turn !== request) return
+      loadError = ''
+      if (status.classList.contains('field-error')) {
+        status.textContent = ''
+        status.classList.remove('field-error')
       }
-      options.push(group as unknown as HTMLOptionElement)
+
+      const byLibrary = new Map<LibraryId, Book[]>(loaded)
+      let resolvedSelected = selected
+      if (selected) {
+        const books = byLibrary.get(selected.library) ?? []
+        const match = books.find((book) => book.id === selected.bookId)
+        if (match?.workId) {
+          const parent = books.find((book) => book.id === match.workId)
+          if (parent) resolvedSelected = { library: parent.library, bookId: parent.id }
+        }
+      }
+
+      const options: (HTMLOptionElement | HTMLOptGroupElement)[] = []
+      const none = element('option', '', t('ideas.noWork'))
+      none.value = ''
+      options.push(none)
+      const wanted = resolvedSelected ? `${resolvedSelected.library}:${resolvedSelected.bookId}` : ''
+      for (const library of libraryIds) {
+        const books = (byLibrary.get(library) ?? []).filter((book) => !book.workId && (!book.archivedAt || `${library}:${book.id}` === wanted))
+        if (!books.length) continue
+        const group = element('optgroup')
+        group.label = libraries[library].name
+        for (const book of books) {
+          const option = element('option', '', book.title)
+          option.value = `${library}:${book.id}`
+          group.append(option)
+        }
+        options.push(group)
+      }
+      const previous = work.value
+      work.replaceChildren(...options)
+      const preferred = userChanged ? previous : wanted
+      work.value = [...work.options].some((option) => option.value === preferred) ? preferred : ''
+    } catch (cause) {
+      if (turn !== request) return
+      loadError = storageError(cause)
+      status.textContent = loadError
+      status.classList.add('field-error')
     }
-    work.replaceChildren(...options)
-    const wanted = selected ? `${selected.library}:${selected.bookId}` : ''
-    work.value = [...work.options].some((option) => option.value === wanted) ? wanted : ''
   }
 
   form.addEventListener('submit', async (event) => {
@@ -68,7 +102,12 @@ export function captureForm(done: () => void, cancel?: () => void) {
     save.disabled = true
     status.classList.remove('field-error')
     try {
-      await loading.catch(() => {})
+      while (true) {
+        const active = loading
+        await active
+        if (active === loading) break
+      }
+      if (loadError) throw new Error(loadError)
       const [library, bookId] = work.value ? work.value.split(':') as [LibraryId, string] : []
       await addIdea(text.value, library && bookId ? { library, bookId } : undefined)
       text.value = ''

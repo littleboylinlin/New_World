@@ -528,6 +528,12 @@ export async function renderEdition(
   }, { signal })
 
   let ideas: Idea[] = []
+  let ideasRequest = 0
+  let ideasBody: HTMLElement | undefined
+  const capture = button(t('ideas.capture'), 'button button-quiet button-small ideas-capture-button', 'plus')
+  capture.addEventListener('click', () => openCaptureDialog({ library: edition.library, bookId: edition.bookId }))
+  ideasPanel.append(capture)
+
   function insertIdea(idea: Idea) {
     if (!editing) return
     const paragraphs = idea.text.split(/\n+/).map((line) => line.trim()).filter(Boolean)
@@ -538,28 +544,37 @@ export async function renderEdition(
   function paintIdeas() {
     const waiting = ideas.filter((idea) => !idea.usedAt)
     ideasCount.textContent = ideasSummaryCount.textContent = waiting.length ? String(waiting.length) : ''
-    const capture = button(t('ideas.capture'), 'button button-quiet button-small ideas-capture-button', 'plus')
-    capture.addEventListener('click', () => openCaptureDialog({ library: edition.library, bookId: edition.bookId }))
-    const list = element('ul', 'ideas-panel-list')
-    for (const idea of [...waiting, ...ideas.filter((item) => item.usedAt)]) {
-      const item = element('li', idea.usedAt ? 'idea-used' : '')
-      const text = element('p', 'idea-text', idea.text)
-      const insert = button(t('ideas.insert'), 'button button-quiet button-small')
-      insert.addEventListener('mousedown', (event) => event.preventDefault())
-      insert.addEventListener('click', () => insertIdea(idea))
-      const used = button(idea.usedAt ? t('ideas.markUnused') : t('ideas.markUsed'), 'button button-quiet button-small')
-      used.addEventListener('click', () => { void setIdeaUsed(idea, !idea.usedAt).catch(report) })
-      const actions = element('div', 'ideas-panel-actions')
-      actions.append(insert, used)
-      item.append(text, actions)
-      list.append(item)
+    let nextBody: HTMLElement
+    if (ideas.length) {
+      const list = element('ul', 'ideas-panel-list')
+      for (const idea of [...waiting, ...ideas.filter((item) => item.usedAt)]) {
+        const item = element('li', idea.usedAt ? 'idea-used' : '')
+        const text = element('p', 'idea-text', idea.text)
+        const insert = button(t('ideas.insert'), 'button button-quiet button-small')
+        insert.addEventListener('mousedown', (event) => event.preventDefault())
+        insert.addEventListener('click', () => insertIdea(idea))
+        const used = button(idea.usedAt ? t('ideas.markUnused') : t('ideas.markUsed'), 'button button-quiet button-small')
+        used.addEventListener('click', () => { void setIdeaUsed(idea, !idea.usedAt).catch(report) })
+        const actions = element('div', 'ideas-panel-actions')
+        actions.append(insert, used)
+        item.append(text, actions)
+        list.append(item)
+      }
+      nextBody = list
+    } else {
+      nextBody = element('p', 'dialog-help', t('ideas.noneForWork'))
     }
-    ideasPanel.replaceChildren(ideas.length ? list : element('p', 'dialog-help', t('ideas.noneForWork')), capture)
+    if (ideasBody?.parentElement === ideasPanel) ideasBody.replaceWith(nextBody)
+    else ideasPanel.insertBefore(nextBody, capture)
+    ideasBody = nextBody
   }
   async function refreshIdeas() {
+    const turn = ++ideasRequest
     try {
-      ideas = (await listIdeas()).filter((idea) => idea.library === edition.library && idea.bookId === edition.bookId)
-      if (!signal.aborted) paintIdeas()
+      const next = (await listIdeas()).filter((idea) => idea.library === edition.library && idea.bookId === edition.bookId)
+      if (signal.aborted || turn !== ideasRequest) return
+      ideas = next
+      paintIdeas()
     } catch { /* The panel keeps what it showed. */ }
   }
   ideasButton.addEventListener('click', () => {
