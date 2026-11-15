@@ -54,9 +54,10 @@
   .novel-body[data-turn="previous"] { animation-name: chapter-previous; }
   .chapter-jump[aria-current] { animation: 260ms var(--ease-pop) backwards fade-in; }
   .format-button:active:not(:disabled) { animation: 180ms ease-out press; }
-  .chapter-navigation, .ideas-card, .conversion-info { interpolate-size: allow-keywords; }
-  .chapter-navigation::details-content, .ideas-card::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
-  .chapter-navigation[open]::details-content, .ideas-card[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
+  .chapter-navigation, .conversion-info { interpolate-size: allow-keywords; }
+  .chapter-navigation::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
+  .chapter-navigation[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
+  .ideas-card[open] > .ideas-panel { animation: 200ms var(--ease-out) backwards fade-in; }
 
   .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump, .settings-nav-item, .settings-entry { transition: transform 160ms var(--ease-out), background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
   .settings-panel-enter { animation: 170ms var(--ease-out) backwards settings-panel-in; }
