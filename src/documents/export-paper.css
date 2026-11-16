@@ -65,3 +65,8 @@ html.export-document, .export-document body { margin: 0; color-scheme: light; ba
   .export-paper img { max-height: var(--export-image-height); object-fit: contain; break-inside: avoid; }
   .export-paper section + section { margin-block-start: 0; break-before: page; }
 }
+
+.export-work-info { padding-block: 2em; }
+.export-work-title, .export-work-subtitle, .export-work-author { text-align: center; }
+.export-work-subtitle { font-size: 1.25em; }
+.export-work-info .export-work-synopsis { white-space: pre-wrap; }

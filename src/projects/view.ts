@@ -9,6 +9,7 @@ import { projectMime, readProject } from './archive'
 import { exportProject, importProject, inspectConflicts } from './store'
 
 export function projectMessage(error: unknown) {
+  if (error instanceof ProjectError && ['metadata', 'unsupported'].includes(error.code)) return t(`project.${error.code}`, [error.detail])
   return error instanceof ProjectError ? t(`project.${error.code}`) : storageError(error)
 }
 

@@ -21,7 +21,7 @@ test('作品卡片书名在封面下方，箭头和右键都能打开操作菜�
   const toggle = page.getByRole('button', { name: '「灯塔与雾」的操作' })
   await toggle.click()
   const menu = page.getByRole('menu', { name: '「灯塔与雾」的操作' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['打开', '导出 New_World 工程（.newworld）', '重命名', '更换封面…', '归档', '删除'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['打开', '导出 New_World 工程（.newworld）', '重命名', '编辑作品信息', '更换封面…', '归档', '删除'])
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
   // The list drops down from the arrow, even with little room below it.
   const [arrow, list] = await Promise.all([toggle.boundingBox(), menu.boundingBox()])
@@ -68,7 +68,7 @@ test('可以上传原图作为封面，不压缩，也能恢复默认封面', as
   await page.reload()
   await expect(item.locator('.book-cover img')).toBeVisible()
   await page.getByRole('button', { name: '「封面测试」的操作' }).click()
-  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['打开', '导出 New_World 工程（.newworld）', '重命名', '更换封面…', '恢复默认封面', '归档', '删除'])
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['打开', '导出 New_World 工程（.newworld）', '重命名', '编辑作品信息', '更换封面…', '恢复默认封面', '归档', '删除'])
   await page.getByRole('menuitem', { name: '恢复默认封面' }).click()
   await expect(item.locator('.book-cover img')).toHaveCount(0)
   await expect(item.locator('.book-cover .book-title')).toHaveText('封面测试')

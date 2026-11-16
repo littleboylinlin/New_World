@@ -73,7 +73,10 @@ export async function restoreTrash(id: string) {
         if (!work) throw new Error(t('trash.theParentContinuationProjectIsNoLongerIn'))
         const [original] = entry.books
         // The first original shares its record with the project, which may have been renamed since.
-        if (original.id === work.id) books.put({ ...original, title: work.title })
+        if (original.id === work.id) {
+          const { metadata: _old, ...source } = original
+          books.put({ ...source, title: work.title, ...(work.metadata !== undefined ? { metadata: work.metadata } : {}) })
+        }
         else books.add(original)
         for (const file of entry.files) files.add(file)
         return { entry }

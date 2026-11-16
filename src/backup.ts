@@ -10,6 +10,7 @@ import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
 import type { WritingDay } from './writing-stats'
 import type { Idea } from './ideas'
+import { validateWorkMetadata } from './work-metadata'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
@@ -152,6 +153,7 @@ export async function createBackup(password?: string) {
   })
   // Cover images are blobs on the work records; they go beside the manifest like the original files.
   const pack = (book: Book, folder: string): Book => {
+    if (book.metadata !== undefined) validateWorkMetadata(book.metadata)
     const { cover: _stored, ...rest } = book
     const cover = coverOf(book)
     if (!cover) return rest as Book
@@ -286,6 +288,7 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       return { library: stored.library, id: stored.id, blob: await read(stored.path, stored.type) }
     }
     const unpack = async (book: Book): Promise<Book> => {
+      if (book.metadata !== undefined) validateWorkMetadata(book.metadata)
       const cover = book.cover as unknown as { path?: unknown; type?: unknown } | undefined
       const { cover: _stored, ...rest } = book
       if (!cover || typeof cover.path !== 'string') return rest as Book

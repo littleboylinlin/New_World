@@ -1,4 +1,5 @@
 import { t } from './i18n'
+import { workInformationPanel } from './work-information-view'
 import { annotateTextPreviews } from './annotations/preview'
 import { canConvert, formats, textEncodings } from './formats'
 import type { TextEncoding } from './formats'
@@ -207,7 +208,7 @@ export async function renderReader(
       tabs.append(anchor)
     }
     const body = element('div', 'work-body')
-    content.replaceChildren(heading, tabs, body)
+    content.replaceChildren(heading, ...(!book.workId ? [workInformationPanel(book, signal, (next) => { title.querySelector('h1')!.textContent = next.title })] : []), tabs, body)
     if (selected) {
       body.append(notice(t('reader.openingEditableVersion')))
       const { renderEdition } = await import('./documents/editor-view')

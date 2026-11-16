@@ -10,6 +10,7 @@ import type { Book, ChapterRevision, IdeaRevision } from '../library'
 import { synchronousContentHash } from '../confirm-state'
 import { limits, projectStores, requireValid as ok, ProjectError } from './model'
 import type { Detached, ProjectData, ProjectRoot } from './model'
+import { MetadataError, validateWorkMetadata } from '../work-metadata'
 
 const schema = getSchema(documentExtensions)
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 255 && !/[\x00-\x1f]/.test(v)
@@ -24,11 +25,12 @@ export async function sha256(blob: Blob) {
   return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** No unknown fields: an unsupported extension must be rejected rather than lost on the next save. */
+/** Structural fields are closed; inert optional metadata has its own bounded extension envelope. */
 function fields(v: object, required: string, optional = '') {
   ok(v && typeof v === 'object' && !Array.isArray(v), 'record object')
   const allowed = new Set((required + ' ' + optional).split(' '))
-  ok(Object.keys(v).every((k) => allowed.has(k)), 'unsupported record field')
+  const unsupported = Object.keys(v).find((k) => !allowed.has(k))
+  if (unsupported !== undefined) throw new ProjectError('unsupported', unsupported.slice(0, 128))
   ok(required.split(' ').filter(Boolean).every((k) => Object.hasOwn(v, k)), 'missing field')
 }
 export { fields }
@@ -101,8 +103,14 @@ function revision(v: ChapterRevision | IdeaRevision) {
   if (v.clientId !== undefined) ok(id(v.clientId), 'client provenance')
   if (v.clientName !== undefined) ok(str(v.clientName), 'client name')
 }
-function validateBook(v: Book) {
-  fields(v, 'library id title importedAt format', 'workId archivedAt cover originalName size digest readingAnnotations')
+function validateBook(v: Book, schemaVersion: number) {
+  fields(v, 'library id title importedAt format', 'workId archivedAt cover originalName size digest readingAnnotations' + (schemaVersion >= 2 ? ' metadata' : ''))
+  if (v.metadata !== undefined) {
+    try { validateWorkMetadata(v.metadata) } catch (error) {
+      if (error instanceof MetadataError) throw new ProjectError('metadata', error.field)
+      throw error
+    }
+  }
   ok(lib(v.library) && uuid(v.id) && title(v.title) && num(v.importedAt), 'book identity')
   if (v.workId !== undefined) ok(v.library === 'reference' && id(v.workId) && v.workId !== v.id && v.format !== 'draft', 'source parent')
   if (v.archivedAt !== undefined) ok(num(v.archivedAt) && !v.workId, 'archive state')
@@ -161,7 +169,7 @@ export function detachedIds(data: ProjectData): Detached {
   })) as unknown as Detached
 }
 
-export function validateData(data: ProjectData, root: ProjectRoot, detached: Detached) {
+export function validateData(data: ProjectData, root: ProjectRoot, detached: Detached, schemaVersion = 2) {
   fields(data, projectStores.join(' '))
   safeJson(data)
   ok(lib(root.library) && uuid(root.id), 'root')
@@ -177,7 +185,7 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
   const books = [...data.books, ...data.trash.flatMap((v) => v.books)]
   const bookIds = new Set(books.map((b) => b.id))
   const belongsIdea = (v: { library?: string; bookId?: string }) => v.library === root.library && !!v.bookId && bookIds.has(v.bookId)
-  for (const b of books) { validateBook(b); ok(b.library === root.library && (b.id === root.id || b.workId === root.id), 'unrelated book') }
+  for (const b of books) { validateBook(b, schemaVersion); ok(b.library === root.library && (b.id === root.id || b.workId === root.id), 'unrelated book') }
   const validateRows = (rows: Pick<ProjectData, 'books' | 'files' | 'editions' | 'chapters' | 'ideas'>, active: boolean) => {
     rows.files.forEach((v) => { fields(v, 'library id blob'); ok(v.library === root.library && id(v.id) && v.blob instanceof Blob && books.some((b) => b.id === v.id && b.format !== 'draft'), 'original file') })
     for (const b of rows.books) if (b.format !== 'draft') ok(rows.files.some((v) => v.id === b.id && v.blob.size === b.size), 'missing original')

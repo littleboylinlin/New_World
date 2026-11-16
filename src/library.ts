@@ -5,10 +5,13 @@ import type { Format } from './formats'
 import type { ChapterRecord, DocumentContent, Edition } from './documents/model'
 import type { ReadingAnnotations } from './annotations/model'
 import type { Idea } from './ideas'
+import { MetadataError, validateWorkMetadata } from './work-metadata'
+import type { WorkMetadata } from './work-metadata'
 
 export type LibraryId = 'original' | 'reference'
 
 interface BookIdentity {
+  metadata?: WorkMetadata
   library: LibraryId
   id: string
   title: string
@@ -386,6 +389,30 @@ export async function renameBook(library: LibraryId, id: string, value: string) 
   if (!found) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
 }
 
+/** Updates work information without replacing sources, covers or another window's metadata. */
+export async function saveWorkInformation(book: Book, title: string, metadata?: WorkMetadata) {
+  const name = title.trim()
+  if (!name || name.length > maxTitleLength) throw new Error(t('library.enterAValidWorkTitle'))
+  if (metadata !== undefined) validateWorkMetadata(metadata)
+  const prepared = metadata !== undefined ? structuredClone(metadata) : undefined
+  const expected = { title: book.title, metadata: JSON.stringify(book.metadata) }
+  const db = await openDatabase()
+  const tx = db.transaction('books', 'readwrite', { durability: 'strict' })
+  const store = tx.objectStore('books')
+  const request = store.get([book.library, book.id])
+  const { step, done } = writing<Book>(tx)
+  request.onsuccess = step(() => {
+    const current: Book | undefined = request.result
+    if (!current || current.workId) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+    if (current.title !== expected.title || JSON.stringify(current.metadata) !== expected.metadata) throw new Error(t('work.conflict'))
+    const { metadata: _old, ...rest } = current
+    const next = { ...rest, title: name, ...(prepared !== undefined ? { metadata: prepared } : {}) } as Book
+    store.put(next)
+    return next
+  })
+  return announced(done())
+}
+
 // Deleting moves a work with its originals, editions and chapters to the trash in one transaction.
 export async function deleteBook(library: LibraryId, id: string, expectedFingerprint?: string) {
   const db = await openDatabase()
@@ -464,7 +491,10 @@ export async function removeWorkOriginal(workId: string, id: string, expectedFin
     entry.books = [book]
     entry.files = [stored.result]
     if (book.workId) books.delete(key)
-    else books.put({ library: book.library, id, title: book.title, importedAt: book.importedAt, format: 'draft' } satisfies WrittenBook)
+    else {
+      const { format: _format, originalName: _name, size: _size, digest: _digest, readingAnnotations: _annotations, ...work } = book
+      books.put({ ...work, format: 'draft' } satisfies WrittenBook)
+    }
     files.delete(key)
     tx.objectStore('trash').add(entry)
     return entry
@@ -473,6 +503,7 @@ export async function removeWorkOriginal(workId: string, id: string, expectedFin
 }
 
 export function storageError(error: unknown) {
+  if (error instanceof MetadataError) return t('work.invalid', [error.field])
   if (error instanceof DOMException) {
     if (error.name === 'QuotaExceededError') return t('library.localStorageIsFullTheLatestChangesWere')
     if (error.name === 'ConstraintError') return t('library.anEditableVersionWithThisNameAlreadyExists')

@@ -1,4 +1,5 @@
 import { projectImportButton, showProjectExport } from './projects/view'
+import { showWorkInformation, workMetadataFields } from './work-information-view'
 import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
@@ -204,6 +205,7 @@ function bookCard(root: HTMLElement, book: Book, covers: string[], report: (mess
     { label: t('shelf.openWork'), icon: 'book', action: () => { location.hash = bookPath(book.library, book.id) } },
     { label: t('project.export'), icon: 'download', action: () => showProjectExport({ library: book.library, id: book.id }, book.title) },
     { label: t('shelf.rename'), icon: 'edit', action: () => manageBook(root, book, 'rename') },
+    { label: t('work.edit'), icon: 'edit', action: () => showWorkInformation(book) },
     { label: t('shelf.changeCover'), icon: 'image', action: () => chooseCover(root, book, report) },
     ...(image ? [{ label: t('shelf.defaultCover'), icon: 'undo' as const, action: () => {
       setCover(book.library, book.id, null).catch((error) => report(storageError(error)))
@@ -253,15 +255,18 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
   const heading = element('div')
   heading.append(element('p', 'eyebrow', `${library.index} / ${library.label}`), element('h1', '', library.name))
   const { choose, input, progress } = bookImport(id, id === 'reference' ? t('shelf.importSourceToCreateAProject') : t('shelf.importFiles'), () => changes.dispatchEvent(new Event('update')))
-  const create = button(t('shelf.newNovel'), 'button button-quiet', 'plus')
+  const create = button(t(id === 'original' ? 'shelf.newNovel' : 'work.newContinuation'), 'button button-quiet', 'plus')
   const controls = element('div', 'shelf-actions')
-  create.addEventListener('click', () => formDialog(root, { title: t('shelf.newNovel'), action: t('shelf.createNovel'), fields: [nameField(t('shelf.workTitle'))] }, async (data) => {
-    void navigator.storage?.persist?.().catch(() => {})
-    const { book, edition } = await createNovel(id, String(data.get('name')))
-    changes.dispatchEvent(new Event('update'))
-    location.hash = bookPath(id, book.id, edition.id)
-  }))
-  if (id === 'original') controls.append(create)
+  create.addEventListener('click', () => {
+    const metadata = workMetadataFields()
+    formDialog(root, { title: t(id === 'original' ? 'shelf.newNovel' : 'work.newContinuation'), action: t('shelf.createNovel'), fields: [nameField(t('shelf.workTitle')), ...metadata.fields] }, async (data) => {
+      void navigator.storage?.persist?.().catch(() => {})
+      const { book, edition } = await createNovel(id, String(data.get('name')), metadata.read())
+      changes.dispatchEvent(new Event('update'))
+      location.hash = bookPath(id, book.id, id === 'original' ? edition.id : undefined)
+    })
+  })
+  controls.append(create)
   // The tray's "New Novel" opens the library with this dialog.
   try {
     if (id === 'original' && sessionStorage.getItem('new-world:new-novel') === '1') {

@@ -78,7 +78,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   const packed = await unpack(path)
   const manifest = JSON.parse(Buffer.from(packed.get('manifest.json')).toString())
-  expect(manifest.schemaVersion).toBe(1)
+  expect(manifest.schemaVersion).toBe(2)
   expect(manifest.appVersion).not.toBe(manifest.schemaVersion)
   expect(manifest.detached.editions).toContain(seeded.missingEdition)
   for (const r of manifest.resources) expect(createHash('sha256').update(packed.get(r.path)).digest('hex')).toBe(r.sha256)
