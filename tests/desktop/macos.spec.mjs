@@ -195,7 +195,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
   await command('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle])
   await mkdir(join(languages, 'packs', previous), { recursive: true })
   await cp('public/locales/New-World-lang-zh-CN.json', join(languages, 'packs', previous, 'zh-CN.json'))
-  let app = await electron.launch({ executablePath: executable, args: [...extraArgs, '--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
+  let app = await electron.launch({ executablePath: executable, args: ['--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
   app.on('console', (message) => console.log('Mac application:', message.text()))
   let exited = false
   let restarted
