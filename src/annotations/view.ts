@@ -2,17 +2,20 @@ import { t } from '../i18n'
 import { formDialog } from '../dialogs'
 import { storageError } from '../library'
 import { button, element } from '../ui'
-import { anchorMatches, annotationColors, emptyAnnotations, maxAnnotationLength, popupPosition, sourceHash } from './model'
+import { anchorMatches, annotationColors, inlineAnnotationColors, emptyAnnotations, maxAnnotationLength, popupPosition, sourceHash } from './model'
 import type { ReadingAnchor, ReadingAnnotation } from './model'
 import { readAnnotations, saveAnnotations } from './store'
 import type { AnnotationTarget } from './store'
 import type { AnnotationSurface, ReadingSelection } from './surface'
+import { inlineAnnotationLayer } from './inline-view'
 import './annotations.css'
 
 /** Owns only reading UI. All listeners, timers and portals live exactly as long as the surface. */
 export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement, target: AnnotationTarget, parentSignal: AbortSignal) {
   const lifetime = new AbortController()
   const { signal } = lifetime
+  const previousTabIndex = surface.element.getAttribute('tabindex')
+  surface.element.tabIndex = 0
   let dead = false
   let ready = false
   let busy = false
@@ -25,6 +28,8 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   let originLine = 0
   let closeTimer: number | undefined
   let frame = 0
+  let selecting = false, keyboardSelecting = false, selectionArmed = false
+  let lastAnchor: DOMRect | undefined
   let dialog: HTMLDialogElement | undefined
   const valid = (item: ReadingAnnotation) => anchorMatches(item.anchor, hash, surface.kind, surface.size, surface.quote)
 
@@ -53,6 +58,7 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   popup.tabIndex = -1
   popup.setAttribute('role', 'dialog')
   popup.setAttribute('aria-label', t('annotations.title'))
+  const inline = inlineAnnotationLayer(surface, signal, repositionPopup)
 
   function hide(node: HTMLElement) { if (node.matches(':popover-open')) node.hidePopover() }
   function hideSelection() { hide(selectionTools); pendingSelection = undefined }
@@ -71,8 +77,9 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   }
   function place(node: HTMLElement, rect: DOMRect) {
     const view = viewport()
-    node.style.maxWidth = `${Math.max(1, view.width - 20)}px`
-    node.style.maxHeight = `${Math.max(1, view.height - 20)}px`
+    node.style.maxWidth = `${Math.max(1, node === popup ? Math.min(320, view.width - 20) : view.width - 20)}px`
+    const free = Math.max(rect.top - view.top - 18, view.top + view.height - rect.bottom - 18)
+    node.style.maxHeight = `${Math.max(1, node === popup ? Math.min(free, view.height - 20) : view.height - 20)}px`
     if (!node.matches(':popover-open')) node.showPopover()
     const box = node.getBoundingClientRect()
     const position = popupPosition(rect, box.width, box.height, view)
@@ -80,7 +87,16 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     node.style.top = `${position.top}px`
   }
 
-  function fields(item?: ReadingAnnotation) {
+  function themeInlineColor() {
+    const probe = element('span')
+    probe.style.cssText = 'position:absolute;visibility:hidden;color:var(--muted)'
+    manager.append(probe)
+    const channels = getComputedStyle(probe).color.match(/[\d.]+/g)
+    probe.remove()
+    return channels?.length === 3 ? '#' + channels.map((n) => Math.round(Number(n)).toString(16).padStart(2, '0')).join('') : inlineAnnotationColors[0]
+  }
+
+  function fields(item: ReadingAnnotation | undefined, defaultColor: string) {
     const textLabel = element('label', 'field-label', t('annotations.content'))
     const text = element('textarea', 'title-input annotation-input')
     text.name = 'text'; text.rows = 5; text.required = true; text.maxLength = maxAnnotationLength
@@ -95,24 +111,38 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     }
     display.value = item?.display ?? 'mark'
     displayLabel.append(display)
-    const colors = element('fieldset', 'annotation-colors')
-    colors.append(element('legend', '', t('annotations.color')))
-    const color = element('input')
-    color.type = 'color'; color.name = 'color'; color.value = item?.color ?? annotationColors[0]
-    color.setAttribute('aria-label', t('annotations.customColor'))
-    for (const [i, value] of annotationColors.entries()) {
-      const preset = button(t(`annotations.color${i}`), 'annotation-swatch')
-      preset.style.backgroundColor = value
-      preset.setAttribute('aria-pressed', String(color.value === value))
-      preset.addEventListener('click', () => { color.value = value; refresh() })
-      colors.append(preset)
+    const explicit = element('input')
+    explicit.type = 'hidden'; explicit.name = 'inlineColorSet'; explicit.value = item?.inlineColor ? '1' : ''
+    function palette(isInline: boolean) {
+      const values = isInline ? inlineAnnotationColors : annotationColors
+      const colors = element('fieldset', 'annotation-colors')
+      colors.append(element('legend', '', t(isInline ? 'annotations.inlineColor' : 'annotations.color')))
+      const color = element('input')
+      color.type = 'color'; color.name = isInline ? 'inlineColor' : 'color'
+      color.value = isInline ? item?.inlineColor ?? defaultColor : item?.color ?? annotationColors[0]
+      color.setAttribute('aria-label', t(isInline ? 'annotations.customInlineColor' : 'annotations.customColor'))
+      function refresh() {
+        for (const [i, preset] of [...colors.querySelectorAll('button')].entries()) preset.setAttribute('aria-pressed', String(color.value === values[i]))
+      }
+      for (const [i, value] of values.entries()) {
+        const label = t(`annotations.${isInline ? 'inlineColor' : 'color'}${i}`)
+        const preset = button(isInline ? '' : label, 'annotation-swatch')
+        preset.setAttribute('aria-label', label); preset.title = label
+        preset.style[isInline ? 'color' : 'backgroundColor'] = value
+        if (isInline) { preset.classList.add('annotation-font-swatch'); preset.append('Aa') }
+        preset.addEventListener('click', () => { color.value = value; if (isInline) explicit.value = '1'; refresh() })
+        colors.append(preset)
+      }
+      color.addEventListener('input', () => { if (isInline) explicit.value = '1'; refresh() })
+      colors.append(color)
+      refresh()
+      return colors
     }
-    function refresh() {
-      for (const [i, preset] of [...colors.querySelectorAll('button')].entries()) preset.setAttribute('aria-pressed', String(color.value === annotationColors[i]))
-    }
-    color.addEventListener('input', refresh)
-    colors.append(color)
-    return [textLabel, displayLabel, colors]
+    const highlights = palette(false), fonts = palette(true)
+    const refreshMode = () => { highlights.hidden = display.value !== 'mark'; fonts.hidden = display.value !== 'inline' }
+    display.addEventListener('change', refreshMode)
+    refreshMode()
+    return [textLabel, displayLabel, highlights, fonts, explicit]
   }
 
   async function persist(items: ReadingAnnotation[], expected = data.revision) {
@@ -137,16 +167,17 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     if (!anchor) return
     hideSelection(); closePopup()
     window.getSelection()?.removeAllRanges()
-    const quote = element('blockquote', 'annotation-quote', anchor.quote.slice(0, 500))
+    const defaultInlineColor = themeInlineColor()
     formDialog(document.body, {
       title: t(item ? 'annotations.edit' : 'annotations.add'), action: t('annotations.save'),
-      fields: [quote, ...fields(item)],
+      fields: fields(item, defaultInlineColor),
     }, async (form) => {
       const text = String(form.get('text')).trim()
       if (!text || text.length > maxAnnotationLength) throw new Error(t('annotations.invalid'))
       const next: ReadingAnnotation = {
         id: item?.id ?? crypto.randomUUID(), anchor, text, color: String(form.get('color')),
-        display: form.get('display') === 'inline' ? 'inline' : 'mark', collapsed: item?.collapsed ?? false, createdAt: item?.createdAt ?? Date.now(),
+        inlineColor: form.get('inlineColorSet') === '1' ? String(form.get('inlineColor')) : item?.inlineColor,
+        display: form.get('display') === 'inline' ? 'inline' : 'mark', collapsed: item?.collapsed ?? true, createdAt: item?.createdAt ?? Date.now(),
       }
       await persist(item ? items.map((entry) => entry.id === item.id ? next : entry) : [...items, next], expected)
     })
@@ -174,41 +205,31 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     finally { busy = false }
   }
 
-  function card(item: ReadingAnnotation, inline = false) {
-    const node = element('section', inline ? 'annotation-card annotation-inline' : 'annotation-card')
+  function card(item: ReadingAnnotation) {
+    const node = element('section', 'annotation-card')
     node.dataset.annotationUi = ''
     node.dataset.annotationId = item.id
-    node.style.setProperty('--annotation-color', item.color)
-    if (inline) node.contentEditable = 'false'
-    const head = element('div', 'annotation-card-head')
-    const title = element('strong', '', t('annotations.note'))
-    head.append(title)
-    if (inline) {
-      const toggle = button(t(item.collapsed ? 'annotations.expand' : 'annotations.collapse'), 'button button-quiet button-small')
-      toggle.setAttribute('aria-expanded', String(!item.collapsed))
-      toggle.addEventListener('click', () => { void mutate(data.items.map((entry) => entry.id === item.id ? { ...entry, collapsed: !entry.collapsed } : entry)) })
-      head.append(toggle)
+    if (!valid(item)) node.append(element('p', 'annotation-invalid', t('annotations.invalidAnchor')))
+    node.append(element('p', 'annotation-text', item.text))
+    const actions = element('div', 'annotation-actions')
+    for (const [label, symbol, action] of [
+      ['annotations.edit', 'edit', () => edit(item)], ['annotations.delete', 'trash', () => remove(item)],
+    ] as const) {
+      const control = button('', 'annotation-action', symbol)
+      control.setAttribute('aria-label', t(label)); control.title = t(label)
+      control.addEventListener('click', action)
+      actions.append(control)
     }
-    node.append(head)
-    if (!inline || !item.collapsed) {
-      if (!valid(item)) node.append(element('p', 'annotation-invalid', t('annotations.invalidAnchor')))
-      const quote = element('blockquote', 'annotation-quote', item.anchor.quote.slice(0, 160))
-      const text = element('p', 'annotation-text', item.text)
-      const actions = element('div', 'annotation-actions')
-      const update = button(t('annotations.edit'), 'button button-quiet button-small', 'edit')
-      update.addEventListener('click', () => edit(item))
-      const erase = button(t('annotations.delete'), 'button button-quiet button-small remove-button', 'trash')
-      erase.addEventListener('click', () => remove(item))
-      actions.append(update, erase)
-      node.append(quote, text, actions)
-    }
+    node.append(actions)
     return node
   }
 
   function paint() {
     if (dead) return
     summary.textContent = t('annotations.count', [data.items.length])
-    surface.render(data.items.filter(valid), (item) => card(item, true))
+    const validItems = data.items.filter(valid)
+    surface.render(validItems)
+    inline.render(validItems)
     list.replaceChildren()
     if (!data.items.length) { list.append(element('p', 'dialog-help', t('annotations.empty'))); return }
     const modes = element('div', 'annotation-actions')
@@ -222,10 +243,11 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
 
   function idsAt(node: EventTarget | null) {
     const mark = node instanceof Element ? node.closest<HTMLElement>('[data-annotation-ids]') : null
-    if (!mark || !surface.element.contains(mark)) return
+    if (!mark || (!surface.element.contains(mark) && !inline.element.contains(mark))) return
     return { mark, ids: (mark.dataset.annotationIds ?? '').split(' ').filter(Boolean) }
   }
   function markRect(mark: HTMLElement, y?: number) {
+    if (inline.element.contains(mark)) return inline.anchor(mark)
     const rects = [...mark.getClientRects()]
     if (y !== undefined) originLine = Math.max(0, rects.findIndex((rect) => y >= rect.top && y <= rect.bottom))
     return rects[originLine] ?? mark.getBoundingClientRect()
@@ -233,50 +255,46 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   function pinPopup() {
     if (!popup.matches(':popover-open')) return
     pinned = true; popup.dataset.pinned = 'true'
-    const label = popup.querySelector('.annotation-popup-head .dialog-help')
-    if (label) label.textContent = t('annotations.pinned')
   }
   function showPopup(ids: string[], mark: HTMLElement, fix: boolean, y?: number) {
-    if (!ready || dead || dialog?.isConnected || pendingSelection || (pinned && !fix)) return
+    if (!ready || dead || selecting || keyboardSelecting || dialog?.isConnected || pendingSelection || (pinned && !fix)) return
     window.clearTimeout(closeTimer)
-    if (origin === mark && popup.matches(':popover-open')) { if (fix) pinPopup(); return }
+    if (origin === mark && popup.matches(':popover-open') && activeIds.join(' ') === ids.join(' ')) { if (fix) pinPopup(); return }
     activeIds = ids; origin = mark; pinned = fix
     popup.dataset.pinned = String(pinned)
-    const header = element('div', 'annotation-popup-head')
-    header.append(element('span', 'dialog-help', t(fix ? 'annotations.pinned' : 'annotations.pinHelp')))
-    const close = button(t('annotations.close'), 'button button-quiet button-small', 'close')
-    close.addEventListener('click', (event) => { event.stopPropagation(); closePopup(true) })
-    header.append(close)
-    popup.replaceChildren(header, ...activeIds.map((id) => data.items.find((item) => item.id === id)).filter((item): item is ReadingAnnotation => !!item).map((item) => card(item)))
-    place(popup, markRect(mark, y))
+    popup.replaceChildren(...activeIds.map((id) => data.items.find((item) => item.id === id)).filter((item): item is ReadingAnnotation => !!item).map(card))
+    lastAnchor = markRect(mark, y)
+    place(popup, lastAnchor)
   }
   function laterClose() {
     window.clearTimeout(closeTimer)
     if (!pinned) closeTimer = window.setTimeout(() => { if (!popup.matches(':hover') && !origin?.matches(':hover') && !popup.contains(document.activeElement)) closePopup() }, 300)
   }
-  surface.element.addEventListener('pointerover', (event) => {
-    const hit = idsAt(event.target)
-    if (hit) showPopup(hit.ids, hit.mark, false, event.clientY)
-  }, { signal })
-  surface.element.addEventListener('pointerout', laterClose, { signal })
-  surface.element.addEventListener('click', (event) => {
-    if (surface.selection()) return
-    const hit = idsAt(event.target)
-    if (hit) showPopup(hit.ids, hit.mark, true, event.clientY)
-  }, { signal })
-  surface.element.addEventListener('keydown', (event) => {
-    const hit = idsAt(event.target)
-    if (hit && ['Enter', ' '].includes(event.key)) {
-      event.preventDefault(); showPopup(hit.ids, hit.mark, true); popup.focus({ preventScroll: true })
-    }
-  }, { signal })
+  for (const reading of [surface.element, inline.element]) {
+    reading.addEventListener('pointerover', (event) => {
+      const hit = idsAt(event.target)
+      if (hit) showPopup(hit.ids, hit.mark, false, event.clientY)
+    }, { signal })
+    reading.addEventListener('pointerout', laterClose, { signal })
+    reading.addEventListener('click', (event) => {
+      if (surface.element.contains(event.target as Node) && surface.selection()) return
+      const hit = idsAt(event.target)
+      if (hit) showPopup(hit.ids, hit.mark, true, event.clientY)
+    }, { signal })
+    reading.addEventListener('keydown', (event) => {
+      const hit = idsAt(event.target)
+      if (hit && ['Enter', ' '].includes(event.key)) {
+        event.preventDefault(); showPopup(hit.ids, hit.mark, true); popup.focus({ preventScroll: true })
+      }
+    }, { signal })
+  }
   popup.addEventListener('pointerenter', () => window.clearTimeout(closeTimer), { signal })
   popup.addEventListener('pointerleave', laterClose, { signal })
   popup.addEventListener('click', pinPopup, { signal })
   popup.addEventListener('focusin', pinPopup, { signal })
 
   function refreshSelection() {
-    if (dead || !ready || dialog?.isConnected || document.querySelector('dialog[open]')
+    if (dead || !ready || selecting || keyboardSelecting || !selectionArmed || dialog?.isConnected || document.querySelector('dialog[open]')
       || document.activeElement?.matches('input, textarea, select')) return hideSelection()
     const selection = surface.selection()
     if (!selection) return hideSelection()
@@ -284,12 +302,50 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     pendingSelection = selection
     place(selectionTools, selection.rect)
   }
-  document.addEventListener('selectionchange', () => {
+  function scheduleSelection() {
     cancelAnimationFrame(frame)
+    if (selecting || keyboardSelecting || !selectionArmed) {
+      if (selecting && surface.selection()) closePopup()
+      return hideSelection()
+    }
     frame = requestAnimationFrame(refreshSelection)
+  }
+  document.addEventListener('selectionchange', scheduleSelection, { signal })
+  document.addEventListener('pointerup', () => {
+    if (!selecting) return
+    selecting = false; selectionArmed = true; inline.element.removeAttribute('data-selecting')
+    scheduleSelection()
   }, { signal })
-  surface.element.addEventListener('mouseup', refreshSelection, { signal })
-  surface.element.addEventListener('keyup', refreshSelection, { signal })
+  surface.element.addEventListener('mouseup', (event) => { if (event.button === 0 && !selecting) { selectionArmed = true; scheduleSelection() } }, { signal })
+  surface.element.addEventListener('keyup', (event) => {
+    if (keyboardSelecting && event.shiftKey) return
+    keyboardSelecting = false; selectionArmed = true; scheduleSelection()
+  }, { signal })
+  surface.element.addEventListener('keydown', (event) => {
+    if (!event.shiftKey || event.isComposing || !/^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(event.key)) return
+    const selection = window.getSelection()
+    if (!selection?.modify) return
+    keyboardSelecting = true; selectionArmed = true; hideSelection()
+    if (!selection.anchorNode || !selection.focusNode || !surface.element.contains(selection.anchorNode) || !surface.element.contains(selection.focusNode)) {
+      const range = document.createRange()
+      range.selectNodeContents(surface.element); range.collapse(true)
+      selection.removeAllRanges(); selection.addRange(range)
+    }
+    event.preventDefault()
+    const backward = /Left|Up|Home/.test(event.key)
+    const boundary = /Home|End/.test(event.key)
+    const horizontal = /Left|Right/.test(event.key)
+    const unit = boundary ? event.ctrlKey || event.metaKey ? 'documentboundary' : 'lineboundary'
+      : event.metaKey ? horizontal ? 'lineboundary' : 'documentboundary'
+        : event.ctrlKey || event.altKey ? horizontal ? 'word' : 'paragraphboundary' : horizontal ? 'character' : 'line'
+    selection.modify('extend', backward ? 'backward' : 'forward', unit)
+    if (selection.focusNode && !surface.element.contains(selection.focusNode)) {
+      selection.extend(surface.element, backward ? 0 : surface.element.childNodes.length)
+    }
+  }, { signal, capture: true })
+  document.addEventListener('keyup', (event) => {
+    if (keyboardSelecting && (event.key === 'Shift' || !event.shiftKey)) { keyboardSelecting = false; selectionArmed = true; scheduleSelection() }
+  }, { signal })
   surface.element.addEventListener('copy', (event) => {
     const selection = surface.selection()
     if (selection && event.clipboardData) { event.clipboardData.setData('text/plain', selection.quote); event.preventDefault() }
@@ -300,29 +356,48 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   }, { signal })
   document.addEventListener('pointerdown', (event) => {
     if (!(event.target instanceof Node)) return
-    if (!selectionTools.contains(event.target)) hideSelection()
+    if (!selectionTools.contains(event.target)) { hideSelection(); selectionArmed = false }
+    if (surface.element.contains(event.target) && event.button === 0) {
+      selecting = true; selectionArmed = true; inline.element.dataset.selecting = ''
+      if (!idsAt(event.target)) closePopup()
+    } else if (inline.element.contains(event.target)) window.getSelection()?.removeAllRanges()
     if (!popup.contains(event.target) && !idsAt(event.target)) closePopup()
   }, { signal })
   document.addEventListener('keydown', (event) => {
+    if (event.shiftKey && /^(Arrow|Home|End|Page)/.test(event.key) && surface.element.contains(event.target as Node)) {
+      keyboardSelecting = true; selectionArmed = true; hideSelection()
+    }
     if (event.key === 'Escape' && !event.isComposing && !dialog?.isConnected) {
       if (pendingSelection) window.getSelection()?.removeAllRanges()
       hideSelection(); closePopup(true)
     }
   }, { signal })
-  const reposition = () => {
-    hideSelection()
-    if (popup.matches(':popover-open') && origin?.isConnected) {
-      const rect = markRect(origin), view = viewport()
-      if (rect.bottom < view.top || rect.top > view.top + view.height || rect.right < view.left || rect.left > view.left + view.width) { if (!pinned) closePopup(); else place(popup, rect) }
-      else place(popup, rect)
-    }
+  function cancelSelection() {
+    selecting = keyboardSelecting = selectionArmed = false
+    inline.element.removeAttribute('data-selecting')
+    cancelAnimationFrame(frame); hideSelection()
   }
+  document.addEventListener('pointercancel', cancelSelection, { signal })
+  window.addEventListener('blur', cancelSelection, { signal })
+  function repositionPopup() {
+    if (!popup.matches(':popover-open') || !origin) return
+    if (!origin.isConnected) {
+      const replacement = [...inline.element.querySelectorAll<HTMLElement>('[data-annotation-ids]')]
+        .find((node) => activeIds.some((id) => node.dataset.annotationIds?.split(' ').includes(id)))
+      if (replacement) origin = replacement
+      else if (!pinned) return closePopup()
+    }
+    const rect = origin.isConnected && !origin.hidden ? markRect(origin) : lastAnchor
+    if (!rect) return
+    const view = viewport()
+    if (!pinned && (origin.hidden || rect.bottom < view.top || rect.top > view.top + view.height)) closePopup()
+    else { lastAnchor = rect; place(popup, rect) }
+  }
+  const reposition = () => { hideSelection(); repositionPopup() }
   document.addEventListener('scroll', reposition, { signal, capture: true })
   window.addEventListener('resize', reposition, { signal })
   window.visualViewport?.addEventListener('resize', reposition, { signal })
   window.visualViewport?.addEventListener('scroll', reposition, { signal })
-  const resize = new ResizeObserver(reposition)
-  resize.observe(surface.element)
   manager.addEventListener('toggle', () => { hideSelection(); closePopup() }, { signal })
 
   void Promise.all([sourceHash(surface.source), readAnnotations(target)]).then(([digest, stored]) => {
@@ -333,8 +408,10 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   function destroy() {
     if (dead) return
     dead = true; lifetime.abort(); parentSignal.removeEventListener('abort', destroy)
-    window.clearTimeout(closeTimer); cancelAnimationFrame(frame); resize.disconnect()
+    window.clearTimeout(closeTimer); cancelAnimationFrame(frame)
     dialog?.remove(); selectionTools.remove(); popup.remove(); manager.remove(); surface.destroy()
+    if (previousTabIndex === null) surface.element.removeAttribute('tabindex')
+    else surface.element.setAttribute('tabindex', previousTabIndex)
   }
   parentSignal.addEventListener('abort', destroy, { once: true })
   return destroy

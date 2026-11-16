@@ -13,6 +13,8 @@ export interface ReadingAnnotation {
   anchor: ReadingAnchor
   text: string
   color: string
+  /** Optional for compatibility with v0.17.0; independent of highlight background. */
+  inlineColor?: string
   display: 'inline' | 'mark'
   collapsed: boolean
   createdAt: number
@@ -25,6 +27,7 @@ export interface ReadingAnnotations {
 
 export const maxAnnotationLength = 10_000
 export const annotationColors = ['#f5c542', '#83c995', '#78b8ed', '#c39bea', '#ed9bb2']
+export const inlineAnnotationColors = ['#75695c', '#567564', '#59738c', '#796783', '#94676d']
 export const emptyAnnotations = (): ReadingAnnotations => ({ revision: 0, items: [] })
 
 export async function sourceHash(source: string) {
@@ -90,6 +93,7 @@ export function validAnnotations(value: ReadingAnnotations) {
     && new Set(value.items.map((item) => item?.id)).size === value.items.length
     && value.items.every((item) => item && typeof item.id === 'string' && /^[\da-f-]{36}$/i.test(item.id)
       && typeof item.text === 'string' && !!item.text.trim() && item.text.length <= maxAnnotationLength
+      && (item.inlineColor === undefined || (typeof item.inlineColor === 'string' && validColor(item.inlineColor)))
       && typeof item.color === 'string' && validColor(item.color) && ['inline', 'mark'].includes(item.display)
       && typeof item.collapsed === 'boolean' && Number.isFinite(item.createdAt)
       && item.anchor && item.anchor.version === 1 && ['document', 'text'].includes(item.anchor.kind)

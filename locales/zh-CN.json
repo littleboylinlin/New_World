@@ -789,8 +789,8 @@
   "annotations.display": "展示形式",
   "annotations.mark": "文字标记",
   "annotations.inline": "行间批注",
-  "annotations.color": "标记颜色",
-  "annotations.customColor": "自定义颜色",
+  "annotations.color": "高亮背景颜色",
+  "annotations.customColor": "自定义高亮颜色",
   "annotations.color0": "黄色",
   "annotations.color1": "绿色",
   "annotations.color2": "蓝色",
@@ -810,5 +810,13 @@
   "annotations.sourceChanged": "原文已在其他窗口变化，请重新打开作品后再管理批注。",
   "annotations.invalid": "请输入 1–10000 字符的批注，并选择有效的颜色。",
   "annotations.closed": "阅读页面已关闭。",
-  "annotations.damaged": "批注数据格式无效，已停止标记正文。请保留当前数据并从完整备份恢复。"
+  "annotations.damaged": "批注数据格式无效，已停止标记正文。请保留当前数据并从完整备份恢复。",
+  "annotations.inlineColor": "行间文字颜色",
+  "annotations.customInlineColor": "自定义文字颜色",
+  "annotations.inlineColor0": "灰褐",
+  "annotations.inlineColor1": "灰绿",
+  "annotations.inlineColor2": "灰蓝",
+  "annotations.inlineColor3": "灰紫",
+  "annotations.inlineColor4": "灰粉",
+  "annotations.preview": "查看 {0} 条批注"
 }

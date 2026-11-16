@@ -13,7 +13,8 @@ export interface AnnotationSurface {
   size: number
   quote: (from: number, to: number) => string
   selection: () => ReadingSelection | undefined
-  render: (items: ReadingAnnotation[], card: (item: ReadingAnnotation) => HTMLElement) => void
+  range: (from: number, to: number) => Range
+  render: (items: ReadingAnnotation[]) => void
   destroy: () => void
 }
 
@@ -68,25 +69,19 @@ export function documentSurface(editor: Editor): AnnotationSurface {
         if (to > from && text.trim()) return { from, to, quote: text, rect: selectionRect(range) }
       } catch { /* A selection in a removed node is no longer usable. */ }
     },
-    render: (items, card) => {
-      const decorations = annotationSegments(items.filter((item) => item.display === 'mark'))
-        .map(({ from, to, items }) => Decoration.inline(from, to, markAttributes(items)))
-      for (const item of items.filter((item) => item.display === 'inline')) {
-        let end = doc.content.size
-        doc.forEach((node, offset) => {
-          if (item.anchor.to > offset && item.anchor.to <= offset + node.nodeSize) end = offset + node.nodeSize
-        })
-        decorations.push(Decoration.widget(end, () => card(item), {
-          side: -1, key: JSON.stringify(item), ignoreSelection: true, stopEvent: () => true,
-        }))
-      }
-      set(decorations)
+    range: (from, to) => {
+      const start = editor.view.domAtPos(from, 1), end = editor.view.domAtPos(to, -1)
+      const range = document.createRange()
+      range.setStart(start.node, start.offset); range.setEnd(end.node, end.offset)
+      return range
     },
+    render: (items) => set(annotationSegments(items.filter((item) => item.display === 'mark'))
+      .map(({ from, to, items }) => Decoration.inline(from, to, markAttributes(items)))),
     destroy: () => set([]),
   }
 }
 
-/** Text preview offsets count source characters only, excluding interleaved annotation cards. */
+/** Text preview offsets count source characters only, without annotation UI in the text tree. */
 export function textSurface(root: HTMLElement): AnnotationSurface {
   const source = root.textContent ?? ''
   const quote = (from: number, to: number) => source.slice(from, to)
@@ -108,15 +103,21 @@ export function textSurface(root: HTMLElement): AnnotationSurface {
       const text = quote(from, to)
       if (to > from && text.trim()) return { from, to, quote: text, rect: selectionRect(range) }
     },
-    render: (items, card) => {
-      const segments = annotationSegments(items.filter((item) => item.display === 'mark'))
-      const cards = new Map<number, ReadingAnnotation[]>()
-      for (const item of items.filter((item) => item.display === 'inline')) {
-        const newline = source.indexOf('\n', item.anchor.to)
-        const end = newline < 0 ? source.length : newline + 1
-        cards.set(end, [...cards.get(end) ?? [], item])
+    range: (from, to) => {
+      const range = document.createRange()
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      let offset = 0, start = false
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        if (!start && offset + node.length >= from) { range.setStart(node, from - offset); start = true }
+        if (offset + node.length >= to) { range.setEnd(node, to - offset); return range }
+        offset += node.length
       }
-      const boundaries = [...new Set([0, source.length, ...segments.flatMap(({ from, to }) => [from, to]), ...cards.keys()])].sort((a, b) => a - b)
+      throw new RangeError('Annotation range outside source text')
+    },
+    render: (items) => {
+      const segments = annotationSegments(items.filter((item) => item.display === 'mark'))
+      const boundaries = [...new Set([0, source.length, ...segments.flatMap(({ from, to }) => [from, to])])].sort((a, b) => a - b)
       const nodes: Node[] = []
       let index = 0
       for (let i = 0; i < boundaries.length - 1; i++) {
@@ -130,7 +131,6 @@ export function textSurface(root: HTMLElement): AnnotationSurface {
           mark.append(text)
           nodes.push(mark)
         } else nodes.push(text)
-        for (const item of cards.get(to) ?? []) nodes.push(card(item))
       }
       root.replaceChildren(...nodes)
     },

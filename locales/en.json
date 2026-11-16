@@ -789,8 +789,8 @@
   "annotations.display": "Display style",
   "annotations.mark": "Text highlight",
   "annotations.inline": "Inline annotation",
-  "annotations.color": "Highlight color",
-  "annotations.customColor": "Custom color",
+  "annotations.color": "Highlight background color",
+  "annotations.customColor": "Custom highlight color",
   "annotations.color0": "Yellow",
   "annotations.color1": "Green",
   "annotations.color2": "Blue",
@@ -810,5 +810,13 @@
   "annotations.sourceChanged": "The source changed in another window. Reopen the work before managing annotations.",
   "annotations.invalid": "Enter an annotation of 1–10000 characters and choose a valid color.",
   "annotations.closed": "The reading page has been closed.",
-  "annotations.damaged": "The annotation data is invalid. No text has been highlighted. Keep the current data and restore from a complete backup."
+  "annotations.damaged": "The annotation data is invalid. No text has been highlighted. Keep the current data and restore from a complete backup.",
+  "annotations.inlineColor": "Inline text color",
+  "annotations.customInlineColor": "Custom text color",
+  "annotations.inlineColor0": "Muted brown",
+  "annotations.inlineColor1": "Muted green",
+  "annotations.inlineColor2": "Muted blue",
+  "annotations.inlineColor3": "Muted purple",
+  "annotations.inlineColor4": "Muted rose",
+  "annotations.preview": "Read {0} annotations"
 }

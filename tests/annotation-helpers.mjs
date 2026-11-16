@@ -49,7 +49,7 @@ export async function createAnnotation(page, text, display = 'mark', color) {
   const dialog = page.getByRole('dialog', { name: '添加批注' })
   await dialog.getByLabel('批注内容').fill(text)
   await dialog.getByLabel('展示形式').selectOption(display)
-  if (color) await dialog.getByLabel('自定义颜色').fill(color)
+  if (color) await dialog.getByLabel(display === 'inline' ? '自定义文字颜色' : '自定义高亮颜色').fill(color)
   await dialog.getByRole('button', { name: '保存批注' }).click()
   await expect(dialog).toBeHidden()
 }

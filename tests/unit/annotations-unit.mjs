@@ -59,3 +59,39 @@ test('optional metadata validates before rendering or saving, including backup c
     assert.equal(validAnnotations(value), false)
   }
 })
+
+const { inlinePlacements } = await import('../../src/annotations/inline-layout.ts')
+const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+
+test('inline previews use only existing line gaps and preserve separate endpoint owners', () => {
+  const glyphs = [{ left: 0, right: 400, top: 20, bottom: 40 }, { left: 0, right: 400, top: 55, bottom: 75 }]
+  const anchors = [{ id: 'a', rect: { left: 70, right: 70, top: 55, bottom: 75 } }, { id: 'b', rect: { left: 170, right: 170, top: 55, bottom: 75 } }]
+  const items = inlinePlacements(anchors, glyphs, { left: 2, top: 0, right: 398, bottom: 100 })
+  assert.equal(items.length, 2)
+  for (const item of items) {
+    assert.equal(item.rect.bottom - item.rect.top, 12)
+    assert.equal(glyphs.some((glyph) => overlaps(item.rect, glyph)), false)
+  }
+  assert.equal(overlaps(items[0].rect, items[1].rect), false)
+})
+
+test('tight gaps omit preview text; repeated endpoints share one marker without losing IDs', () => {
+  const glyphs = [{ left: 0, right: 200, top: 0, bottom: 20 }, { left: 0, right: 200, top: 28, bottom: 48 }, { left: 0, right: 200, top: 56, bottom: 76 }]
+  const rect = { left: 180, right: 180, top: 28, bottom: 48 }
+  const items = inlinePlacements([{ id: 'a', rect }, { id: 'b', rect: { ...rect, left: 183, right: 183 } }], glyphs, { left: 2, top: 0, right: 198, bottom: 76 })
+  assert.equal(items.length, 1)
+  assert.deepEqual(items[0].ids, ['a', 'b'])
+  assert.equal(items[0].compact, true)
+  assert.equal(glyphs.some((glyph) => overlaps(items[0].rect, glyph)), false)
+})
+
+test('independent optional inline color accepts old rows and cannot alter highlight backgrounds', async () => {
+  const item = {
+    id: crypto.randomUUID(), text: '批注', color: '#123abc', display: 'inline', collapsed: false, createdAt: 1,
+    anchor: { version: 1, kind: 'text', from: 0, to: 2, quote: '原文', sourceHash: await sourceHash('原文') },
+  }
+  assert.equal(validAnnotations({ revision: 0, items: [item] }), true)
+  assert.equal(validAnnotations({ revision: 0, items: [{ ...item, inlineColor: '#567564' }] }), true)
+  assert.equal(validAnnotations({ revision: 0, items: [{ ...item, inlineColor: 'red;background:red' }] }), false)
+  assert.equal(markAttributes([item]).style, markAttributes([{ ...item, inlineColor: '#abcdef' }]).style)
+})
