@@ -1,7 +1,7 @@
 import { t } from '../i18n'
 import { Editor } from '@tiptap/core'
 import { formDialog, nameField } from '../dialogs'
-import { libraryChanges, storageError } from '../library'
+import { libraryChanges, readBook, storageError } from '../library'
 import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
@@ -657,12 +657,20 @@ export async function renderEdition(
     location.hash = bookPath(book.library, book.id, copy.id)
   }))
   exportButton.addEventListener('click', () => {
-    showExportDialog(root, book.title + ' - ' + edition.name, edition.chapters, async (info) => {
-      const content = info.id === chapter.id
-        ? editor.getJSON() as DocumentContent
-        : (await readChapter(edition, info.id)).content
-      return { title: info.title, content }
-    }, currentChapters)
+    const readWork = async () => {
+      const stored = await readBook(book.library, book.id)
+      if (!stored) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+      return stored.book
+    }
+    void readWork().then((current) => {
+      if (signal.aborted) return
+      showExportDialog(root, current.title + ' - ' + edition.name, edition.chapters, async (info) => {
+        const content = info.id === chapter.id
+          ? editor.getJSON() as DocumentContent
+          : (await readChapter(edition, info.id)).content
+        return { title: info.title, content }
+      }, currentChapters, readWork)
+    }, (error) => report(error))
   })
   historyButton.addEventListener('click', () => {
     void showRevisionsDialog({

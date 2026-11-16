@@ -3,6 +3,7 @@ import { acceptedExtensions } from './formats'
 import { importBook, storageError } from './library'
 import type { LibraryId } from './library'
 import { button, element } from './ui'
+import { showWorkInformation } from './work-information-view'
 
 export function bookImport(id: LibraryId, label: string, onImport: () => void, workId?: string) {
   const choose = button(label, 'button button-primary', 'plus')
@@ -18,8 +19,9 @@ export function bookImport(id: LibraryId, label: string, onImport: () => void, w
   const summary = element('p')
   summary.setAttribute('role', 'status')
   const failures = element('ul')
+  const information = element('div', 'version-actions')
   failures.hidden = true
-  progress.append(summary, failures)
+  progress.append(summary, failures, information)
   input.addEventListener('change', async () => {
     const files = Array.from(input.files ?? [])
     input.value = ''
@@ -28,6 +30,7 @@ export function bookImport(id: LibraryId, label: string, onImport: () => void, w
     progress.hidden = false
     failures.hidden = true
     failures.replaceChildren()
+    information.replaceChildren()
     void navigator.storage?.persist?.().catch(() => {})
     let imported = 0
     let duplicates = 0
@@ -41,6 +44,11 @@ export function bookImport(id: LibraryId, label: string, onImport: () => void, w
           failures.append(element('li', '', t('bookImport.matchesTheOriginalFileOfAndWasSkipped', [file.name, result.book.title])))
         } else {
           imported++
+          if (!workId) {
+            const edit = button(t('work.afterImport', [result.book.title]), 'button button-quiet button-small', 'edit')
+            edit.addEventListener('click', () => showWorkInformation(result.book))
+            information.append(edit)
+          }
         }
       } catch (error) {
         failed++

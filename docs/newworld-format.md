@@ -1,8 +1,8 @@
-# New_World 工程格式规范（Schema 1）
+# New_World 工程格式规范（Schema 1 / 2）
 
 状态：本仓库原生工程交换格式，扩展名 `.newworld`，MIME `application/vnd.newworld.project+zip`。
 
-此规范的 `schemaVersion = 1` 与应用版本 `appVersion` 独立。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
+工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1；本次开发中的写入器使用 Schema 2，读取器显式支持 Schema 1 和 2。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
 
 ## 1. 容器与文件布局
 
@@ -36,7 +36,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 | 字段 | 类型与含义 |
 | --- | --- |
 | `format` | 固定字符串 `new-world-project` |
-| `schemaVersion` | 整数 `1`，工程 Schema 版本 |
+| `schemaVersion` | 整数 `1` 或 `2`，工程 Schema 版本；当前写入 `2` |
 | `appVersion` | 字符串，导出时应用版本，仅作来源信息 |
 | `createdAt` | 非负安全整数，导出时间，Unix 毫秒 |
 | `root` | `{ "library": "original" 或 "reference", "id": "作品 UUID" }` |
@@ -64,17 +64,50 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 ## 3. 索引记录与类型
 
-以下为字段全集；未注明可选的字段均必填。对象禁止未定义字段；可选字段不存在时省略，不能以 `null` 代替。数字均为有限数，时间、修订号、计数和大小为非负安全整数。普通身份字符串非空、至多 255 字符且不含控制字符；作品、版本及章节的存活 ID 使用小写 UUID，以符合现有路由。标题非空且至多 255 字符。
+以下为字段全集；未注明可选的字段均必填。结构对象禁止未定义字段（Schema 2 的 `metadata` 内可按下述约束扩展）；可选字段不存在时省略，不能以 `null` 代替。数字均为有限数，时间、修订号、计数和大小为非负安全整数。普通身份字符串非空、至多 255 字符且不含控制字符；作品、版本及章节的存活 ID 使用小写 UUID，以符合现有路由。标题非空且至多 255 字符。
 
 ### books / files
 
-`books`：`library, id, title, importedAt, format`；可选 `workId, archivedAt, cover`。
+`books`：`library, id, title, importedAt, format`；可选 `workId, archivedAt, cover`。Schema 2 另允许可选的 `metadata`（包括回收记录内的 books）。Schema 1 不允许这个新增字段。
 
 导入文件作品还必须有 `originalName, size, digest`，可选 `readingAnnotations`。`format` 为现有 TXT、PDF、EPUB、DOC、DOCX、Markdown、RTF、HTML、ODT、MOBI、AZW3 对应的小写格式键；`digest` 为原始字节 SHA-256。手写作品 `format = "draft"` 不携带原文件字段。
 
-只允许一个根作品；其他作品必须在 `reference` 库以 `workId` 指向根作品，表示续写工程的附属原文。`archivedAt` 保留归档状态。`cover` 为 Blob 资源引用；允许现有 PNG/JPEG/WebP/GIF/AVIF/BMP，检查类型、签名及大小，不执行 SVG 或其他活动内容。当前数据模型没有作者、ISBN 等独立作品字段，不编造这些信息。
+只允许一个根作品；其他作品必须在 `reference` 库以 `workId` 指向根作品，表示续写工程的附属原文。`archivedAt` 保留归档状态。`cover` 为 Blob 资源引用；允许现有 PNG/JPEG/WebP/GIF/AVIF/BMP，检查类型、签名及大小，不执行 SVG 或其他活动内容。Schema 1 没有独立作者字段，不推断或编造缺少的信息。
 
 `files`：`library, id, blob`。`id` 与导入文件作品对应，`blob` 引用原始字节资源。大小及 SHA-256 必须与作品记录相符。保留原始换行、BOM、文件编码及压缩文件内部字节，不重新编码。
+
+### Schema 2 可扩展作品信息（metadata）
+
+`metadata` 是可选的、作品范围内的惰性 JSON 对象。它不是全局设置、程序配置、资源或身份引用表。已知字段全部可选，可以缺少或为空，不从账户名、文件名、正文或其他作品推断内容。
+
+| 字段 | 类型、限制与含义 |
+| --- | --- |
+| `author` | 字符串，≤255，作者自由填写，单行 |
+| `subtitle` | 字符串，≤255，可选副标题，单行 |
+| `synopsis` | 字符串，≤20000，简介，保留段落、LF / CRLF / CR 及制表符 |
+| `tags` | 字符串数组，≤50 项，每项 1–64，首尾无空白、无重复，顺序保留 |
+| `status` | 字符串，≤64，单行；界面提供 planning / serializing / completed / paused，可保留未来的其他安全字符串 |
+
+长度按 JavaScript UTF-16 code units 计算；已知单行字段及标签不得有 U+0000–U+001F，简介只允许其中的 TAB、LF、CR。界面按行输入标签（逗号可为标签内容），对**修改过的**标签做去重、首尾去空白；不改写未编辑的字段。清空某个字段移除该键；所有字段都删除时可省略 metadata。
+
+示例（第三方扩展建议使用命名空间，避免占用未来普通字段）：
+
+```json
+{
+  "author": "笔名",
+  "subtitle": "第二次归航",
+  "synopsis": "第一段。\n\n第二段。",
+  "tags": ["奇幻", "海洋"],
+  "status": "serializing",
+  "extensions": { "org.example.series": { "name": "雾港", "volume": 2 } }
+}
+```
+
+未知键的值只允许 null、布尔值、有限 JSON 数字、字符串、数组及普通 JSON 对象。整个对象经 `JSON.stringify` 的 UTF-8 大小 ≤128 KiB，根深度为 0、最大深度 12、累计遍历值 ≤4096，每个对象 ≤64 个键，每个数组 ≤256 项，键非空、≤128、无 U+0000–U+001F。任意层禁止 `__proto__`、`constructor`、`prototype`、`$resource`；不接受二进制、类实例、undefined、函数、访问器、Symbol 或稀疏数组。元数据受全工程 SHA-256、JSON 及资源预算约束，不降低原安全检查。
+
+安全的未知 JSON 字段原样存储和再次导出（保留值、数组顺序、换行，不承诺 JSON 空白或对象键的字节顺序）。界面只编辑已知字段，不执行、联网加载或解释扩展；即使未知字段名为 `id` / `bookId`，副本导入也**不重映射其中的字面值**。扩展不得用来承载需重映射的作品引用、可执行设置或二进制资源；这些新语义必须另行制定结构及兼容规则。不能安全保留的元数据和未知结构字段明确报错，导入不写数据；导出遇到不支持的本地数据也报错，不能静默丢失后声称成功。
+
+Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 Schema。已有字段的类型/语义不能通过扩展改变；安全约束或必需结构发生变化时须显式升级版本并实现读取/迁移。未知结构字段不会自动塞进 metadata，也不执行模糊迁移。
 
 ### editions / chapters
 
@@ -129,7 +162,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 - 逐项校验 ZIP CRC、本地/中央目录、声明及实际流入字节数、SHA-256、UTF-8 JSON、类型、唯一键、章节双向引用、原文件摘要、历史载荷及 detached 集合；全部成功后才显示摘要。Manifest 自身由 ZIP CRC 与严格解析保护；清单 SHA-256 能发现损坏，不提供发布者身份认证或数字签名。
 - 物理归档 ≤512 MiB，累计解压 ≤512 MiB，单项 ≤128 MiB，JSON 索引/manifest ≤32 MiB，条目 ≤10000，顶层记录总量 ≤50000；JSON 最大 64 层、1000000 个遍历值；大于 1 MiB 的条目压缩率不得超过 200:1。
 - 章节历史 gzip 单项原始 JSON ≤32 MiB，累计解码 ≤512 MiB；原文件沿用 ≤128 MiB，封面 ≤32 MiB，插图沿用单图 ≤4 MiB、文档预算 ≤24 MiB。声明偏小也不能绕过流式限额。
-- 只支持 Schema 1。更高/更低/无版本均明确拒绝，不能按应用版本猜测。未来 Schema 升级须显式迁移、补充测试，并在没有迁移器时拒绝；Schema 1 内不接受未知持久化字段，避免下次保存时静默丢失。
+- 当前读取器明确支持 Schema 1 / 2，写入器始终写 Schema 2。Schema 1 直接按原规则验证、恢复，缺少 metadata 不做填充；再次导出生成 Schema 2。更高/更低/无版本均明确拒绝，不能按应用版本猜测。已发布 v0.18.0 的 Schema 1 读取器**无法读取 Schema 2**，不能承诺旧软件兼容未来格式。未来升级须显式实现迁移并测试；只有 metadata 内符合本规范的未知 JSON 值允许保留，其他未知持久化字段仍拒绝。
 - 无网络资源加载、代码执行或原文件自动打开；原文件只按现有受限预览器读取。安全检查失败不会打开写事务。
 
 ## 5. 导入、冲突与本地存储
@@ -138,11 +171,11 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 保留身份仅在没有作品 ID/标题、原文件摘要和身份冲突时提供。冲突不仅检查存活作品，还检查版本、章节、灵感、历史、回收记录及断开的历史引用，防止旧引用错误绑定到本地其他作品。原文件摘要按同书库检测。
 
-副本导入为全部作品/原文/版本/章节/灵感/历史/回收/批注身份以及 detached 身份生成新 UUID，修正 `workId, bookId, editionId, chapterId, ideaId, originalId, copiedFrom`、目录和回收位置；正文与批注内容/锚点哈希不变。历史载荷使用现有去重键，不为同字节再建一套数据。
+副本导入为全部作品/原文/版本/章节/灵感/历史/回收/批注身份以及 detached 身份生成新 UUID，修正 `workId, bookId, editionId, chapterId, ideaId, originalId, copiedFrom`、目录和回收位置；正文、作品信息与批注内容/锚点哈希不变。metadata 不属于身份引用图，详见上文。历史载荷使用现有去重键，不为同字节再建一套数据。
 
 写入前重新验证数据，确认后在**单个 strict IndexedDB 事务**中重新读冲突、映射及 `add` 全部记录。禁止 `clear` 或覆盖已有记录；任意 Constraint/Quota/其他错误整体 abort。历史载荷若同一旧指纹对应不同压缩字节则拒绝并提示冲突，不覆盖已有载荷（指纹不是抗碰撞摘要）。
 
-IndexedDB 升至 v8：`byLibraryDigest` 改为非唯一索引，允许副本保有独立原文身份但相同字节。原有普通文件导入仍在串行写事务中查重，不重复添加。表的主键、版本名唯一索引及原有正文、批注结构不变；不把工程 schemaVersion 当作数据库版本。
+IndexedDB 自 v0.18.0 起为 v8：`byLibraryDigest` 是非唯一索引，允许副本保有独立原文身份但相同字节。原有普通文件导入仍在串行写事务中查重，不重复添加。本次作品信息使用可选嵌套字段，数据库继续为 v8，无批量重写、默认作者/状态或破坏性迁移；旧作品记录保持原样。表的主键、版本名唯一索引及原有正文、批注结构不变；不把工程 schemaVersion 当作数据库版本。全库备份沿用独立机制，同时验证并保留作品 metadata；不复用它来导入工程。
 
 不包含全局写作统计、未关联灵感、其他作品、其他作品回收数据、主题/字体/窗口/存储位置/备份设置、AI 授权及令牌、缓存、当前选区、编辑器未保存缓冲或会话撤销栈。作品导出入口设于书架菜单及续写详情，读取已持久化的一致快照，不修改原作品。
 
@@ -158,6 +191,12 @@ Windows 安装器通过 electron-builder 注册 `.newworld` 文件关联；macOS
 
 `.newworld` 不面向通用阅读器。导入后继续使用原有 TXT、Markdown、HTML、DOCX、PDF 正文导出器，不增加 EPUB 导出器。正文格式只导出所选版本/章节：TXT 不保留样式/图片/表格结构，Markdown 简化呈现，HTML/DOCX/PDF 保留各转换器支持的呈现；均不携带工程版本关系、批注、原始文件、灵感和历史，不能当作无损工程转换。
 
+正文导出增加三个独立、默认关闭的选项：作品标题及副标题、作者、作品简介。全部关闭时沿用原有正文排版。TXT 使用简单文本分隔，Markdown/HTML 使用现有转换器及安全文本结构，DOCX/PDF 将所选信息置于正文前的标题页/作品介绍；简介保留换行。标签、创作状态和未知扩展不作为正文前言导出，这些数据留在完整工程中。
+
 示例：[雾港.newworld](examples/雾港.newworld)。包含 2 个版本、3 个存活章节、原始 Markdown 文件、封面/插图、表格/样式、自定义批注、gzip 历史、灵感历史、防丢失基线及一个已删章节。由真实 UI 导出生成；`tests/projects.spec.mjs` 验证跨干净浏览器上下文导入、全部 IndexedDB 记录与字节对比、再导出、历史恢复和继续编辑。续写场景使用第二个原文检验 `workId/originalId/copiedFrom`，并检验错误文件、冲突和事务故障。
 
+上述示例保持已发布 Schema 1 的原字节，用于旧文件回归。新增 [雾港-作品信息.newworld](examples/雾港-作品信息.newworld) 为 Schema 2，含作者、多段简介、副标题、标签、状态及安全未知扩展。`tests/work-information.spec.mjs` 通过实际 UI 导出、干净书库导入、数据库全部相关记录及字节对比、再次导出、副本冲突、编辑后保留扩展、并发修改冲突、错误/超限数据拒绝验证。Windows/macOS 安装测试还验证作品信息重启持久化及真实 PDF 标题页。
+
 运行 `npm test`；平台安装及系统文件关联在 `npm run test:desktop` 和 `npm run test:macos` 中验证。重新生成验收示例可运行 `UPDATE_PROJECT_EXAMPLE=1 npx playwright test tests/projects.spec.mjs --grep 'original 工程' --workers=1`（先 `npm run build`）。示例为测试数据，不包含真实用户信息。
+
+Schema 2 示例生成：先 `npm run build`，再 `UPDATE_METADATA_EXAMPLE=1 npx playwright test tests/work-information.spec.mjs --grep 'original Schema 2' --workers=1`。不要替换 Schema 1 验收样本。

@@ -4,6 +4,8 @@ import { announced, committed, maxTitleLength, openDatabase, resultOf, trashEntr
 import type { Book, LibraryId, TrashEntry, WrittenBook } from '../library'
 import { emptyChapter, maxChapters, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition, EditionBundle, EditionKey } from './model'
+import { validateWorkMetadata } from '../work-metadata'
+import type { WorkMetadata } from '../work-metadata'
 import { recordWriting } from '../writing-stats'
 
 const editionKey = (edition: EditionKey) => [edition.library, edition.bookId, edition.id]
@@ -47,9 +49,10 @@ function addRecords(tx: IDBTransaction, edition: Edition, records: ChapterRecord
   for (const chapter of records) chapters.add(chapter)
 }
 
-export async function createNovel(library: LibraryId, name: string) {
+export async function createNovel(library: LibraryId, name: string, metadata?: WorkMetadata) {
   if (!globalThis.crypto?.randomUUID) throw new Error(t('store.openNewWorldOverHttpsOrOnLocalhost'))
-  const book: WrittenBook = { library, id: crypto.randomUUID(), title: checkedTitle(name), format: 'draft', importedAt: Date.now() }
+  if (metadata !== undefined) validateWorkMetadata(metadata)
+  const book: WrittenBook = { library, id: crypto.randomUUID(), title: checkedTitle(name), format: 'draft', importedAt: Date.now(), ...(metadata !== undefined ? { metadata: structuredClone(metadata) } : {}) }
   const { edition, records } = assembleEdition(book, t('store.manuscript'), [emptyChapter()], { source: 'blank' })
   const db = await openDatabase()
   const tx = db.transaction(['books', 'editions', 'chapters'], 'readwrite', { durability: 'strict' })

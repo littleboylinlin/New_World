@@ -2,7 +2,7 @@ import { announced, committed, openDatabase, resultOf, writing } from '../librar
 import type { RevisionBlobRecord } from '../library'
 import { synchronousContentHash } from '../confirm-state'
 import { packProject } from './archive'
-import { projectStores, ProjectError, requireValid as ok } from './model'
+import { projectStores, readableProjectSchemas, ProjectError, requireValid as ok } from './model'
 import type { ProjectContents, ProjectData, ProjectRoot } from './model'
 import { detachedIds, referencedIds, validateData, validatePayloads } from './validate'
 
@@ -120,6 +120,7 @@ export function copyProject(contents: ProjectContents, reserved = new Set<string
     if (!value || typeof value !== 'object' || value instanceof Blob || value instanceof Uint8Array) return
     if (Array.isArray(value)) { value.forEach(walk); return }
     for (const [k, v] of Object.entries(value)) {
+      if (k === 'metadata') continue // Unknown metadata may contain literal IDs; it is not a reference graph.
       if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
       else walk(v)
     }
@@ -135,7 +136,8 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
   if (mode === 'skip') return null
   // Clone before async verification, preventing UI callers mutating already-validated records.
   const prepared = structuredClone(contents)
-  validateData(prepared.data, prepared.manifest.root, prepared.manifest.detached)
+  if (!readableProjectSchemas.includes(prepared.manifest.schemaVersion as 1 | 2)) throw new ProjectError('version')
+  validateData(prepared.data, prepared.manifest.root, prepared.manifest.detached, prepared.manifest.schemaVersion)
   await validatePayloads(prepared.data)
   const db = await openDatabase()
   const tx = db.transaction([...projectStores], 'readwrite', { durability: 'strict' })

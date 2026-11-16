@@ -7,6 +7,8 @@ import type { ChapterInput } from './model'
 import { toMarkup } from './schema'
 import paperCSS from './export-paper.css?raw'
 import './export-paper.css'
+import { workInfoSection, workInfoText } from './work-export'
+import type { ExportWorkInfo } from './work-export'
 
 export const outputFormats = {
   txt: 'TXT',
@@ -23,9 +25,11 @@ export function isTextFormat(format: OutputFormat): format is TextFormat {
   return format === 'txt' || format === 'md'
 }
 
-function article(chapters: ChapterInput[], preset?: ExportPreset) {
+function article(chapters: ChapterInput[], preset?: ExportPreset, information?: ExportWorkInfo) {
   const paper = element('article', 'export-paper')
   if (preset) applyExportStyle(paper, preset)
+  const introduction = workInfoSection(information)
+  if (introduction) paper.append(introduction)
   for (const chapter of chapters) {
     const section = element('section')
     if (!hasChapterHeading(chapter)) section.append(element('h1', '', chapter.title))
@@ -37,12 +41,14 @@ function article(chapters: ChapterInput[], preset?: ExportPreset) {
   return paper
 }
 
-async function textExport(format: TextFormat, chapters: ChapterInput[]) {
+async function textExport(format: TextFormat, chapters: ChapterInput[], information?: ExportWorkInfo) {
   if (format === 'txt') {
-    return chapters.map((chapter) => {
+    const body = chapters.map((chapter) => {
       const heading = hasChapterHeading(chapter) ? '' : chapter.title + '\n\n'
       return heading + chapterText(chapter.content, '\n\n')
     }).join('\n\n')
+    const introduction = workInfoText(information)
+    return introduction ? introduction + '\n\n' + body : body
   }
   const [{ default: Turndown }, { gfm }] = await Promise.all([import('turndown'), import('turndown-plugin-gfm')])
   const convert = new Turndown({ headingStyle: 'atx', codeBlockStyle: 'fenced' })
@@ -51,21 +57,21 @@ async function textExport(format: TextFormat, chapters: ChapterInput[]) {
     const alt = node.getAttribute('alt')
     return alt ? t('editor.imageAlt', [convert.escape(alt)]) : t('export.image144')
   } })
-  return convert.turndown(article(chapters)) + '\n'
+  return convert.turndown(article(chapters, undefined, information)) + '\n'
 }
 
-export async function renderExportPreview(format: OutputFormat, preset: ExportPreset, chapter: ChapterInput) {
+export async function renderExportPreview(format: OutputFormat, preset: ExportPreset, chapter: ChapterInput, information?: ExportWorkInfo) {
   const sample = { ...chapter, content: { ...chapter.content, content: chapter.content.content?.slice(0, 8) } }
-  if (isTextFormat(format)) return element('pre', 'export-plain', await textExport(format, [sample]))
-  return article([sample], preset)
+  if (isTextFormat(format)) return element('pre', 'export-plain', await textExport(format, [sample], information))
+  return article([sample], preset, information)
 }
 
 let finishPrint: (() => void) | undefined
 
-async function printEdition(title: string, chapters: ChapterInput[], preset: ExportPreset) {
+async function printEdition(title: string, chapters: ChapterInput[], preset: ExportPreset, information?: ExportWorkInfo) {
   finishPrint?.()
   const printable = element('main', 'print-edition')
-  printable.append(article(chapters, preset))
+  printable.append(article(chapters, preset, information))
   const pageStyle = element('style', '', printPageStyle(preset))
   pageStyle.media = 'print'
   document.head.append(pageStyle)
@@ -100,23 +106,23 @@ async function printEdition(title: string, chapters: ChapterInput[], preset: Exp
   }
 }
 
-export async function exportEdition(format: OutputFormat, title: string, chapters: ChapterInput[], preset: ExportPreset = exportStyles.standard) {
+export async function exportEdition(format: OutputFormat, title: string, chapters: ChapterInput[], preset: ExportPreset = exportStyles.standard, information?: ExportWorkInfo) {
   const filename = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 130).trim() || t('export.newWorldManuscript')
   if (format === 'pdf') {
-    await printEdition(filename, chapters, preset)
+    await printEdition(filename, chapters, preset, information)
     return
   }
   let output: Blob
   if (format === 'docx') {
     const { wordExport } = await import('./docx-export')
-    output = await wordExport(title, chapters, preset)
+    output = await wordExport(title, chapters, preset, information)
   } else if (isTextFormat(format)) {
     const type = format === 'txt' ? 'text/plain;charset=utf-8' : 'text/markdown;charset=utf-8'
-    output = new Blob([await textExport(format, chapters)], { type })
+    output = new Blob([await textExport(format, chapters, information)], { type })
   } else {
     const titleNode = element('title', '', title)
     const style = paperCSS + '\n' + printPageStyle(preset)
-    const html = article(chapters, preset).outerHTML
+    const html = article(chapters, preset, information).outerHTML
     output = new Blob([
       `<!doctype html>\n<html lang="${locale}" class="export-document"><head><meta charset="utf-8">`,
       '<meta name="viewport" content="width=device-width,initial-scale=1">',

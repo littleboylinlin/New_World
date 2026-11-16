@@ -539,3 +539,14 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 .ai-confirm-countdown { margin: 0 0 14px; font-size: .86rem; font-weight: 700; color: var(--danger-text); }
 .ai-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .ai-danger-btn { border-color: var(--danger-text); background: var(--danger-bg); color: var(--danger-text); }
+
+/* Optional work information uses the existing dialog and typography. */
+.work-metadata-fields { display: grid; gap: 12px; margin-block-start: 12px; }
+.manage-dialog:has(.work-metadata-fields) { overflow: auto; }
+.work-information { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-block: 0 18px; }
+.work-information-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.work-information-copy:empty { display: none; }
+.work-information > button { margin-inline-start: auto; }
+.work-subtitle { font-size: 1.12rem; font-weight: 700; }
+.work-synopsis { white-space: pre-wrap; line-height: 1.7; margin-block-start: 8px; }
+.work-tags { color: var(--muted); font-size: .88rem; }

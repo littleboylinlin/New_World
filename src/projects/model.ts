@@ -3,7 +3,8 @@ import type { ChapterRecord, Edition } from '../documents/model'
 import type { Idea } from '../ideas'
 
 export const projectFormat = 'new-world-project'
-export const projectSchemaVersion = 1
+export const projectSchemaVersion = 2
+export const readableProjectSchemas = [1, 2] as const
 export const projectStores = ['books', 'files', 'editions', 'chapters', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', 'trash'] as const
 export type ProjectStore = typeof projectStores[number]
 export interface ProjectData {
@@ -52,7 +53,7 @@ export const limits = {
   ratio: 200,
 }
 export class ProjectError extends Error {
-  constructor(readonly code: 'format' | 'version' | 'limit' | 'conflict' | 'resource', detail = '') {
+  constructor(readonly code: 'format' | 'version' | 'limit' | 'conflict' | 'resource' | 'metadata' | 'unsupported', readonly detail = '') {
     super(`project.${code}${detail ? `: ${detail}` : ''}`)
     this.name = 'ProjectError'
   }

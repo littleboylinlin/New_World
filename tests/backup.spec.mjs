@@ -88,6 +88,12 @@ test('作品可以归档、撤销归档，在归档页打开和放回书库', as
 
 test('立即备份后可从备份恢复整个书库，包括归档和回收站', async ({ page }, testInfo) => {
   await newNovel(page, '雾中灯塔', 'The keeper climbed the stairs. 灯塔守望者。')
+  await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  const information = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
+  await information.getByLabel('作者', { exact: true }).fill('备份作者')
+  await information.getByLabel('作品简介', { exact: true }).fill('第一段。\n\n第二段。')
+  await information.getByRole('button', { name: '保存作品信息', exact: true }).click()
+  await expect(information).toBeHidden()
   await page.goto('/#/original')
   await bookAction(page, '归档')
   await keepIdea(page, '灯塔下埋着一封信')
@@ -103,6 +109,7 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   // The heatmap's writing history travels with the library.
   expect(manifest.writingDays.reduce((sum, day) => sum + day.words, 0)).toBeGreaterThan(0)
   expect(manifest.ideas.map((idea) => idea.text)).toEqual(['灯塔下埋着一封信'])
+  expect(manifest.books[0].metadata).toEqual({ author: '备份作者', synopsis: '第一段。\n\n第二段。' })
 
   // Change the library, then restore.
   await page.goto('/#/archive')
@@ -118,6 +125,8 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   await page.goto('/#/archive')
   await page.getByRole('link', { name: '雾中灯塔' }).click()
   await expect(textArea(page)).toHaveText('The keeper climbed the stairs. 灯塔守望者。')
+  await expect(page.getByRole('region', { name: '作品信息', exact: true })).toContainText('备份作者')
+  await expect(page.locator('.work-synopsis')).toHaveText('第一段。\n\n第二段。')
   await page.goto('/#/ideas')
   await expect(page.getByRole('list', { name: '灵感列表' }).locator('.idea-text')).toHaveText(['灯塔下埋着一封信'])
 })

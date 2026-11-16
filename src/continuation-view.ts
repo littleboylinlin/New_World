@@ -1,4 +1,5 @@
 import { showProjectExport } from './projects/view'
+import { workInformationPanel } from './work-information-view'
 import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
@@ -94,7 +95,8 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         sourceList.append(row)
       }
       originalList.replaceChildren(sourceList.childElementCount ? (arriving ? stagger(sourceList) : sourceList) : element('p', 'continuation-empty', t('continuation.noSourceFilesYet')))
-      if (heading.parentElement !== body) body.replaceChildren(heading, lists)
+      const information = workInformationPanel(work, signal, undefined, false)
+      body.replaceChildren(heading, information, lists)
     } catch (error) {
       if (!signal.aborted && current === request) body.replaceChildren(notice(storageError(error), true))
     }

@@ -1,6 +1,6 @@
 import { t } from '../i18n'
 import {
-  BorderStyle, Document, HeadingLevel, ImageRun, LevelFormat, LineRuleType, Packer, Paragraph,
+  AlignmentType, BorderStyle, Document, HeadingLevel, ImageRun, LevelFormat, LineRuleType, Packer, Paragraph, SectionType,
   Table, TableCell, TableRow, TextRun, WidthType, convertMillimetersToTwip,
 } from 'docx'
 import type { ILevelsOptions, IStylesOptions } from 'docx'
@@ -10,6 +10,7 @@ import type { ExportPreset } from './export-style'
 import { imageInfo } from './markup'
 import { hasChapterHeading } from './model'
 import type { ChapterInput } from './model'
+import type { ExportWorkInfo } from './work-export'
 
 const headings = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6]
 const bodyFont = { ascii: 'Times New Roman', hAnsi: 'Times New Roman', eastAsia: 'SimSun' }
@@ -71,7 +72,7 @@ async function inline(content: JSONContent[], code = false) {
   return runs
 }
 
-export async function wordExport(title: string, chapters: ChapterInput[], preset: ExportPreset) {
+export async function wordExport(title: string, chapters: ChapterInput[], preset: ExportPreset, information?: ExportWorkInfo) {
   const numbering: { reference: string; levels: ILevelsOptions[] }[] = []
   const children: (Paragraph | Table)[] = []
   const spacing = {
@@ -157,17 +158,25 @@ export async function wordExport(title: string, chapters: ChapterInput[], preset
     children.push(...await blocks(chapter.content.content ?? []))
   }
   const margin = convertMillimetersToTwip(preset.marginMm)
+  const introduction: Paragraph[] = []
+  if (information?.title) introduction.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: information.title, bold: true, size: Math.round(preset.fontPt * 3.6), font: headingFont, color: '000000' })] }))
+  if (information?.subtitle) introduction.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: information.subtitle, size: Math.round(preset.fontPt * 2.6) })] }))
+  if (information?.author) introduction.push(new Paragraph({ text: t('work.author') + ': ' + information.author, alignment: AlignmentType.CENTER }))
+  if (information?.synopsis) {
+    introduction.push(new Paragraph({ text: t('work.synopsis'), heading: HeadingLevel.HEADING_2 }))
+    for (const line of information.synopsis.split(/\r\n|\r|\n/)) introduction.push(new Paragraph({ text: line }))
+  }
+  const properties = {
+    page: {
+      size: { width: convertMillimetersToTwip(a4.width), height: convertMillimetersToTwip(a4.height) },
+      margin: { top: margin, bottom: margin, left: margin, right: margin },
+    },
+  }
   const document = new Document({
-    title, styles, numbering: { config: numbering },
-    sections: [{
-      properties: {
-        page: {
-          size: { width: convertMillimetersToTwip(a4.width), height: convertMillimetersToTwip(a4.height) },
-          margin: { top: margin, bottom: margin, left: margin, right: margin },
-        },
-      },
-      children,
-    }],
+    title, ...(information?.author ? { creator: information.author } : {}), styles, numbering: { config: numbering },
+    sections: introduction.length
+      ? [{ properties, children: introduction }, { properties: { ...properties, type: SectionType.NEXT_PAGE }, children }]
+      : [{ properties, children }],
   })
   return Packer.toBlob(document)
 }

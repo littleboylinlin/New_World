@@ -8,7 +8,13 @@ New World v0.18.0 is a local novel manager. The original library is for writing 
 
 Export a complete `.newworld` project from a work's shelf menu; import from the home or library page. Projects retain editions, sources, rich text, annotations, covers and related history. Imports are validated and previewed before a single atomic library transaction; conflicts can be skipped or imported as independent copies. Desktop file associations open the import flow.
 
-Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [Schema 1 specification](docs/newworld-format.md) and [sample project](docs/examples/雾港.newworld). Project Schema 1 is independent of the app version. The local library upgrades to IndexedDB v8; older v7 apps cannot directly open the same upgraded library.
+Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [format specification](docs/newworld-format.md) and [Schema 1 sample](docs/examples/雾港.newworld). The local library has used IndexedDB v8 since v0.18.0; older v7 apps cannot directly open the same upgraded library.
+
+## Work information and Schema 2 in development (unreleased)
+
+Current main adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX and PDF exports offer three optional work-information switches, all off by default, using the existing converters.
+
+Current source reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Released v0.18.0 only reads Schema 1 and cannot read Schema 2. The database remains v8, without rewriting existing records. See the [compatibility rules](docs/newworld-format.md) and [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld). This work creates no Release; the stable download remains v0.18.0 below.
 
 ## Windows desktop
 

@@ -1,7 +1,8 @@
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { runningVersion } from '../updates'
-import { limits, projectFormat, projectSchemaVersion, projectStores, ProjectError, recordPaths, requireValid as ok } from './model'
+import { limits, projectFormat, projectSchemaVersion, readableProjectSchemas, projectStores, ProjectError, recordPaths, requireValid as ok } from './model'
+import { MetadataError, validateWorkMetadata } from '../work-metadata'
 import type { ProjectContents, ProjectData, ProjectManifest, ProjectRoot, Resource } from './model'
 import { detachedIds, fields, safeJson, sha256, sha256Pattern, validateData, validatePayloads } from './validate'
 
@@ -104,7 +105,7 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
     const manifest = await json(await read('manifest.json', limits.json)) as ProjectManifest
     fields(manifest, 'format schemaVersion appVersion createdAt root records detached resources')
     ok(manifest.format === projectFormat && Number.isSafeInteger(manifest.schemaVersion), 'format identifier')
-    if (manifest.schemaVersion !== projectSchemaVersion) throw new ProjectError('version')
+    if (!readableProjectSchemas.includes(manifest.schemaVersion as 1 | 2)) throw new ProjectError('version')
     ok(typeof manifest.appVersion === 'string' && Number.isSafeInteger(manifest.createdAt) && manifest.createdAt >= 0, 'manifest metadata')
     fields(manifest.root, 'library id')
     fields(manifest.records, projectStores.join(' '))
@@ -138,7 +139,11 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
           const blob = decoded.get(r.path)!
           return r.kind === 'blob' ? blob : new Uint8Array(await blob.arrayBuffer())
         }
-        return Object.fromEntries(await Promise.all(Object.entries(value).map(async ([k, v]) => [k, await decode(v, depth + 1)])))
+        return Object.fromEntries(await Promise.all(Object.entries(value).map(async ([k, v]) => {
+          // Metadata is opaque JSON, never a binary reference or a new application setting.
+          if (k === 'metadata') { validateWorkMetadata(v); return [k, v] }
+          return [k, await decode(v, depth + 1)]
+        })))
       }
       return value
     }
@@ -150,10 +155,11 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
       ;(data[name] as unknown) = await decode(await json(decoded.get(path)!))
     }
     ok(used.size === resources.size, 'unreferenced resource')
-    validateData(data, manifest.root, manifest.detached)
+    validateData(data, manifest.root, manifest.detached, manifest.schemaVersion)
     await validatePayloads(data)
     return { manifest, data }
   } catch (error) {
+    if (error instanceof MetadataError) throw new ProjectError('metadata', error.field)
     if (error instanceof ProjectError) throw error
     throw new ProjectError('format')
   } finally { await zip.close() }

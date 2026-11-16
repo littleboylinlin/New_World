@@ -1,4 +1,4 @@
-import { projectDesktopFlow } from './project-flow.mjs'
+import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
@@ -1120,11 +1120,11 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
 
 
 test('.newworld 冷启动导入、中文路径导出与系统关联热打开保护正在编辑的稿件', async ({}, testInfo) => {
-  const app = await launch(testInfo, [resolve('docs/examples/雾港.newworld')])
+  let app = await launch(testInfo, [resolve('docs/examples/雾港.newworld')])
   try {
     const page = await app.firstWindow()
     const output = testInfo.outputPath('中文 ✦ 完整工程.newworld')
-    await projectDesktopFlow({ app, page, output, openThroughOS: async (path) => {
+    const url = await projectDesktopFlow({ app, page, output, openThroughOS: async (path) => {
       if (installedApp) {
         const { stdout } = await setup('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
           "(Get-Item 'HKCU:\\Software\\Classes\\.newworld').GetValue('')"])
@@ -1136,5 +1136,11 @@ test('.newworld 冷启动导入、中文路径导出与系统关联热打开保�
         await app.evaluate(({ app }, path) => { app.emit('second-instance', {}, [process.execPath, path], process.cwd()) }, path)
       }
     } })
+    await stop(app)
+    app = await launch(testInfo)
+    const reopened = await app.firstWindow()
+    await reopened.goto(url)
+    await expectDesktopWorkInformation(reopened)
+    await expect(editor(reopened)).toHaveText('文件关联打开时仍在编辑的正文。')
   } finally { await stop(app) }
 })
