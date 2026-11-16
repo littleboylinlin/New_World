@@ -3,6 +3,7 @@ import { ConfirmStateConflictError, computeSourceDeleteFingerprint, computeWorkD
 import { fileFormat, maxImportSize } from './formats'
 import type { Format } from './formats'
 import type { ChapterRecord, DocumentContent, Edition } from './documents/model'
+import type { ReadingAnnotations } from './annotations/model'
 import type { Idea } from './ideas'
 
 export type LibraryId = 'original' | 'reference'
@@ -20,6 +21,7 @@ interface BookIdentity {
 }
 
 export interface ImportedBook extends BookIdentity {
+  readingAnnotations?: Record<string, ReadingAnnotations>
   originalName: string
   format: Format
   size: number

@@ -1,5 +1,6 @@
 import { t } from '../i18n'
 import type { JSONContent } from '@tiptap/core'
+import type { ReadingAnnotations } from '../annotations/model'
 import type { LibraryId } from '../library'
 
 export type DocumentContent = JSONContent & { type: 'doc' }
@@ -32,6 +33,7 @@ export interface Edition extends EditionKey {
 }
 
 export interface ChapterRecord {
+  readingAnnotations?: ReadingAnnotations
   library: LibraryId
   bookId: string
   editionId: string
