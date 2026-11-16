@@ -103,15 +103,29 @@ test('行间预览不改变任何正文行、透明文字色与高亮色分别�
   expect((await annotationRows(page))[0].readingAnnotations.items[0]).toEqual({ ...saved, display: 'inline' })
 })
 
-test('长批注窄窗口截断，同一行接近的选区合并标记但不丢失批注，紧凑行距不遮挡正文', async ({ page }, testInfo) => {
+for (const descendingIds of [false, true]) test(`长批注窄窗口截断，同一行接近的选区合并标记但不丢失批注，紧凑行距不遮挡正文（ID${descendingIds ? '逆序' : '正序'}）`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await annotationNovel(page, note.repeat(15))
   await readingBody(page).evaluate((node) => node.scrollIntoView({ block: 'start' }))
   const before = await sourceGeometry(page)
-  await selectReading(page, 0, 9); await createAnnotation(page, '长批注'.repeat(80), 'inline', '#75695c')
-  await selectReading(page, 3, 9); await createAnnotation(page, '第二条也属于这里', 'inline', '#567564')
+  // Equal endpoints sort by ID, which can be opposite to annotation creation order.
+  await page.evaluate((descending) => {
+    const ids = ['00000000-0000-4000-8000-000000000001', 'ffffffff-ffff-4fff-8fff-ffffffffffff']
+    if (descending) ids.reverse()
+    const randomUUID = crypto.randomUUID.bind(crypto)
+    crypto.randomUUID = () => ids.shift() ?? randomUUID()
+  }, descendingIds)
+  const firstNote = '长批注'.repeat(80), secondNote = '第二条也属于这里'
+  await selectReading(page, 0, 9); await createAnnotation(page, firstNote, 'inline', '#75695c')
+  await selectReading(page, 3, 9); await createAnnotation(page, secondNote, 'inline', '#567564')
   await expect(page.locator('.annotation-inline')).toHaveCount(1)
-  await expect(page.locator('.annotation-inline-piece').last()).toHaveCSS('color', 'rgb(86, 117, 100)')
+  const pieces = page.locator('.annotation-inline-piece')
+  await expect(pieces).toHaveCount(2)
+  await expect(pieces.filter({ hasText: firstNote })).toHaveCSS('color', 'rgb(117, 105, 92)')
+  await expect(pieces.filter({ hasText: secondNote })).toHaveCSS('color', 'rgb(86, 117, 100)')
+  const stored = (await annotationRows(page))[0].readingAnnotations.items
+  expect(stored.find((item) => item.text === firstNote).inlineColor).toBe('#75695c')
+  expect(stored.find((item) => item.text === secondNote).inlineColor).toBe('#567564')
   await expectLightweight(page)
   const preview = page.locator('.annotation-inline-preview')
   expect(await preview.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true)
