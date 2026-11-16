@@ -1,3 +1,4 @@
+import { projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -50,8 +51,8 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { if (directory) await rm(directory, { recursive: true, force: true }) })
 
-async function launch() {
-  const app = await electron.launch({ executablePath: executable, args: ['--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
+async function launch(extraArgs = []) {
+  const app = await electron.launch({ executablePath: executable, args: [...extraArgs, '--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
   const page = await app.firstWindow()
   page.setDefaultNavigationTimeout(30_000)
   await page.waitForLoadState('load')
@@ -194,7 +195,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
   await command('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle])
   await mkdir(join(languages, 'packs', previous), { recursive: true })
   await cp('public/locales/New-World-lang-zh-CN.json', join(languages, 'packs', previous, 'zh-CN.json'))
-  let app = await electron.launch({ executablePath: executable, args: ['--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
+  let app = await electron.launch({ executablePath: executable, args: [...extraArgs, '--proxy-server=http://127.0.0.1:1', '--disable-gpu'] })
   app.on('console', (message) => console.log('Mac application:', message.text()))
   let exited = false
   let restarted
@@ -501,5 +502,21 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
     await resetSection.locator('.ai-client-card').filter({ hasText: 'MacRecoveryAI' }).getByRole('button', { name: '撤销配置' }).click()
     await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')
+  } finally { await stop(app) }
+})
+
+
+test('.newworld 的 UTI、冷启动导入、中文路径导出和 Launch Services 热打开', async ({}, info) => {
+  const plist = join(bundle, 'Contents', 'Info.plist')
+  const { stdout } = await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleDocumentTypes', plist])
+  expect(stdout).toContain('com.littleboylinlin.newworld.project')
+  const app = await launch([resolve('docs/examples/雾港.newworld')])
+  try {
+    const page = await app.firstWindow()
+    // Register the temporary installed bundle with Launch Services, as Finder does after installation.
+    await command('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', bundle])
+    await projectDesktopFlow({ app, page, output: info.outputPath('中文 ✦ 完整工程.newworld'), openThroughOS: async (path) => {
+      await command('open', ['-a', bundle, path])
+    } })
   } finally { await stop(app) }
 })

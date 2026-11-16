@@ -130,7 +130,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 7)
+    const request = indexedDB.open('new-world-library', 8)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -172,6 +172,13 @@ export function openDatabase() {
         const ideaRevisions = db.createObjectStore('ideaRevisions', { keyPath: 'id' })
         ideaRevisions.createIndex('byIdea', 'ideaId')
         ideaRevisions.createIndex('byBook', ['library', 'bookId'])
+      }
+      if (event.oldVersion < 8) {
+        // Project copies own independent source records even when the original bytes match.
+        // importBook still checks this index inside its serialized readwrite transaction.
+        const books = request.transaction!.objectStore('books')
+        books.deleteIndex('byLibraryDigest')
+        books.createIndex('byLibraryDigest', ['library', 'digest'])
       }
     }
     request.onsuccess = () => {
