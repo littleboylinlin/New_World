@@ -276,7 +276,8 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   popup.addEventListener('focusin', pinPopup, { signal })
 
   function refreshSelection() {
-    if (dead || !ready || dialog?.isConnected || document.querySelector('dialog[open]')) return hideSelection()
+    if (dead || !ready || dialog?.isConnected || document.querySelector('dialog[open]')
+      || document.activeElement?.matches('input, textarea, select')) return hideSelection()
     const selection = surface.selection()
     if (!selection) return hideSelection()
     closePopup()
@@ -294,13 +295,19 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     if (selection && event.clipboardData) { event.clipboardData.setData('text/plain', selection.quote); event.preventDefault() }
   }, { signal })
   add.addEventListener('click', () => { if (pendingSelection) edit(undefined, pendingSelection) }, { signal })
+  document.addEventListener('focusin', (event) => {
+    if (event.target instanceof Node && !surface.element.contains(event.target) && !selectionTools.contains(event.target)) hideSelection()
+  }, { signal })
   document.addEventListener('pointerdown', (event) => {
     if (!(event.target instanceof Node)) return
     if (!selectionTools.contains(event.target)) hideSelection()
     if (!popup.contains(event.target) && !idsAt(event.target)) closePopup()
   }, { signal })
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !event.isComposing && !dialog?.isConnected) { hideSelection(); closePopup(true) }
+    if (event.key === 'Escape' && !event.isComposing && !dialog?.isConnected) {
+      if (pendingSelection) window.getSelection()?.removeAllRanges()
+      hideSelection(); closePopup(true)
+    }
   }, { signal })
   const reposition = () => {
     hideSelection()

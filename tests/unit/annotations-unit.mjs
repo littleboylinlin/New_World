@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { anchorMatches, annotationSegments, markAttributes, popupPosition, sourceHash, validColor } from '../../src/annotations/model.ts'
+import { anchorMatches, annotationSegments, markAttributes, popupPosition, sourceHash, validAnnotations, validColor } from '../../src/annotations/model.ts'
 
 const annotation = (id, from, to) => ({ id, anchor: { from, to }, color: '#123abc', createdAt: 0 })
 
@@ -41,5 +41,21 @@ test('floating elements fit both sides and small/zoomed viewports', () => {
       assert.ok(p.left >= view.left + 10 && p.top >= view.top + 10)
       assert.ok(p.left + width <= view.left + view.width - 10 && p.top + height <= view.top + view.height - 10)
     }
+  }
+})
+
+
+test('optional metadata validates before rendering or saving, including backup corruption', async () => {
+  const item = {
+    id: crypto.randomUUID(), text: '批注', color: '#123abc', display: 'mark', collapsed: false, createdAt: 1,
+    anchor: { version: 1, kind: 'text', from: 0, to: 2, quote: '原文', sourceHash: await sourceHash('原文') },
+  }
+  assert.equal(validAnnotations({ revision: 0, items: [] }), true)
+  assert.equal(validAnnotations({ revision: 1, items: [item] }), true)
+  for (const value of [null, {}, { revision: 1, items: [null] }, { revision: -1, items: [item] },
+    { revision: 0, items: [item, item] }, { revision: 0, items: [{ ...item, id: 'invalid id' }] },
+    { revision: 0, items: [{ ...item, text: ' '.repeat(3) }] },
+    { revision: 0, items: [{ ...item, anchor: { ...item.anchor, from: NaN } }] }]) {
+    assert.equal(validAnnotations(value), false)
   }
 })

@@ -90,6 +90,13 @@ test('悬停预览、移入卡片无闪烁、点击固定、外部点击/其他�
 test('选区取消无残留，空白/超长输入、取消、删除和连续点击', async ({ page }) => {
   await annotationNovel(page)
   await selectReading(page, 0, 6)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.annotation-selection')).toBeHidden()
+  await selectReading(page, 0, 6)
+  await page.keyboard.press('Control+f')
+  await expect(page.locator('.annotation-selection')).toBeHidden()
+  await page.getByRole('button', { name: '关闭查找' }).click()
+  await selectReading(page, 0, 6)
   await page.locator('.writing-header h3').click()
   await expect(page.locator('.annotation-selection')).toBeHidden()
   await selectReading(page, 0, 6)
