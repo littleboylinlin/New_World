@@ -28,6 +28,8 @@ test('重复文字、跨段落批注准确定位，编辑/颜色/形式及重开
   await page.goto('/#/original')
   await page.goto(url)
   await page.getByRole('button', { name: '阅读模式' }).click()
+  // Inline notes use a fixed layer. Scroll the text after reopening so the sticky footer cannot cover its note.
+  await readingBody(page).scrollIntoViewIfNeeded()
   await expect(page.locator('.annotation-inline')).toBeVisible()
   await page.locator('.annotation-inline').hover()
   await expect(page.locator('.annotation-popup .annotation-text')).toHaveText('修改后的批注\n第二行')
