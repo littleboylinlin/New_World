@@ -13,7 +13,7 @@ import type { Detached, ProjectData, ProjectRoot } from './model'
 
 const schema = getSchema(documentExtensions)
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 255 && !/[\x00-\x1f]/.test(v)
-const uuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+const uuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v)
 const str = (v: unknown): v is string => typeof v === 'string'
 const num = (v: unknown) => Number.isSafeInteger(v) && Number(v) >= 0
 const title = (v: unknown) => str(v) && !!v.trim() && v.length <= maxTitleLength
