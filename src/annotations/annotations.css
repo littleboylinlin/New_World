@@ -1,26 +1,33 @@
 .annotation-manager { padding: 10px 16px; border-bottom: 1px solid var(--hair); background: var(--sheet); font: .85rem/1.6 var(--sans); color: var(--ink); }
 .annotation-manager > summary { cursor: pointer; font-weight: 800; }
-.annotation-list { display: grid; gap: 10px; max-height: 45svh; overflow: auto; margin-top: 10px; }
-.annotation-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--hair); border-inline-start: 4px solid var(--annotation-color, var(--accent)); border-radius: 7px; background: var(--sheet); color: var(--ink); font: .85rem/1.6 var(--sans); white-space: normal; text-align: start; }
-.annotation-card-head, .annotation-popup-head, .annotation-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
-.annotation-card-head, .annotation-popup-head { justify-content: space-between; }
-.annotation-inline { display: block; margin: 8px 0 12px; }
-.annotation-text { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
-.annotation-quote { margin: 8px 0; padding: 4px 10px; max-height: 5em; overflow: auto; border-inline-start: 2px solid var(--hair); color: var(--muted); font: .83rem/1.6 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
-.annotation-invalid { color: var(--danger-text); font-weight: 700; }
+.annotation-list { display: grid; gap: 8px; max-height: 45svh; overflow: auto; margin-top: 10px; }
+.annotation-card { min-width: 0; padding: 6px 0; color: var(--ink); font: .85rem/1.65 var(--sans); white-space: normal; text-align: start; }
+.annotation-card + .annotation-card { border-top: 1px solid var(--hair); padding-top: 10px; }
+.annotation-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: min(45svh, 18rem); overflow: auto; }
+.annotation-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.annotation-action { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 4px; border: 0; border-radius: 3px; color: var(--muted); background: transparent; cursor: pointer; }
+.annotation-action svg { width: 15px; height: 15px; }
+.annotation-action:hover, .annotation-action:focus-visible { color: var(--ink); background: var(--tint); }
+.annotation-invalid { margin: 0 0 6px; color: var(--danger-text); font-size: .8rem; }
 .annotation-mark { cursor: pointer; border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .annotation-mark:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .annotation-floating { position: fixed; inset: auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); overflow: auto; font-family: var(--sans); }
-.annotation-popup { width: min(360px, calc(100vw - 20px)); padding: 10px; border: 2px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: var(--shadow); }
-.annotation-popup .annotation-card { margin-top: 8px; }
-.annotation-popup-head .dialog-help { margin: 0; }
+.annotation-popup { width: max-content; min-width: 150px; max-width: min(320px, calc(100vw - 20px)); padding: 5px 12px; border: 1px solid var(--hair); border-radius: 6px; background: var(--sheet); box-shadow: 0 4px 16px #0002; }
 .annotation-selection { padding: 3px; }
 .annotation-input { resize: vertical; min-height: 7rem; max-height: 40svh; }
-.annotation-colors { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid var(--hair); border-radius: 7px; }
+.annotation-colors { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding: 10px; border: 1px solid var(--hair); border-radius: 7px; }
 .annotation-colors legend { font-size: .85rem; font-weight: 700; }
 .annotation-colors input { width: 48px; height: 36px; padding: 2px; background: var(--sheet); border: 1px solid var(--ink); border-radius: 5px; cursor: pointer; }
 .annotation-swatch { width: 30px; height: 30px; padding: 0; border: 2px solid var(--hair); border-radius: 50%; font-size: 0; cursor: pointer; }
 .annotation-swatch[aria-pressed="true"] { border: 3px solid var(--ink); outline: 2px solid var(--sheet); outline-offset: -5px; }
-@media print { .annotation-floating, .annotation-manager, .annotation-inline { display: none !important; } }
-
+.annotation-font-swatch { background: transparent; font: 600 13px/1 var(--sans); }
 .annotation-dialog { overflow-y: auto; }
+.annotation-inline-layer { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.annotation-inline { position: absolute; display: inline-flex; align-items: center; gap: 3px; width: max-content; min-width: 8px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; background-image: none; box-shadow: none; font: 400 11px/12px var(--text-font); white-space: nowrap; text-align: start; cursor: pointer; pointer-events: auto; }
+.annotation-inline-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: transparent; }
+.annotation-inline-arrow { display: block; flex: none; width: 8px; height: 4px; background: transparent; }
+.annotation-inline-arrow svg { display: block; width: 8px; height: 4px; }
+.annotation-inline[data-compact="true"] .annotation-inline-preview { display: none; }
+.annotation-inline:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+.annotation-inline-layer[data-selecting] .annotation-inline { pointer-events: none; }
+@media print { .annotation-floating, .annotation-manager, .annotation-inline-layer { display: none !important; } }
