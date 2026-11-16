@@ -2,17 +2,17 @@
 
 [English](README.en.md)
 
-New World v0.17.1 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World v0.18.0 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
 
-## 原生工程格式（开发中，尚未发布）
+## 原生工程格式
 
 书架的作品菜单提供「导出 New_World 工程（.newworld）」，首页和书库提供独立的工程导入入口。工程包含当前作品的全部编辑版本、原始文件、批注、封面及相关历史；导入先校验和预览，冲突可跳过或导入副本，不覆盖已有书库。桌面安装后可双击 `.newworld` 进入导入流程。
 
-导入后仍在本地书库编辑，修改须重新导出，不会自动写回来源工程。现有正文导出继续保留，其格式不携带完整工程状态。详见 [格式规范与限制](docs/newworld-format.md)，可用 [雾港示例工程](docs/examples/雾港.newworld) 验收。本功能不改变当前正式发行版。
+导入后仍在本地书库编辑，修改须重新导出，不会自动写回来源工程。现有正文导出继续保留，其格式不携带完整工程状态。详见 [格式规范与限制](docs/newworld-format.md)，可用 [雾港示例工程](docs/examples/雾港.newworld) 验收。工程 Schema 保持为 1，与应用版本独立；本地书库升级至 IndexedDB v8，旧版 v7 应用不能直接打开升级后的同一书库。
 
 ## Windows 桌面版
 
-Windows 与 macOS 当前正式版均为 [v0.17.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.17.1)。优化阅读批注排版：行间批注使用透明背景的小字与箭头预览，空间不足时省略；行间字体色与原文高亮背景色分别设置。批注浮层仅显示批注内容和轻量操作，框选工具栏在选区结束后出现。保留已有批注、定位校验及备份恢复。使用方式和限制见 [阅读批注](docs/reading-annotations.md)，AI 接入协议详见 `AI_INTEGRATION.md`。检查更新时各自只选择本平台的安装包。
+Windows 与 macOS 当前正式版均为 [v0.18.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.18.0)。新增 `.newworld` 原生工程格式，完整迁移当前作品的版本、章节、富文本、批注、原始文件、封面、相关灵感及历史。导入先校验和预览，支持跳过或导入副本，独立于全库 ZIP 备份恢复；桌面安装后可通过文件关联进入导入。保留现有阅读批注及正文导出。使用方式和限制见 [工程格式规范](docs/newworld-format.md) 和 [阅读批注](docs/reading-annotations.md)，AI 接入协议详见 `AI_INTEGRATION.md`。检查更新时各自只选择本平台的安装包。
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 
@@ -42,7 +42,7 @@ Mac 检查更新只匹配本机芯片的 DMG。点击「更新并重启」后，
 
 在「设置 → 常规」选择语言并应用。应用会先保存正文，再获取尚未下载的语言包；下载失败时保留当前语言。已下载的语言可离线使用，重新打开应用和升级时沿用已选语言。作品名、章节名和正文不会随界面语言改变。Web 版首次按浏览器语言选择，只请求当前所需的语言包。
 
-语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.17.1\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
+语言偏好和桌面语言缓存保存在 `%APPDATA%\NewWorld-languages`，不受书库存储位置变更影响。正常卸载保留缓存。首次离线安装可将同一发行版的所需语言包放到 `%APPDATA%\NewWorld-languages\packs\0.18.0\zh-CN.json` 或 `en.json`；校验通过后安装器会直接使用。
 
 窗口顶部的应用栏同时是标题栏，可以拖动窗口；右上角的最小化、最大化／还原和关闭按钮由应用自绘，悬停不显示系统提示。缩放用 `Ctrl` 加 `+`、`-`、`0`，全屏用 `F11`。桌面书库与浏览器书库分开保存，现有浏览器数据仍可在原浏览器和地址中访问。
 

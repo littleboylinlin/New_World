@@ -2,17 +2,17 @@
 
 [简体中文](README.md)
 
-New World v0.17.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.18.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
-## Native projects (in development, not released)
+## Native projects
 
 Export a complete `.newworld` project from a work's shelf menu; import from the home or library page. Projects retain editions, sources, rich text, annotations, covers and related history. Imports are validated and previewed before a single atomic library transaction; conflicts can be skipped or imported as independent copies. Desktop file associations open the import flow.
 
-Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [Schema 1 specification](docs/newworld-format.md) and [sample project](docs/examples/雾港.newworld). This work does not publish a new release.
+Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [Schema 1 specification](docs/newworld-format.md) and [sample project](docs/examples/雾港.newworld). Project Schema 1 is independent of the app version. The local library upgrades to IndexedDB v8; older v7 apps cannot directly open the same upgraded library.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.17.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.17.1). Refines reading annotations with small, transparent inline previews and arrows that truncate to fit existing line gaps. Inline text colors and source highlight backgrounds have separate settings. Popups show only the note and compact actions, and selection controls appear after selection finishes. Existing annotations, anchor checks, backups, and recovery remain compatible. See [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.18.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.18.0). Adds the native `.newworld` project format to migrate a work's editions, chapters, rich text, annotations, sources, covers, related ideas and history. Imports are validated and previewed, with skip and independent-copy options, separately from full-library ZIP backup recovery. Desktop file associations open the import flow. Existing reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -42,7 +42,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.17.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.18.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
