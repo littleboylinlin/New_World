@@ -98,8 +98,9 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
     const root = { library, id: seeded.root }
     const expected = structuredClone(before)
     expected.books = expected.books.filter((b) => b.library === library && (b.id === seeded.root || b.workId === seeded.root))
-    expected.ideas = expected.ideas.filter((b) => b.bookId === seeded.root)
-    expected.trash = expected.trash.filter((b) => b.bookId === seeded.root)
+    const ownedIds = new Set(expected.books.map((b) => b.id))
+    expected.ideas = expected.ideas.filter((b) => b.library === library && ownedIds.has(b.bookId))
+    expected.trash = expected.trash.filter((b) => b.library === library && ownedIds.has(b.bookId))
     expected.writingDays = []
     expect(restored).toEqual(expected)
     await clean.page.goto(`/#/${library}`)
@@ -139,10 +140,21 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
     await clean.page.goto(`/#/${library}/${seeded.root}/${seeded.firstEdition}`)
     await expect(clean.page.locator('.chapter-list')).toContainText('删去的章节')
     await clean.page.goto('/#/ideas')
-    await clean.page.locator('.idea-history-button').click()
+    await clean.page.locator('.idea-row').filter({ hasText: '归航者带回一封信' }).locator('.idea-history-button').click()
     await expect(clean.page.getByRole('dialog', { name: /灵感历史版本/ })).toContainText('旧的灵感')
     await clean.page.getByRole('button', { name: '恢复此版本', exact: true }).click()
-    await expect(clean.page.locator('.idea-text')).toHaveText('旧的灵感')
+    await expect(clean.page.locator('.idea-text').filter({ hasText: /^旧的灵感$/ })).toBeVisible()
+    if (library === 'reference') {
+      await clean.page.locator('.idea-row').filter({ hasText: '原文旁的灵感' }).locator('.idea-history-button').click()
+      await expect(clean.page.getByRole('dialog', { name: /灵感历史版本/ })).toContainText('原文旁的旧灵感')
+      await clean.page.getByRole('button', { name: '恢复此版本', exact: true }).click()
+      await expect(clean.page.locator('.idea-text').filter({ hasText: /^原文旁的旧灵感$/ })).toBeVisible()
+      const notes = (await clean.page.evaluate(databaseSnapshot)).ideas
+      expect(notes.find((v) => v.text === '原文旁的旧灵感').bookId).toBe(seeded.secondOriginal)
+      await clean.page.goto('/#/trash')
+      await clean.page.getByRole('listitem').filter({ hasText: '已删除的原文灵感' }).getByRole('button', { name: '恢复', exact: true }).click()
+      await expect.poll(async () => (await clean.page.evaluate(databaseSnapshot)).ideas.find((v) => v.text === '已删除的原文灵感')?.bookId).toBe(seeded.secondOriginal)
+    }
   } finally { await clean.context.close() }
 })
 
@@ -315,4 +327,32 @@ test('现有 v7 书库升级到 v8 后完整保留数据和索引主键', async 
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')
+})
+
+test('续写副本同步映射附属原文关联的灵感、历史与回收记录', async ({ page }, info) => {
+  await page.goto('/#/'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  const seeded = await page.evaluate(seedProject, projectFixture('reference', pixel.toString('base64')))
+  await page.goto('/#/reference')
+  const path = info.outputPath('原文灵感工程.newworld')
+  await exportWork(page, info, '雾港 · 续写验收', path)
+  await page.goto('/#/')
+  await choose(page, path)
+  await expect(dialog(page)).toContainText('ID 冲突')
+  await dialog(page).getByLabel('导入方式').selectOption('copy')
+  await dialog(page).getByRole('button', { name: '确认导入' }).click()
+  await expect(dialog(page)).toBeHidden()
+  const data = await page.evaluate(databaseSnapshot)
+  const root = data.books.find((b) => b.library === 'reference' && !b.workId && b.id !== seeded.root)
+  const source = data.books.find((b) => b.workId === root.id)
+  expect(source.id).not.toBe(seeded.secondOriginal)
+  const note = data.ideas.find((v) => v.bookId === source.id && v.text === '原文旁的灵感')
+  expect(note).toBeTruthy()
+  expect(data.ideaRevisions.find((v) => v.ideaId === note.id).bookId).toBe(source.id)
+  expect(data.trash.find((v) => v.kind === 'idea' && v.bookId === source.id).ideas[0].bookId).toBe(source.id)
+  expect(data.editions.find((e) => e.bookId === root.id && e.source === 'copy').originalId).toBe(source.id)
+  // Re-export of the copy validates recalculated historical owner hashes and the complete closure.
+  await page.getByRole('button', { name: exportLabel }).click()
+  const copied = page.waitForEvent('download')
+  await page.getByRole('button', { name: '保存工程', exact: true }).click()
+  await (await copied).saveAs(info.outputPath('原文灵感副本.newworld'))
 })

@@ -15,6 +15,7 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
   const ideaHistory = new Map<string, ProjectData['ideaRevisions'][number]>()
   const requestedIdeas = new Set<string>()
   const requestedBlobs = new Set<string>()
+  const ownedBookIds = new Set([root.id])
   // Queue dependent reads inside IDB callbacks, keeping the snapshot transaction active on Safari.
   const historyForIdea = (id: string) => {
     if (requestedIdeas.has(id)) return
@@ -22,19 +23,34 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
     const q = tx.objectStore('ideaRevisions').index('byIdea').getAll(id)
     q.onsuccess = () => { for (const row of q.result) ideaHistory.set(row.id, row) }
   }
-  const cursor = (name: 'books' | 'ideas' | 'trash', accept: (value: any) => void) => {
+  const cursor = (name: 'books' | 'ideas' | 'trash', accept: (value: any) => void, finish?: () => void) => {
     const q = name === 'books' ? tx.objectStore(name).index('byLibrary').openCursor(root.library) : tx.objectStore(name).openCursor()
-    q.onsuccess = () => { const c = q.result; if (c) { accept(c.value); c.continue() } }
+    q.onsuccess = () => { const c = q.result; if (c) { accept(c.value); c.continue() } else finish?.() }
   }
   cursor('books', (book: ProjectData['books'][number]) => {
     if (book.id !== root.id && book.workId !== root.id) return
-    data.books.push(book)
+    data.books.push(book); ownedBookIds.add(book.id)
     const q = tx.objectStore('files').get([root.library, book.id])
     q.onsuccess = () => { if (q.result) data.files.push(q.result) }
-  })
-  cursor('ideas', (idea: ProjectData['ideas'][number]) => { if (owns(idea)) { data.ideas.push(idea); historyForIdea(idea.id) } })
-  cursor('trash', (entry: ProjectData['trash'][number]) => {
-    if (owns(entry)) { data.trash.push(entry); for (const idea of entry.ideas ?? []) historyForIdea(idea.id) }
+  }, () => {
+    const sourceIdeaTrash: ProjectData['trash'] = []
+    cursor('trash', (entry: ProjectData['trash'][number]) => {
+      if (owns(entry)) {
+        data.trash.push(entry)
+        for (const book of entry.books) ownedBookIds.add(book.id)
+      } else if (entry.library === root.library && entry.kind === 'idea') sourceIdeaTrash.push(entry)
+    }, () => {
+      data.trash.push(...sourceIdeaTrash.filter((entry) => ownedBookIds.has(entry.bookId)))
+      data.trash.sort((a, b) => a.id.localeCompare(b.id))
+      for (const entry of data.trash) for (const idea of entry.ideas ?? []) historyForIdea(idea.id)
+      // Context-menu capture on an attached original can persist its source book ID, not the root ID.
+      const ownsIdea = (idea: { library?: string; bookId?: string }) => idea.library === root.library && !!idea.bookId && ownedBookIds.has(idea.bookId)
+      cursor('ideas', (idea: ProjectData['ideas'][number]) => { if (ownsIdea(idea)) { data.ideas.push(idea); historyForIdea(idea.id) } })
+      for (const bookId of ownedBookIds) {
+        const history = tx.objectStore('ideaRevisions').index('byBook').getAll([root.library, bookId])
+        history.onsuccess = () => { for (const row of history.result) ideaHistory.set(row.id, row) }
+      }
+    })
   })
   for (const name of ['editions', 'chapters', 'revisions', 'aiBaselines'] as const) {
     const q = tx.objectStore(name).index('byBook').getAll([root.library, root.id])
@@ -50,8 +66,6 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
       }
     }
   }
-  const history = tx.objectStore('ideaRevisions').index('byBook').getAll([root.library, root.id])
-  history.onsuccess = () => { for (const row of history.result) ideaHistory.set(row.id, row) }
   await committed(tx)
   data.ideaRevisions = [...ideaHistory.values()].sort((a, b) => a.id.localeCompare(b.id))
   data.revisionBlobs.sort((a, b) => a.hash.localeCompare(b.hash))

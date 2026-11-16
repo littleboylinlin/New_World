@@ -175,6 +175,8 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
   ok(rootBook && rootBook.library === root.library && !rootBook.workId, 'root book')
   const belongs = (v: { library: string; bookId: string }) => v.library === root.library && v.bookId === root.id
   const books = [...data.books, ...data.trash.flatMap((v) => v.books)]
+  const bookIds = new Set(books.map((b) => b.id))
+  const belongsIdea = (v: { library?: string; bookId?: string }) => v.library === root.library && !!v.bookId && bookIds.has(v.bookId)
   for (const b of books) { validateBook(b); ok(b.library === root.library && (b.id === root.id || b.workId === root.id), 'unrelated book') }
   const validateRows = (rows: Pick<ProjectData, 'books' | 'files' | 'editions' | 'chapters' | 'ideas'>, active: boolean) => {
     rows.files.forEach((v) => { fields(v, 'library id blob'); ok(v.library === root.library && id(v.id) && v.blob instanceof Blob && books.some((b) => b.id === v.id && b.format !== 'draft'), 'original file') })
@@ -195,12 +197,12 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
       validateDocument(c.content)
       if (c.readingAnnotations !== undefined) annotationsValid(c.readingAnnotations)
     }
-    rows.ideas.forEach((v) => { validateIdea(v); ok(v.library === root.library && v.bookId === root.id, 'unrelated idea') })
+    rows.ideas.forEach((v) => { validateIdea(v); ok(belongsIdea(v), 'unrelated idea') })
   }
   validateRows(data, true)
   for (const v of data.trash) {
     fields(v, 'id kind library bookId title deletedAt books files editions chapters', 'ideas position')
-    ok(uuid(v.id) && belongs(v) && ['original', 'edition', 'chapter', 'idea'].includes(v.kind) && str(v.title) && num(v.deletedAt), 'trash ownership')
+    ok(uuid(v.id) && (belongs(v) || (v.kind === 'idea' && belongsIdea(v))) && ['original', 'edition', 'chapter', 'idea'].includes(v.kind) && str(v.title) && num(v.deletedAt), 'trash ownership')
     for (const k of ['books', 'files', 'editions', 'chapters'] as const) ok(Array.isArray(v[k]), 'trash list')
     if (v.ideas !== undefined) ok(Array.isArray(v.ideas), 'trash ideas')
     if (v.position) { fields(v.position, 'editionId index'); ok(id(v.position.editionId) && num(v.position.index), 'trash position') }
@@ -234,7 +236,7 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
     fields(v, 'id ideaId text ideaCreatedAt createdAt source action contentHash', 'library bookId usedAt clientId clientName')
     revision(v)
     ok(id(v.ideaId) && str(v.text) && v.text.length <= 20000 && num(v.ideaCreatedAt), 'idea revision')
-    ok(ideaIds.has(v.ideaId) || belongs(v as { library: string; bookId: string }), 'unrelated idea history')
+    ok(ideaIds.has(v.ideaId) || belongsIdea(v), 'unrelated idea history')
     ok((v.library === undefined && v.bookId === undefined) || (lib(v.library) && id(v.bookId)), 'historical idea owner')
     if (v.usedAt !== undefined) ok(num(v.usedAt), 'historical usedAt')
     ok(synchronousContentHash(JSON.stringify({ text: v.text, library: v.library ?? null, bookId: v.bookId ?? null, usedAt: v.usedAt ?? null })) === v.contentHash, 'idea hash')

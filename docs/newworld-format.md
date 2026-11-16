@@ -96,7 +96,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 ### ideas / revisions / revisionBlobs / ideaRevisions / aiBaselines
 
-`ideas`：`id, text, createdAt`；可选 `library, bookId, usedAt`。工程内当前灵感及回收灵感必须属于根作品。文本至多 20000 字符。
+`ideas`：`id, text, createdAt`；可选 `library, bookId, usedAt`。工程内当前灵感及回收灵感必须属于根作品或工程中实际保存的附属原文（包括本作品回收原文）。原文右键记录的灵感保留原文 bookId，不改写为根作品 ID。文本至多 20000 字符。
 
 `revisions`：`id, library, bookId, editionId, chapterId, chapterTitle, words, createdAt, source, action, contentHash`；可选 `editionName, chapterRevision, content, plainText, blobHash, rawBytes, storedBytes, clientId, clientName`。
 
@@ -110,7 +110,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 ### trash
 
-只导出 `library/bookId` 归属当前根作品的 `original | edition | chapter | idea` 记录，保证可恢复的已删父级与其正文仍完整存在。整个作品的回收记录不与存活根作品混用。
+只导出 `library/bookId` 归属当前根作品（灵感也包含附属原文）的 `original | edition | chapter | idea` 记录，保证可恢复的已删父级与其正文仍完整存在。整个作品的回收记录不与存活根作品混用。
 
 字段为 `id, kind, library, bookId, title, deletedAt, books, files, editions, chapters`，可选 `ideas, position`。内嵌记录遵循同一类型。`position = { editionId, index }` 保留已删章节位置。按种类要求原文一组 book/file、版本一个 edition 及其章节、章节一个 chapter 和 position、灵感一个 idea，不允许混入其他作品数据。
 

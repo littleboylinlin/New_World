@@ -59,6 +59,10 @@ export async function seedProject({ library = 'original', pixel, content }) {
     data.books.push({ library, id: secondOriginal, workId: root, title: '另一份原文', format: 'txt', originalName: '参考 原文.txt', size: source.size, digest: await sha(source), importedAt: now })
     data.files.push({ library, id: secondOriginal, blob: source })
     editionCopy.originalId = secondOriginal
+    const sourceIdea = { id: id(), library, bookId: secondOriginal, text: '原文旁的灵感', createdAt: now + 2 }
+    data.ideas.push(sourceIdea)
+    data.ideaRevisions.push({ id: id(), ideaId: sourceIdea.id, library, bookId: secondOriginal, text: '原文旁的旧灵感', ideaCreatedAt: sourceIdea.createdAt, createdAt: now + 3, source: 'ai', action: 'ideas.update', contentHash: hash(JSON.stringify({ text: '原文旁的旧灵感', library, bookId: secondOriginal, usedAt: null })) })
+    data.trash.push({ id: id(), kind: 'idea', library, bookId: secondOriginal, title: '已删除的原文灵感', deletedAt: now, books: [], files: [], editions: [], chapters: [], ideas: [{ id: id(), library, bookId: secondOriginal, text: '已删除的原文灵感', createdAt: now }] })
   }
   // A historical chapter with a deleted owner is represented by real history, not invented live records.
   const missingEdition = id(), missingChapter = id()
@@ -74,7 +78,7 @@ export async function seedProject({ library = 'original', pixel, content }) {
   await new Promise((r, j) => { tx.oncomplete = r; tx.onabort = () => j(tx.error) })
   db.close()
   localStorage.setItem('project-test-secret', 'should-not-export')
-  return { root, library, firstEdition, first, secondEdition, copiedChapter, ideaId, missingEdition, missingChapter, deletedChapter }
+  return { root, library, secondOriginal, firstEdition, first, secondEdition, copiedChapter, ideaId, missingEdition, missingChapter, deletedChapter }
 }
 
 export async function databaseSnapshot() {
