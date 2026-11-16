@@ -14,6 +14,7 @@ await build({
     electronLanguages: ['en-US'],
     directories: { app: appDir, output, buildResources: 'desktop' },
     // The renderer is already bundled and the desktop shell uses only Electron and Node APIs.
+    fileAssociations: [{ ext: 'newworld', name: 'New_World Project', description: 'New_World novel project', role: 'Viewer', mimeType: 'application/vnd.newworld.project+zip' }],
     beforeBuild: () => false,
     publish: null,
     win: {

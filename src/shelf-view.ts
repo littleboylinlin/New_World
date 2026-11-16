@@ -1,3 +1,4 @@
+import { projectImportButton, showProjectExport } from './projects/view'
 import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
@@ -50,7 +51,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const ideaCount = element('span', 'list-count archive-count')
   ideas.append(icon('idea'), element('span', '', t('ideas.title')), ideaCount)
   const entries = element('div', 'home-entries')
-  entries.append(ideas, archive)
+  entries.append(projectImportButton(), ideas, archive)
   head.append(intro, entries)
   home.append(head, stagger(cards))
   renderWritingStats(home, signal)
@@ -201,6 +202,7 @@ function bookCard(root: HTMLElement, book: Book, covers: string[], report: (mess
 
   const actions = (): MenuItem[] => [
     { label: t('shelf.openWork'), icon: 'book', action: () => { location.hash = bookPath(book.library, book.id) } },
+    { label: t('project.export'), icon: 'download', action: () => showProjectExport({ library: book.library, id: book.id }, book.title) },
     { label: t('shelf.rename'), icon: 'edit', action: () => manageBook(root, book, 'rename') },
     { label: t('shelf.changeCover'), icon: 'image', action: () => chooseCover(root, book, report) },
     ...(image ? [{ label: t('shelf.defaultCover'), icon: 'undo' as const, action: () => {
@@ -267,7 +269,7 @@ export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSigna
       window.setTimeout(() => create.click())
     }
   } catch { /* Nothing to open. */ }
-  controls.append(choose, input)
+  controls.append(projectImportButton(), choose, input)
   header.append(heading, controls)
 
   const listHeader = element('div', 'list-heading')

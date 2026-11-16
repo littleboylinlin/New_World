@@ -14,7 +14,7 @@ type CloseBehavior = 'quit' | 'background'
 
 type BackupFrequency = 'off' | 'daily' | 'weekly'
 
-type DesktopCommand = { type: 'open'; hash: string } | { type: 'ideas' } | { type: 'new-novel' } | { type: 'backup' } | { type: 'idea'; text: string }
+type DesktopCommand = { type: 'project'; token: string } | { type: 'open'; hash: string } | { type: 'ideas' } | { type: 'new-novel' } | { type: 'backup' } | { type: 'idea'; text: string }
 
 interface CaptureState {
   shortcut: string
@@ -74,6 +74,9 @@ interface Window {
     downloadUpdate: (tag: string) => Promise<DesktopUpdateResult>
     installUpdate: (tag: string) => Promise<DesktopUpdateResult>
     onUpdateProgress: (listener: (progress: DesktopUpdateProgress) => void) => void
+    openProject?: () => Promise<{ name: string; bytes: Uint8Array } | null>
+    readProject?: (token: string) => Promise<{ name: string; bytes: Uint8Array }>
+    saveProject?: (name: string, bytes: Uint8Array) => Promise<boolean>
     savePdf: (name: string) => Promise<void>
     onCloseRequested: (save: () => Promise<boolean>) => void
     getStorageLocation: () => Promise<StorageState>

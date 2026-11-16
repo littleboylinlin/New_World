@@ -36,6 +36,7 @@ export function showExportDialog(
   }
   styleLabel.append(style)
   const styleHint = element('p', 'export-style-hint', t('export.fontsAndColorsAreControlledByTheReader'))
+  styleHint.append(element('span', '', ` ${t('project.conversionHint')}`))
   const selectedStyle = () => exportStyles[style.value as ExportStyle]
 
   const chapterBox = element('div', 'export-chapters')

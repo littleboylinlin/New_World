@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   onUpdateProgress: (listener) => {
     ipcRenderer.on('new-world:update-progress', (_event, progress) => listener(progress))
   },
+  openProject: () => ipcRenderer.invoke('new-world:project-open'),
+  readProject: (token) => ipcRenderer.invoke('new-world:project-read', token),
+  saveProject: (name, bytes) => ipcRenderer.invoke('new-world:project-save', name, bytes),
   savePdf: (name) => ipcRenderer.invoke('new-world:save-pdf', name),
   getStorageLocation: () => ipcRenderer.invoke('new-world:get-storage-location'),
   setStorageLocation: () => ipcRenderer.invoke('new-world:set-storage-location'),

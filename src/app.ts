@@ -1,3 +1,4 @@
+import { enqueueProject, mountProjectImports } from './projects/view'
 import { t } from './i18n'
 import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
@@ -43,6 +44,8 @@ if (window.newWorldDesktop) {
 const settings = mountSettingsView(saveBeforeLeaving, (hash) => {
   if (location.hash !== hash) location.hash = hash
 })
+
+mountProjectImports(async () => !settings.isLocked() && await saveBeforeLeaving())
 
 settingsEntry.addEventListener('click', (event) => {
   if (settings.isLocked()) { event.preventDefault(); return }
@@ -179,7 +182,12 @@ void reportRecentWorks()
 
 // Commands from the tray and the desktop right-click menu.
 window.newWorldDesktop?.onCommand?.((command) => {
-  if (command.type === 'open') location.hash = command.hash
+  if (command.type === 'project') {
+    void enqueueProject(async () => {
+      const file = await window.newWorldDesktop!.readProject!(command.token)
+      return new Blob([Uint8Array.from(file.bytes)])
+    })
+  } else if (command.type === 'open') location.hash = command.hash
   else if (command.type === 'ideas') location.hash = '#/ideas'
   else if (command.type === 'new-novel') {
     try { sessionStorage.setItem('new-world:new-novel', '1') } catch { /* The library still opens. */ }

@@ -4,6 +4,12 @@
 
 New World v0.17.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
+## Native projects (in development, not released)
+
+Export a complete `.newworld` project from a work's shelf menu; import from the home or library page. Projects retain editions, sources, rich text, annotations, covers and related history. Imports are validated and previewed before a single atomic library transaction; conflicts can be skipped or imported as independent copies. Desktop file associations open the import flow.
+
+Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [Schema 1 specification](docs/newworld-format.md) and [sample project](docs/examples/雾港.newworld). This work does not publish a new release.
+
 ## Windows desktop
 
 The current stable release for Windows and macOS is [v0.17.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.17.1). Refines reading annotations with small, transparent inline previews and arrows that truncate to fit existing line gaps. Inline text colors and source highlight backgrounds have separate settings. Popups show only the note and compact actions, and selection controls appear after selection finishes. Existing annotations, anchor checks, backups, and recovery remain compatible. See [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.

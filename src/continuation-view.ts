@@ -1,3 +1,4 @@
+import { showProjectExport } from './projects/view'
 import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
@@ -21,7 +22,9 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
   const title = element('h1')
   const headingCopy = element('div')
   headingCopy.append(element('p', 'eyebrow', t('continuation.continuationProject')), title)
-  heading.append(headingCopy)
+  const exportProject = button(t('project.export'), 'button button-quiet button-small', 'download')
+  exportProject.addEventListener('click', () => { if (work) showProjectExport({ library: 'reference', id }, work.title) })
+  heading.append(headingCopy, exportProject)
   const lists = element('div', 'continuation-lists')
 
   const drafts = element('section', 'reader-panel continuation-list')

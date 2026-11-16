@@ -9,6 +9,7 @@ const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
 const backups = require('./backup.cjs')
 const capture = require('./capture.cjs')
+const projectFiles = require('./project-files.cjs')
 const { createAiStore } = require('./ai-store.cjs')
 const { createAiBridge } = require('./ai-bridge.cjs')
 const {
@@ -69,6 +70,7 @@ let desktopUpdater
 let languages
 let macInstaller
 let maintenanceStarted = false
+let desktopStarted = false
 let aiStore
 let aiBridge
 let aiRendererReady = false
@@ -459,6 +461,43 @@ ipcMain.handle('new-world:backup-show-folder', async (event) => {
   if (problem) throw new Error(problem)
 })
 
+// Only tokens issued by the OS open event can be read by the main renderer.
+const pendingProjectPaths = new Map()
+function queueProjects(paths) {
+  for (const path of paths) {
+    if ([...pendingProjectPaths.values()].includes(path) || pendingProjectPaths.size >= 8) continue
+    const token = require('node:crypto').randomUUID()
+    pendingProjectPaths.set(token, path)
+    if (desktopStarted) command({ type: 'project', token })
+    else pendingCommands.push({ type: 'project', token })
+  }
+}
+ipcMain.handle('new-world:project-read', async (event, token) => {
+  if (!trustedMainRenderer(event) || typeof token !== 'string' || !pendingProjectPaths.has(token)) throw new Error('Invalid project request')
+  const path = pendingProjectPaths.get(token)
+  pendingProjectPaths.delete(token)
+  return projectFiles.readProjectFile(path)
+})
+ipcMain.handle('new-world:project-open', async (event) => {
+  if (!trustedMainRenderer(event)) throw new Error('Invalid project request')
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: t('project.import'), properties: ['openFile'], filters: [{ name: 'New_World', extensions: ['newworld'] }],
+  })
+  return picked.canceled || !picked.filePaths[0] ? null : projectFiles.readProjectFile(picked.filePaths[0])
+})
+ipcMain.handle('new-world:project-save', async (event, name, bytes) => {
+  if (!trustedMainRenderer(event) || typeof name !== 'string' || name.length > 255
+    || !(bytes instanceof Uint8Array) || bytes.byteLength > projectFiles.maxBytes) throw new Error('Invalid project export')
+  const filename = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'New_World.newworld'
+  const picked = await dialog.showSaveDialog(mainWindow, {
+    title: t('project.export'), defaultPath: join(app.getPath('documents'), filename),
+    filters: [{ name: 'New_World', extensions: ['newworld'] }],
+  })
+  if (picked.canceled || !picked.filePath) return false
+  await projectFiles.saveProjectFile(picked.filePath, bytes)
+  return true
+})
+
 function windowBackground() {
   return windowTheme.backgroundColor(theme, nativeTheme.shouldUseDarkColors)
 }
@@ -516,7 +555,7 @@ function openCapture() {
 /** Runs a page command in the main window, opening it first when needed. */
 function command(value, show = true) {
   if (show || !mainWindow) showWindow()
-  if (mainWindow && !mainWindow.webContents.isLoading()) mainWindow.webContents.send('new-world:command', value)
+  if (mainWindow && aiRendererReady) mainWindow.webContents.send('new-world:command', value)
   else pendingCommands.push(value)
 }
 
@@ -803,7 +842,13 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   // Starting New World again shows the open window; the taskbar's quick note task opens the note window.
-  app.on('second-instance', (_event, argv) => { if (argv.includes(quickNoteFlag)) openCapture(); else showWindow() })
+  app.on('second-instance', (_event, argv, cwd) => {
+    queueProjects(projectFiles.projectPaths(argv, cwd))
+    if (argv.includes(quickNoteFlag)) openCapture(); else if (desktopStarted) showWindow()
+  })
+  // macOS delivers open-file before ready as well as to an already-running app.
+  app.on('open-file', (event, path) => { event.preventDefault(); queueProjects(projectFiles.projectPaths([path])) })
+  queueProjects(projectFiles.projectPaths(process.argv))
   app.on('activate', showWindow)
   app.on('before-quit', () => {
     forceQuit = true
@@ -902,6 +947,7 @@ if (!app.requestSingleInstanceLock()) {
     refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
     registerCapture()
+    desktopStarted = true
     const opened = openWindow()
     if (process.argv.includes(quickNoteFlag)) openCapture()
     return opened

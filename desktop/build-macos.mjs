@@ -19,6 +19,7 @@ await build({
     directories: { app: appDir, output, buildResources: 'desktop' },
     beforeBuild: () => false, publish: null,
     mac: {
+      extendInfo: { CFBundleDocumentTypes: [{ CFBundleTypeName: 'New_World Project', CFBundleTypeRole: 'Viewer', LSHandlerRank: 'Owner', LSItemContentTypes: ['com.littleboylinlin.newworld.project'], CFBundleTypeExtensions: ['newworld'] }], UTExportedTypeDeclarations: [{ UTTypeIdentifier: 'com.littleboylinlin.newworld.project', UTTypeDescription: 'New_World Project', UTTypeConformsTo: ['public.zip-archive'], UTTypeTagSpecification: { 'public.filename-extension': ['newworld'], 'public.mime-type': 'application/vnd.newworld.project+zip' } }] },
       icon: 'desktop/icon.icns', category: 'public.app-category.productivity',
       artifactName: 'New-World-${version}-macos-${arch}.${ext}',
       minimumSystemVersion: '13.0', identity: '-', hardenedRuntime: false, gatekeeperAssess: false, notarize: false,

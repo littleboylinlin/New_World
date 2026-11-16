@@ -1,3 +1,4 @@
+import { projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
@@ -44,7 +45,7 @@ async function runSetup(path, directory = '') {
   return Number(stdout.trim())
 }
 
-async function launch(testInfo) {
+async function launch(testInfo, extraArgs = []) {
   const profile = testInfo.outputPath('profile')
   await mkdir(profile, { recursive: true })
   if (!installedApp) {
@@ -55,6 +56,7 @@ async function launch(testInfo) {
   }
   const args = installedApp ? [] : ['.']
   // Keep normal startup offline. Version tests serve controlled responses via Chromium.
+  args.push(...extraArgs)
   args.push('--proxy-server=http://127.0.0.1:1', '--disable-gpu')
   if (process.platform === 'linux' && !process.env.DISPLAY) args.push('--ozone-platform=headless')
   return electron.launch({ executablePath: installedApp || undefined, args, env: { ...process.env, XDG_CONFIG_HOME: profile } })
@@ -1113,5 +1115,26 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     await resetSection.locator('.ai-client-card').filter({ hasText: 'RecoveryDesktopAI' }).getByRole('button', { name: '撤销配置' }).click()
     await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')
+  } finally { await stop(app) }
+})
+
+
+test('.newworld 冷启动导入、中文路径导出与系统关联热打开保护正在编辑的稿件', async ({}, testInfo) => {
+  const app = await launch(testInfo, [resolve('docs/examples/雾港.newworld')])
+  try {
+    const page = await app.firstWindow()
+    const output = testInfo.outputPath('中文 ✦ 完整工程.newworld')
+    await projectDesktopFlow({ app, page, output, openThroughOS: async (path) => {
+      if (installedApp) {
+        const { stdout } = await setup('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+          "(Get-Item 'HKCU:\\Software\\Classes\\.newworld').GetValue('')"])
+        expect(stdout.trim()).toBeTruthy()
+        await setup('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process -FilePath $env:NEW_WORLD_PROJECT_FILE'], {
+          env: { ...process.env, NEW_WORLD_PROJECT_FILE: path }, timeout: 20_000,
+        })
+      } else {
+        await app.evaluate(({ app }, path) => { app.emit('second-instance', {}, [process.execPath, path], process.cwd()) }, path)
+      }
+    } })
   } finally { await stop(app) }
 })
