@@ -2,11 +2,11 @@
 
 [简体中文](README.md)
 
-New World v0.16.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.17.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.16.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.16.1). Builds on [v0.16.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.16.0)'s standalone categorized Settings and one-screen desktop Home workbench with stability fixes for editor sidebar inspiration expansion clicks, concurrent work-list loading, and auto-linking archived and continuation-child works, while keeping all local storage, AI access, revision recovery, and backup capabilities intact (see `AI_INTEGRATION.md`). Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.17.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.17.0). Adds annotations in reading mode: select text to write a multiline note, choose an inline card or color highlight, preview on hover, pin on click, and keep annotations after reopening. Source changes preserve notes and flag invalid anchors; managing annotations leaves the source text and original files intact. See [Reading annotations](docs/reading-annotations.md) for usage and limitations. Local storage, AI access, revision recovery, and backups remain compatible (see `AI_INTEGRATION.md`). Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -36,7 +36,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.16.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.17.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -88,6 +88,7 @@ After importing a source work into the continuation/imitation library, each work
 - The editor provides paragraphs, headings, bold, italic, underline, lists, quotes, horizontal rules, and local images. Native browser selection, clipboard, and Chinese IME input are supported.
 - `Ctrl / ⌘ + S` saves, `Ctrl / ⌘ + F` finds within the chapter, `Ctrl / ⌘ + B/I/U` toggles inline styles, `Ctrl / ⌘ + Z` undoes, `Ctrl / ⌘ + Shift + Z` redoes. Find matches literally and can replace one or all occurrences. Undo history belongs to the current chapter's editing session.
 - "Reading mode" keeps the table of contents and find; editing can be restored with "Edit text". At phone widths the chapter list can be expanded and the toolbar scrolls horizontally.
+- Reading mode and text source previews let you select text to add annotations, with inline cards or color highlights, hover previews, click-to-pin, multiline editing, deletion, and persistence after reopening. Overlapping ranges retain every annotation. PDF canvas previews are currently unsupported; source or formatting changes invalidate old anchors and display a notice. See [Reading annotations](docs/reading-annotations.md).
 - "Focus" hides the chapter list, the buttons around the text and the footer, leaving only the chapter; the toolbar fades until pointed at. Press `Esc` or click again to leave; leaving the page also ends it.
 - Right-click a chapter in the chapter list to add, rename, move or delete chapters.
 - Page navigation, chapter switching, dialogs, and notices have transition animations. Animations are skipped when the system's "reduce motion" is enabled.
