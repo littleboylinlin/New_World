@@ -63,6 +63,11 @@ export function validateDocument(content: DocumentContent) {
         else if (['colspan', 'rowspan'].includes(key)) ok(num(value) && Number(value) >= 1 && Number(value) <= 100, 'table span')
         else if (key === 'level') ok(num(value) && Number(value) >= 1 && Number(value) <= 6, 'heading')
         else if (key === 'start') ok(num(value), 'list start')
+        else if (key === 'align') ok(value === null || (str(value) && ['left', 'right', 'center'].includes(value)), 'cell alignment')
+        else if (key === 'type') ok(value === null || (str(value) && ['1', 'a', 'A', 'i', 'I'].includes(value)), 'list marker')
+        else if (key === 'width' || key === 'height') ok(value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100000)
+          || (str(value) && /^\d+(?:\.\d+)?(?:px|%)?$/.test(value) && parseFloat(value) <= 100000), 'image dimensions')
+        else ok(false, 'unsupported attribute value')
       }
     }
     if (node.type === 'image') {

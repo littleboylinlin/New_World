@@ -8,6 +8,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await preview.getByLabel('导入方式').selectOption('copy')
   await preview.getByRole('button', { name: '确认导入' }).click()
   await expect(preview).toBeHidden()
+  await page.locator('.version-navigation').getByRole('link', { name: '初稿', exact: true }).click()
   const editor = page.getByRole('textbox', { name: '章节正文', exact: true })
   await expect(editor).toContainText('灯塔亮了。')
   const workId = new URL(page.url()).hash.split('/')[2]
@@ -20,6 +21,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await expect(page.getByRole('dialog', { name: '导出 New_World 工程（.newworld）' })).toBeHidden()
   expect((await readFile(output)).subarray(0, 2).toString()).toBe('PK')
   await card.getByRole('link', { name: '查看 雾港 · 原创验收', exact: true }).click()
+  await page.locator('.version-navigation').getByRole('link', { name: '初稿', exact: true }).click()
   await expect(editor).toBeVisible()
   await editor.fill('文件关联打开时仍在编辑的正文。')
   await openThroughOS(output)

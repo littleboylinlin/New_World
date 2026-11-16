@@ -84,7 +84,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 `chapters`：`library, bookId, editionId, id, content, revision`；可选 `readingAnnotations`。
 
-`content` 是完整 Tiptap `doc` JSON，按本应用现有 `documentExtensions` 验证节点、标记、属性及树结构。支持段落、各级标题、现有行内样式、列表、引用、代码、表格及本地栅格插图。未知节点/标记/属性直接拒绝，不能在导入时通过 HTML/纯文本转换静默删除。插图继续使用模型原有的 data URL，验证 MIME、魔数和现有图片预算；这样历史内容哈希也保持不变。应用全局字体、字号、主题不是作品样式，不混入工程；本轮不添加现有编辑器尚未支持的字体属性。
+`content` 是完整 Tiptap `doc` JSON，按本应用现有 `documentExtensions` 验证节点、标记、属性及树结构。支持段落、各级标题、现有行内样式、列表、引用、代码、表格及本地栅格插图。表格对齐只允许 null/left/right/center，有序列表 type 只允许 null/1/a/A/i/I，图片宽高只允许 null、非负有限尺寸或数字加 px/%（最大 100000）。未知节点/标记/属性直接拒绝，不能在导入时通过 HTML/纯文本转换静默删除。插图继续使用模型原有的 data URL，验证 MIME、魔数和现有图片预算；这样历史内容哈希也保持不变。应用全局字体、字号、主题不是作品样式，不混入工程；本轮不添加现有编辑器尚未支持的字体属性。
 
 ### 阅读批注
 

@@ -180,6 +180,7 @@ test('损坏、路径攻击、错误版本、缺失/危险资源及异常 ZIP �
     ['version', (e) => changeJson(e, 'manifest.json', (v) => { v.schemaVersion = 999 })],
     ['type', (e) => changeJson(e, 'editions/index.json', (v) => { v[0].revision = 'bad' })],
     ['reference', (e) => changeJson(e, 'editions/index.json', (v) => { v[0].chapters[0].id = 'missing' })],
+    ['attribute-type', (e) => changeJson(e, 'chapters/index.json', (v) => { v.find((c) => c.content.content.some((n) => n.type === 'image')).content.content.find((n) => n.type === 'image').attrs.width = { unsafe: 'value' } })],
     ['nested-gzip', (e) => changeJson(e, 'revisions/blobs.json', (v) => { v[0].rawBytes = 200 * 1024 * 1024 })],
     ['script', (e) => changeJson(e, 'chapters/index.json', (v) => { v[0].content.content.push({ type: 'image', attrs: { src: 'javascript:alert(1)' } }) })],
     ['path', (e) => e.set('../evil.js', Buffer.from('alert(1)'))],
