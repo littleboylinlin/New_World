@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
 import { test, expect as baseExpect, withoutRelease } from './app-test.mjs'
 import { pixel } from './fixtures.mjs'
-import { seedProject, databaseSnapshot } from './project-fixture.mjs'
+import { seedProject, databaseSnapshot, projectFixture } from './project-fixture.mjs'
 
 const expect = baseExpect.configure({ timeout: 15_000 })
 test.setTimeout(90_000)
@@ -63,7 +63,7 @@ async function freshPage(browser) {
 for (const library of ['original', 'reference']) test(`${library} 工程跨干净书库往返，保留原字节、关系、历史及可编辑性`, async ({ page, browser }, info) => {
   await page.goto('/#/')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
-  const seeded = await page.evaluate(seedProject, { library, pixel: pixel.toString('base64') })
+  const seeded = await page.evaluate(seedProject, projectFixture(library, pixel.toString('base64')))
   const before = await page.evaluate(databaseSnapshot)
   await page.goto(`/#/${library}`)
   // Only the current work's card is exported, excluding the unrelated sentinel.
@@ -109,8 +109,15 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
     // ZIP timestamps and manifest creation time may differ; every logical record/resource is exact.
     packed.delete('manifest.json'); again.delete('manifest.json')
     expect([...again]).toEqual([...packed])
+    if (library === 'original') {
+      await clean.page.goto(`/#/original/${seeded.root}`)
+      await expect(clean.page.locator('.annotation-mark')).toContainText('雾中')
+    }
     await clean.page.goto(`/#/${library}/${seeded.root}/${seeded.firstEdition}`)
     await expect(clean.page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')
+    await clean.page.getByRole('button', { name: '阅读模式', exact: true }).click()
+    await expect(clean.page.locator('.annotation-inline')).toContainText('开篇的地点')
+    await clean.page.getByRole('button', { name: '编辑正文', exact: true }).click()
     await clean.page.locator('button.history-toggle').click()
     await expect(clean.page.locator('.revision-preview-text')).toHaveText('旧稿中的灯塔。')
     await clean.page.getByRole('button', { name: '恢复此版本', exact: true }).click()
@@ -295,7 +302,7 @@ test('现有 v7 书库升级到 v8 后完整保留数据和索引主键', async 
     }
     await new Promise((r, j) => { q.onsuccess = r; q.onerror = () => j(q.error) }); q.result.close()
   })
-  const seeded = await page.evaluate(seedProject, { library: 'reference', pixel: pixel.toString('base64') })
+  const seeded = await page.evaluate(seedProject, projectFixture('reference', pixel.toString('base64')))
   const before = await page.evaluate(databaseSnapshot)
   await page.goto('/#/')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()

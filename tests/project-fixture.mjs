@@ -1,5 +1,23 @@
+import { getSchema } from '@tiptap/core'
+import { Image } from '@tiptap/extension-image'
+import { TableKit } from '@tiptap/extension-table'
+import { StarterKit } from '@tiptap/starter-kit'
+
+// Use the editor's actual JSON serialization, including default attrs and mark ordering, for valid anchors.
+export function projectFixture(library, pixel) {
+  const content = { type: 'doc', content: [
+    { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '雾港' }] },
+    { type: 'paragraph', content: [{ type: 'text', text: '灯塔亮了。', marks: [{ type: 'bold' }, { type: 'italic' }, { type: 'underline' }, { type: 'strike' }] }] },
+    { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: '清点船只' }] }] }] },
+    { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [160] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '潮汐表' }] }] }] }] },
+    { type: 'image', attrs: { src: `data:image/png;base64,${pixel}`, alt: '港口插图', title: '夜色' } },
+    { type: 'paragraph' },
+  ] }
+  return { library, pixel, content: getSchema([StarterKit.configure({ link: false }), Image, TableKit]).nodeFromJSON(content).toJSON() }
+}
+
 // This function runs in Chromium and seeds real IndexedDB records, not an alternate project encoder.
-export async function seedProject({ library = 'original', pixel }) {
+export async function seedProject({ library = 'original', pixel, content }) {
   const db = await new Promise((resolve, reject) => { const q = indexedDB.open('new-world-library'); q.onsuccess = () => resolve(q.result); q.onerror = () => reject(q.error) })
   const id = () => crypto.randomUUID()
   const hash = (text) => {
@@ -11,18 +29,12 @@ export async function seedProject({ library = 'original', pixel }) {
   const now = 1794844800000
   const root = id(), secondOriginal = id(), firstEdition = id(), secondEdition = id(), first = id(), second = id(), copiedChapter = id(), ideaId = id(), deletedChapter = id()
   const image = new Blob([Uint8Array.from(atob(pixel), (c) => c.charCodeAt(0))], { type: 'image/png' })
-  const original = new Blob([new Uint8Array([239, 187, 191]), '# 雾中的港口\r\n\r\n原始字节，不重编码。\r\n'], { type: 'text/markdown' })
+  const originalText = '# 雾中的港口\r\n\r\n原始字节，不重编码。\r\n'
+  const original = new Blob([new Uint8Array([239, 187, 191]), originalText], { type: 'text/markdown' })
   const rootBook = { library, id: root, title: library === 'original' ? '雾港 · 原创验收' : '雾港 · 续写验收', format: 'md', originalName: '原文「雾港」.md', size: original.size, digest: await sha(original), importedAt: now, cover: image }
-  const content = { type: 'doc', content: [
-    { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: '雾港' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: '灯塔亮了。', marks: [{ type: 'bold' }, { type: 'italic' }, { type: 'underline' }, { type: 'strike' }] }] },
-    { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: '清点船只' }] }] }] },
-    { type: 'table', content: [{ type: 'tableRow', content: [{ type: 'tableCell', attrs: { colspan: 1, rowspan: 1, colwidth: [160] }, content: [{ type: 'paragraph', content: [{ type: 'text', text: '潮汐表' }] }] }] }] },
-    { type: 'image', attrs: { src: `data:image/png;base64,${pixel}`, alt: '港口插图', title: '夜色' } },
-  ] }
   const plain = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '旧稿中的灯塔。' }] }] }
   const annotation = { revision: 2, items: [{ id: id(), anchor: { version: 1, kind: 'document', from: 1, to: 3, quote: '雾港', sourceHash: await sha(new Blob([JSON.stringify(content)])) }, text: '开篇的地点', color: '#a1b2c3', inlineColor: '#123456', display: 'inline', collapsed: false, createdAt: now }] }
-  rootBook.readingAnnotations = { 'text:utf-8': { revision: 1, items: [{ ...annotation.items[0], id: id(), anchor: { version: 1, kind: 'text', from: 2, to: 4, quote: '雾中', sourceHash: await sha(original) }, display: 'mark', collapsed: true }] } }
+  rootBook.readingAnnotations = { text: { revision: 1, items: [{ ...annotation.items[0], id: id(), anchor: { version: 1, kind: 'text', from: 2, to: 4, quote: '雾中', sourceHash: await sha(new Blob([originalText])) }, display: 'mark', collapsed: true }] } }
   const edition = { library, bookId: root, id: firstEdition, name: '初稿', source: 'original', originalId: root, notes: ['保留原有导入提示'], chapters: [{ id: first, title: '第一章 · 雾港' }, { id: second, title: '第二章 · 归航' }], createdAt: now, revision: 4 }
   const editionCopy = { ...edition, id: secondEdition, name: '修订稿', source: 'copy', copiedFrom: firstEdition, chapters: [{ id: copiedChapter, title: '新的归航' }], createdAt: now + 1 }
   const raw = new TextEncoder().encode(JSON.stringify(plain))
