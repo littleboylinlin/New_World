@@ -8,6 +8,7 @@ import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { file } from '../fixtures.mjs'
+import { selectReading, createAnnotation } from '../annotation-helpers.mjs'
 import { checkNativeHeader } from '../header-layout.mjs'
 
 const { version } = JSON.parse(await readFile('package.json', 'utf-8'))
@@ -239,6 +240,41 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
   } finally {
     await stop(app)
   }
+})
+
+test('阅读批注在安装版中可选区创建、悬停固定、切换形式并在重启后保留', async ({}, testInfo) => {
+  let app = await launch(testInfo)
+  try {
+    let page = await app.firstWindow()
+    await page.locator('a[href="#/original"]').first().click()
+    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.getByRole('textbox', { name: '作品名' }).fill('桌面批注')
+    await page.getByRole('button', { name: '创建小说' }).click()
+    await editor(page).fill('桌面正文。\n第二段，English!')
+    await page.getByRole('button', { name: '阅读模式' }).click()
+    await expect(page.locator('.annotation-manager summary')).toContainText('（0）')
+    await selectReading(page, 2, 12)
+    await createAnnotation(page, '重启后仍保留的批注\n第二行', 'mark', '#78b8ed')
+    await page.locator('.annotation-mark').first().hover()
+    await expect(page.locator('.annotation-popup')).toContainText('重启后仍保留')
+    await page.locator('.annotation-popup .annotation-text').click()
+    await page.locator('.writing-header h3').hover()
+    await expect(page.locator('.annotation-popup')).toHaveAttribute('data-pinned', 'true')
+    await page.locator('.annotation-popup').getByRole('button', { name: '编辑批注' }).click()
+    const dialog = page.getByRole('dialog', { name: '编辑批注' })
+    await dialog.getByLabel('展示形式').selectOption('inline')
+    await dialog.getByRole('button', { name: '保存批注' }).click()
+    await expect(page.locator('.annotation-inline')).toContainText('第二行')
+    const url = page.url()
+    await stop(app)
+    app = await launch(testInfo)
+    page = await app.firstWindow()
+    await page.goto(url)
+    await expect(editor(page)).toHaveText('桌面正文。第二段，English!')
+    await page.getByRole('button', { name: '阅读模式' }).click()
+    await expect(page.locator('.annotation-inline')).toContainText('重启后仍保留的批注')
+    await page.screenshot({ path: testInfo.outputPath('windows-annotations.png'), fullPage: true })
+  } finally { await stop(app) }
 })
 
 test('Windows 自绘窗口按钮可最大化、还原与最小化', async ({}, testInfo) => {

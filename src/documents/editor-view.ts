@@ -21,6 +21,8 @@ import { countChapterRevisions } from './revisions'
 import { showRevisionsDialog } from './revisions-view'
 import { replaceMatches, revealMatch, SearchHighlight, searchState, setSearch } from './search'
 import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
+import { AnnotationDecorations, documentSurface } from '../annotations/surface'
+import { readingAnnotations } from '../annotations/view'
 import './editor.css'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
@@ -63,6 +65,7 @@ export async function renderEdition(
   let chapter = await readChapter(edition, edition.chapters[0].id)
   signal.throwIfAborted()
   let editor: Editor
+  let destroyAnnotations: (() => void) | undefined
   let editing = true
   let change = 0
   let saved = 0
@@ -241,6 +244,7 @@ export async function renderEdition(
   matchCount.setAttribute('role', 'status')
   const closeSearch = button(t('editor.closeFind'), 'format-button')
   searchBar.append(query, previousMatch, nextMatch, matchCount, replacement, replace, replaceAll, closeSearch)
+  const annotationTools = element('div')
   const paper = element('div', 'editor-paper')
   // The text inherits spell checking from here; the rest of the page never checks spelling.
   paper.spellcheck = appearance().spellcheck
@@ -257,7 +261,7 @@ export async function renderEdition(
   ideasCard.append(ideasSummary, ideasPanel)
   const side = element('div', 'edition-side')
   side.append(navigation, ideasCard)
-  writing.append(chapterHeader, toolsRow, searchBar, paper)
+  writing.append(chapterHeader, toolsRow, searchBar, annotationTools, paper)
   layout.append(side, writing)
   workspace.append(top, error, recover, information, layout)
   host.replaceChildren(workspace)
@@ -381,17 +385,25 @@ export async function renderEdition(
   }
 
   function applyMode() {
+    destroyAnnotations?.()
+    destroyAnnotations = undefined
     editor.setEditable(editing, false)
     editor.view.dom.setAttribute('role', editing ? 'textbox' : 'document')
     modeLabel.textContent = editing ? t('editor.readingMode') : t('editor.editText')
     mode.setAttribute('aria-pressed', String(!editing))
     toolbar.hidden = chapterActions.hidden = save.hidden = !editing
     workspace.classList.toggle('edition-reading', !editing)
+    if (!editing) destroyAnnotations = readingAnnotations(documentSurface(editor), annotationTools, {
+      kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id,
+      chapterId: chapter.id, sourceRevision: chapter.revision,
+    }, signal)
     refreshSearch()
   }
 
   function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous') {
     checkDocument(next.content)
+    destroyAnnotations?.()
+    destroyAnnotations = undefined
     editor?.destroy()
     paper.replaceChildren()
     chapter = next
@@ -400,7 +412,7 @@ export async function renderEdition(
     status.textContent = t('editor.saved')
     error.hidden = recover.hidden = true
     editor = new Editor({
-      element: paper, extensions: [...documentExtensions, SearchHighlight], content: next.content, editable: editing,
+      element: paper, extensions: [...documentExtensions, SearchHighlight, AnnotationDecorations], content: next.content, editable: editing,
       editorProps: {
         attributes: { class: 'novel-body', 'aria-label': t('editor.chapterText'), 'aria-multiline': 'true', ...(turn ? { 'data-turn': turn } : {}) },
         transformPastedHTML: (markup) => {
@@ -707,6 +719,7 @@ export async function renderEdition(
     window.clearTimeout(timer)
     window.cancelAnimationFrame(refreshFrame)
     window.removeEventListener('beforeunload', unsaved)
+    destroyAnnotations?.()
     editor?.destroy()
   }, { once: true })
   mountChapter(chapter)

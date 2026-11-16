@@ -1,4 +1,5 @@
 import { t } from './i18n'
+import { annotateTextPreviews } from './annotations/preview'
 import { canConvert, formats, textEncodings } from './formats'
 import type { TextEncoding } from './formats'
 import { readBook, storageError } from './library'
@@ -89,6 +90,7 @@ function showPaged(
     content.replaceChildren(notice(t('reader.loadingPreview')))
     try {
       const page = await read(index)
+      page.dataset.readingSection = `section:${index}`
       if (!signal.aborted) content.replaceChildren(page)
     } catch (error) {
       if (!signal.aborted) content.replaceChildren(previewProblem(error))
@@ -258,6 +260,7 @@ export async function renderReader(
     preview.setAttribute('aria-label', t('reader.filePreview'))
     preview.append(notice(t('reader.preparingFilePreview')))
     body.append(preview)
+    annotateTextPreviews(preview, book, signal)
     await showPreview(preview, book, blob, signal, (value) => { encoding = value })
   } catch (error) {
     if (!signal.aborted) content.replaceChildren(notice(storageError(error), true))

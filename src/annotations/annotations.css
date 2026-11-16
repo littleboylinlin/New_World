@@ -1,0 +1,26 @@
+.annotation-manager { padding: 10px 16px; border-bottom: 1px solid var(--hair); background: var(--sheet); font: .85rem/1.6 var(--sans); color: var(--ink); }
+.annotation-manager > summary { cursor: pointer; font-weight: 800; }
+.annotation-list { display: grid; gap: 10px; max-height: 45svh; overflow: auto; margin-top: 10px; }
+.annotation-card { min-width: 0; padding: 10px 12px; border: 1px solid var(--hair); border-inline-start: 4px solid var(--annotation-color, var(--accent)); border-radius: 7px; background: var(--sheet); color: var(--ink); font: .85rem/1.6 var(--sans); white-space: normal; text-align: start; }
+.annotation-card-head, .annotation-popup-head, .annotation-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.annotation-card-head, .annotation-popup-head { justify-content: space-between; }
+.annotation-inline { display: block; margin: 8px 0 12px; }
+.annotation-text { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
+.annotation-quote { margin: 8px 0; padding: 4px 10px; max-height: 5em; overflow: auto; border-inline-start: 2px solid var(--hair); color: var(--muted); font: .83rem/1.6 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
+.annotation-invalid { color: var(--danger-text); font-weight: 700; }
+.annotation-mark { cursor: pointer; border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.annotation-mark:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.annotation-floating { position: fixed; inset: auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); overflow: auto; font-family: var(--sans); }
+.annotation-popup { width: min(360px, calc(100vw - 20px)); padding: 10px; border: 2px solid var(--ink); border-radius: 10px; background: var(--paper); box-shadow: var(--shadow); }
+.annotation-popup .annotation-card { margin-top: 8px; }
+.annotation-popup-head .dialog-help { margin: 0; }
+.annotation-selection { padding: 3px; }
+.annotation-input { resize: vertical; min-height: 7rem; max-height: 40svh; }
+.annotation-colors { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid var(--hair); border-radius: 7px; }
+.annotation-colors legend { font-size: .85rem; font-weight: 700; }
+.annotation-colors input { width: 48px; height: 36px; padding: 2px; background: var(--sheet); border: 1px solid var(--ink); border-radius: 5px; cursor: pointer; }
+.annotation-swatch { width: 30px; height: 30px; padding: 0; border: 2px solid var(--hair); border-radius: 50%; font-size: 0; cursor: pointer; }
+.annotation-swatch[aria-pressed="true"] { border: 3px solid var(--ink); outline: 2px solid var(--sheet); outline-offset: -5px; }
+@media print { .annotation-floating, .annotation-manager, .annotation-inline { display: none !important; } }
+
+.annotation-dialog { overflow-y: auto; }
