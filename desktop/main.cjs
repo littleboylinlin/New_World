@@ -864,8 +864,11 @@ if (!app.requestSingleInstanceLock()) {
       if (theme === 'system' && mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
     })
     const local = session.defaultSession
-    local.setPermissionRequestHandler((_contents, _permission, allow) => allow(false))
-    local.setPermissionCheckHandler(() => false)
+    // Task reminders are opt-in in the app. Other renderer permissions remain denied.
+    const taskNotification = (contents, permission) => Boolean(contents) && permission === 'notifications'
+      && contents === mainWindow?.webContents && contents.getURL().split('#')[0] === appUrl.split('#')[0]
+    local.setPermissionRequestHandler((contents, permission, allow) => allow(taskNotification(contents, permission)))
+    local.setPermissionCheckHandler((contents, permission) => taskNotification(contents, permission))
     if (process.platform !== 'darwin') {
       try {
         spelling.installDictionaries(profile)

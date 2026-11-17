@@ -1,31 +1,17 @@
 import { t } from '../i18n'
 import { button, element, link, notice } from '../ui'
-import { formDialog } from '../dialogs'
+import { field, choices, taskForm } from './forms'
 import { showNotice } from '../undo'
 import { storageError } from '../library'
-import { dateKey, descendants, emptyTasks, taskMatches } from './model'
-import type { Task, TaskData, TaskProject, TaskLabel } from './model'
-import { addTask, batchTasks, completeTasks, copyTask, deleteProject, deleteSection, deleteTasks, editTask, moveTasks, readTasks, reorderProject, reorderSection, restoreTaskGroup, saveLabel, saveProject, saveSection, taskChanges, undoTaskChange } from './store'
+import { dateKey, descendants, emptyTasks, taskMatches, scheduleDay, matchesFilter, defaultTaskView, validateTaskView } from './model'
+import type { Task, TaskData, TaskProject, TaskLabel, TaskView } from './model'
+import { addTask, batchTasks, completeTasks, copyTask, deleteProject, deleteSection, deleteTasks, editTask, moveTasks, readTasks, reorderProject, reorderSection, restoreTaskGroup, saveLabel, saveProject, saveSection, saveTaskSetting, deleteFilter, reopenCompletion, taskChanges, undoTaskChange } from './store'
 import './tasks.css'
+import { taskTimeFields } from './time-view'
+import { taskVisuals } from './visuals'
+import { filterDialog } from './filter-view'
+import { reminderControls } from './reminders'
 
-export function taskForm(options: Parameters<typeof formDialog>[1], submit: Parameters<typeof formDialog>[2]) {
-  formDialog(document.body, options, submit)
-  document.body.lastElementChild?.classList.add('task-dialog')
-}
-export function field(label:string,type='text',value='') {
-  const wrapper=element('label','field-label',label)
-  const input=type==='textarea'?element('textarea','title-input'):element('input','title-input')
-  if(input instanceof HTMLInputElement)input.type=type
-  else input.rows=4
-  input.value=value;input.setAttribute('aria-label',label);wrapper.append(input)
-  return {wrapper,input}
-}
-export function choices(label:string,options:[string,string][],value='') {
-  const wrapper=element('label','field-label',label),input=element('select','title-input')
-  input.setAttribute('aria-label',label)
-  for(const [key,name] of options){const option=element('option','',name);option.value=key;input.append(option)}
-  input.value=value;wrapper.append(input);return {wrapper,input}
-}
 const labelKey=(key:string)=>t('tasks.'+key)
 const b=(key:string,action:()=>unknown,cls='button button-quiet button-small')=>{
   const node=button(labelKey(key),cls)
@@ -40,6 +26,7 @@ export function taskDialog(data:TaskData,task?:Task,patch:Partial<Task>={}) {
   const project=choices(labelKey('project'),[['',labelKey('inbox')],...data.taskProjects.filter(p=>p.deletedAt===null).map(p=>[p.id,p.icon+' '+p.name] as [string,string])],initial.projectId??'')
   const section=choices(labelKey('section'),[]), parent=choices(labelKey('parent'),[])
   const date=field(labelKey('date'),'date',initial.planDate??'')
+  const scheduling=taskTimeFields(initial,title.input,date.input)
   const updateLocation=()=>{
     const sections=[['',labelKey('unsectioned')],...data.taskSections.filter(s=>s.projectId===project.input.value&&s.deletedAt===null).map(s=>[s.id,s.name])] as [string,string][]
     section.input.replaceChildren(...sections.map(([id,name])=>{const o=element('option','',name);o.value=id;return o}));section.input.value=initial.projectId===(project.input.value||null)?initial.sectionId??'':''
@@ -54,9 +41,10 @@ export function taskDialog(data:TaskData,task?:Task,patch:Partial<Task>={}) {
     const wrapper=element('label'),box=element('input');box.type='checkbox';box.checked=initial.labelIds.includes(label.id);wrapper.append(box,document.createTextNode(label.name));labels.append(wrapper);picked.set(label.id,box)
   }
   const location=[project.wrapper,section.wrapper,parent.wrapper]
-  taskForm({title:labelKey(task?'edit':'add'),action:labelKey('save'),fields:[title.wrapper,description.wrapper,notes.wrapper,...location,priority.wrapper,date.wrapper,labels]},async()=>{
+  taskForm({title:labelKey(task?'edit':'add'),action:labelKey('save'),fields:[title.wrapper,description.wrapper,notes.wrapper,...location,priority.wrapper,date.wrapper,...scheduling.fields,labels]},async()=>{
     const value={title:title.input.value.trim(),description:description.input.value,notes:notes.input.value,priority:Number(priority.input.value),planDate:date.input.value||null,projectId:project.input.value||null,sectionId:section.input.value||null,parentId:parent.input.value||null,labelIds:[...new Set([...initial.labelIds.filter(id=>!picked.has(id)),...[...picked].filter(([,box])=>box.checked).map(([id])=>id)])]}
-    if(task)await editTask(task.id,task.revision,value);else await addTask(value.title,value)
+    const schedule=scheduling.read()
+    if(task)await editTask(task.id,task.revision,{...value,...schedule});else await addTask(value.title,{...value,...schedule})
   })
 }
 function projectDialog(data:TaskData,current?:TaskProject) {
@@ -95,7 +83,7 @@ export function renderTasks(root:HTMLElement,signal:AbortSignal) {
   heading.append(element('div','',labelKey('intro')),link('#/',t('navigation.home'),'button button-quiet'))
   const title=element('h1','',labelKey('workspace'));heading.prepend(title)
   const layout=element('div','task-layout');layout.append(nav,content);page.append(heading,layout);root.append(page)
-  let data=emptyTasks(),request=0; const selected=new Set<string>()
+  let data=emptyTasks(),request=0,calendarDate=dateKey(); const selected=new Set<string>()
   const route=()=>decodeURIComponent(location.hash.replace(/^#\/tasks\/?/,'')||'inbox')
   const query=field(labelKey('search'),'search');query.input.placeholder=labelKey('searchHint')
   query.input.addEventListener('input',()=>paintContent())
@@ -105,7 +93,8 @@ export function renderTasks(root:HTMLElement,signal:AbortSignal) {
   function paintNav() {
     nav.replaceChildren();nav.setAttribute('aria-label',labelKey('workspace'))
     for(const key of ['inbox','today','upcoming','all','completed','trash']){const item=link('#/tasks/'+key,labelKey(key),'task-nav-item');if(route()===key)item.setAttribute('aria-current','page');nav.append(item)}
-    nav.append(b('newProject',()=>projectDialog(data)),b('labels',()=>labelsDialog(data)))
+    nav.append(b('newProject',()=>projectDialog(data)),b('labels',()=>labelsDialog(data)),b('newFilter',()=>filterDialog(data)))
+    for(const filter of data.taskFilters)nav.append(link('#/tasks/filter/'+filter.id,(filter.favorite?'★ ':'')+filter.name,'task-nav-item'))
     const projects=data.taskProjects.filter(p=>p.deletedAt===null).sort((a,b)=>a.order-b.order)
     const appendProject=(p:TaskProject,depth:number)=>{const item=link('#/tasks/project/'+p.id,(p.favorite?'★ ':'')+p.icon+' '+p.name,'task-nav-item');item.style.borderInlineStartColor=p.color;item.style.paddingInlineStart=(10+Math.min(depth,8)*10)+'px';if(route()==='project/'+p.id)item.setAttribute('aria-current','page');nav.append(item);projects.filter(c=>c.parentId===p.id&&Boolean(c.archivedAt)===Boolean(p.archivedAt)).forEach(c=>appendProject(c,depth+1))}
     nav.append(element('h2','',labelKey('project')))
@@ -118,14 +107,15 @@ export function renderTasks(root:HTMLElement,signal:AbortSignal) {
     const archived=new Set(data.taskProjects.filter(p=>p.archivedAt).flatMap(p=>[...descendants(data.taskProjects,[p.id])]))
     return data.tasks.filter(task=>{
       if(!taskMatches(task,query.input.value))return false
+      if(current.startsWith('filter/')){const filter=data.taskFilters.find(f=>f.id===current.slice(7));return Boolean(filter&&matchesFilter(task,filter.group))}
       if(current==='trash')return task.deletedAt!==null
       if(task.deletedAt!==null)return false
       if(current==='completed')return task.completedAt!==null
       if(task.completedAt!==null)return false
       if(projectId)return task.projectId===projectId
       if(task.projectId&&archived.has(task.projectId))return false
-      if(current==='today')return task.planDate!==null&&task.planDate<=today
-      if(current==='upcoming')return task.planDate!==null&&task.planDate>today
+      if(current==='today')return scheduleDay(task)!==null&&scheduleDay(task)!<=today
+      if(current==='upcoming')return scheduleDay(task)!==null&&scheduleDay(task)!>today
       if(current==='inbox')return task.projectId===null
       if(current.startsWith('label/'))return task.labelIds.includes(current.slice(6))
       return true
@@ -142,7 +132,7 @@ export function renderTasks(root:HTMLElement,signal:AbortSignal) {
     const date=field(labelKey('date'),'date');date.input.addEventListener('change',()=>void batchTasks([...selected],{planDate:date.input.value||null}).catch(e=>showNotice(storageError(e))))
     controls.append(priority.wrapper,date.wrapper);return controls
   }
-  function taskRow(task:Task,depth:number,visible:Set<string>):HTMLElement {
+  function taskRow(task:Task,depth:number,visible:Set<string>,flat=false):HTMLElement {
     const row=element('li','task-row');row.dataset.taskId=task.id;row.style.setProperty('--task-depth',String(Math.min(depth,8)))
     const handle=element('span','task-drag-handle','⠿');handle.draggable=true;handle.title=labelKey('move');handle.setAttribute('aria-label',labelKey('move'));row.append(handle)
     row.addEventListener('dragstart',event=>{event.stopPropagation();event.dataTransfer?.setData('application/x-newworld-task',task.id);if(event.dataTransfer)event.dataTransfer.effectAllowed='move'})
@@ -163,24 +153,49 @@ export function renderTasks(root:HTMLElement,signal:AbortSignal) {
       const up=b('up',()=>moveTasks([task.id],task.projectId,task.sectionId,task.parentId,siblings[index-1]?.id));up.disabled=index===0
       const down=b('down',()=>moveTasks([task.id],task.projectId,task.sectionId,task.parentId,siblings[index+2]?.id));down.disabled=index===siblings.length-1;actions.append(up,down)
     }
-    const children=data.tasks.filter(c=>c.parentId===task.id&&visible.has(c.id)).sort((a,b)=>a.order-b.order)
+    if(task.planTime)meta.append(element('span','',task.planTime+' '+(task.zone??'')));if(task.deadline)meta.append(element('span','',labelKey('deadline')+': '+task.deadline));if(task.repeat)meta.append(element('span','',labelKey('repeat.'+task.repeat.frequency)))
+    const children=flat?[]:data.tasks.filter(c=>c.parentId===task.id&&visible.has(c.id)).sort((a,b)=>a.order-b.order)
     if(children.length){const toggle=b(task.expanded?'collapse':'expand',()=>editTask(task.id,task.revision,{expanded:!task.expanded}));row.append(toggle)}
     row.append(select,copy,actions)
-    if(children.length&&task.expanded){const list=element('ul','task-list');for(const child of children)list.append(taskRow(child,depth+1,visible));row.append(list)}
+    if(children.length&&(task.expanded||query.input.value)){const list=element('ul','task-list');for(const child of children)list.append(taskRow(child,depth+1,visible));row.append(list)}
     return row
   }
   function paintContent() {
+    const focused=document.activeElement,selection=(focused===query.input||focused===input)?[focused.selectionStart,focused.selectionEnd]:undefined
     const current=route(),project=current.startsWith('project/')?data.taskProjects.find(p=>p.id===current.slice(8)):undefined
     const top=element('div','task-toolbar');top.append(query.wrapper,b('add',()=>taskDialog(data,undefined,{projectId:project?.id??null})),b('undo',()=>undoTaskChange()))
     if(project){top.prepend(element('h2','',project.icon+' '+project.name));top.append(b('manageProject',()=>projectDialog(data,project)),b('up',()=>reorderProject(project.id,-1)),b('down',()=>reorderProject(project.id,1)),b('favorite',()=>saveProject({...project,favorite:!project.favorite},project.revision)),b(project.archivedAt?'unarchiveProject':'archiveProject',()=>saveProject({...project,archivedAt:project.archivedAt?null:Date.now()},project.revision)),b('manageSections',()=>sectionDialog(data,project.id)),b('deleteProject',()=>taskForm({title:labelKey('deleteProject'),action:labelKey('deleteProject'),description:labelKey('deleteProjectHint'),danger:true},async()=>{await deleteProject(project.id);location.hash='#/tasks/trash'})))}
-    const list=element('ul','task-list');list.setAttribute('aria-label',labelKey('workspace'))
-    const tasks=visibleTasks(),visible=new Set(tasks.map(t=>t.id))
+    const filter=current.startsWith('filter/')?data.taskFilters.find(f=>f.id===current.slice(7)):undefined
+    if(filter)top.append(b('editFilter',()=>filterDialog(data,filter)),b('favorite',()=>saveFilterFavorite()),b('deleteFilter',()=>deleteFilter(filter.id)))
+    function saveFilterFavorite(){if(filter)return import('./store').then(m=>m.saveFilter({...filter,favorite:!filter.favorite}))}
+    let view=project?.view??defaultTaskView()
+    if(!project){try{const stored=data.taskSettings.find(s=>s.id==='view:'+current);if(stored){const parsed=JSON.parse(stored.value);validateTaskView(parsed);view=parsed}}catch{/* A corrupt preference cannot affect task data. */}}
+    const saveView=async(patch:Partial<TaskView>)=>{const next={...view,...patch};if(project)await saveProject({...project,view:next},project.revision);else await saveTaskSetting('view:'+current,JSON.stringify(next))}
+    const mode=choices(labelKey('view'),['list','board','calendar','table'].map(m=>[m,labelKey('view.'+m)]),view.mode)
+    mode.input.onchange=()=>void saveView({mode:mode.input.value as TaskView['mode']}).catch(e=>showNotice(storageError(e)))
+    const sort=choices(labelKey('sort'),['order','priority','date','title'].map(m=>[m,labelKey('sort.'+m)]),view.sort)
+    sort.input.onchange=()=>void saveView({sort:sort.input.value as TaskView['sort']}).catch(e=>showNotice(storageError(e)));top.append(mode.wrapper,sort.wrapper)
+    if(view.mode==='calendar'){const period=choices(labelKey('calendarPeriod'),[['month',labelKey('month')],['week',labelKey('week')]],view.calendar);period.input.onchange=()=>void saveView({calendar:period.input.value as TaskView['calendar']}).catch(e=>showNotice(storageError(e)));top.append(period.wrapper)}
+    let tasks=visibleTasks()
+    if(view.sort!=='order')tasks=tasks.sort((a,b)=>view.sort==='priority'?a.priority-b.priority||a.order-b.order:view.sort==='title'?a.title.localeCompare(b.title):(scheduleDay(a)??'9999').localeCompare(scheduleDay(b)??'9999')||a.order-b.order)
+    const visible=new Set(tasks.map(t=>t.id)),list=element('ul','task-list');list.setAttribute('aria-label',labelKey('workspace'))
     for(const task of tasks.filter(t=>!t.parentId||!visible.has(t.parentId)))list.append(taskRow(task,0,visible))
-    content.replaceChildren(top,...(current!=='trash'&&current!=='completed'?[quick]:[]),...(selected.size?[bulkControls()]:[]),tasks.length?list:notice(labelKey('empty')))
+    const visual=view.mode==='list'?list:taskVisuals(data,tasks,view,project?.id??null,(task,flat)=>taskRow(task,0,visible,flat),calendarDate,date=>{calendarDate=date;paintContent()})
+    content.replaceChildren(top,...(current!=='trash'&&current!=='completed'?[quick]:[]),...(selected.size?[bulkControls()]:[]),tasks.length||view.mode!=='list'?visual:notice(labelKey('empty')))
+    content.append(reminderControls())
+    if(selection&&focused instanceof HTMLInputElement){focused.focus({preventScroll:true});focused.setSelectionRange(selection[0],selection[1])}
     if(current==='trash')for(const project of data.taskProjects.filter(p=>p.deletedAt!==null)){const row=element('div','task-management-row');row.append(element('span','',project.name),b('restoreProject',()=>restoreTaskGroup(project.deletionId!)));content.append(row)}
-    if(current==='completed'){const details=element('details');details.append(element('summary','',labelKey('history')));for(const event of data.taskCompletions.slice().sort((a,b)=>b.at-a.at))if(taskMatches({...data.tasks.find(t=>t.id===event.taskId)!,title:event.title},query.input.value))details.append(element('p','',new Date(event.at).toLocaleString()+' · '+event.title+' · '+labelKey(event.reverts?'reopen':'complete')));content.append(details)}
+    if(current==='completed'){const details=element('details');details.append(element('summary','',labelKey('history')));for(const event of data.taskCompletions.slice().sort((a,b)=>b.at-a.at))if(taskMatches({...data.tasks.find(t=>t.id===event.taskId)!,title:event.title},query.input.value)){const entry=element('p','',new Date(event.at).toLocaleString()+' · '+event.title+' · '+labelKey(event.reverts?'reopen':'complete'));if(!event.reverts&&!data.taskCompletions.some(e=>e.reverts===event.id))entry.append(b('reopenOccurrence',()=>reopenCompletion(event.id)));details.append(entry)};content.append(details)}
   }
   async function refresh(){const turn=++request;try{const next=await readTasks();if(signal.aborted||turn!==request)return;data=next;for(const id of selected)if(!data.tasks.some(t=>t.id===id))selected.delete(id);paintNav();paintContent()}catch(e){if(!signal.aborted)content.replaceChildren(notice(storageError(e),true))}}
   taskChanges.addEventListener('update',()=>void refresh(),{signal});window.addEventListener('focus',()=>void refresh(),{signal})
+  window.addEventListener('keydown',event=>{
+    if(document.querySelector('dialog[open]')||event.target instanceof HTMLInputElement||event.target instanceof HTMLTextAreaElement||event.target instanceof HTMLSelectElement||(event.target instanceof HTMLElement&&event.target.isContentEditable))return
+    if(event.key==='n'&&!event.ctrlKey&&!event.metaKey){event.preventDefault();input.focus()}
+    if(event.key==='/'){event.preventDefault();query.input.focus()}
+    if(event.key==='Escape'){selected.clear();paintContent()}
+    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();void undoTaskChange().catch(e=>showNotice(storageError(e)))}
+    if(event.altKey&&event.key==='Enter'&&selected.size){event.preventDefault();void completeTasks([...selected],true).catch(e=>showNotice(storageError(e)))}
+  },{signal})
   void refresh()
 }

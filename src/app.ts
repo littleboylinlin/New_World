@@ -1,4 +1,5 @@
 import { enqueueProject, mountProjectImports } from './projects/view'
+import { mountTaskReminders } from './tasks/reminders'
 import { t } from './i18n'
 import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
@@ -165,6 +166,7 @@ async function refreshTrashCount() {
 libraryChanges.addEventListener('update', () => { void refreshTrashCount() })
 void refreshTrashCount()
 mountAiDesktopHost()
+mountTaskReminders()
 window.newWorldDesktop?.reportReady?.()
 startAutomaticBackups()
 
