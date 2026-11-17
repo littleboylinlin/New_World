@@ -121,10 +121,29 @@ test('项目、分区、标签、今日/未来搜索、批量移动和拖动使�
   await expect(page.getByRole('button', { name: '日常任务', exact: true })).toBeVisible()
   const first = await task(page, '日常任务'),
     second = await task(page, '第二项')
+  await page.evaluate(() => {
+    window.dragLog = []
+    for (const type of ['mousedown', 'dragstart', 'dragenter', 'dragover', 'drop', 'dragend', 'mouseup'])
+      document.addEventListener(type, (e) => {
+        if (type === 'dragover' && window.dragLog.at(-1)?.startsWith('dragover')) return
+        const r = e.target.closest?.('[data-task-id]')
+        window.dragLog.push(`${type}@${Math.round(performance.now())} ${r ? r.dataset.taskId.slice(0, 6) : e.target.className || e.target.tagName}`)
+      }, { capture: true })
+    new MutationObserver(() => window.dragLog.push('mutation@' + Math.round(performance.now()))).observe(document.querySelector('.task-content'), { childList: true, subtree: true })
+  })
+  const errors = []
+  page.on('console', (m) => errors.push(m.type() + ': ' + m.text()))
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
+  const boxes = { first: await row(page, first.id).boundingBox(), second: await row(page, second.id).boundingBox(), handle: await row(page, second.id).locator('.task-drag-handle').boundingBox() }
   await row(page, second.id).locator('.task-drag-handle').dragTo(row(page, first.id))
-  await expect
-    .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
-    .toBe(true)
+  try {
+    await expect
+      .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
+      .toBe(true)
+  } catch (error) {
+    console.log('DRAG-DIAG', JSON.stringify({ ids: [first.id.slice(0, 6), second.id.slice(0, 6)], boxes, after: { first: await row(page, first.id).boundingBox(), second: await row(page, second.id).boundingBox() }, log: await page.evaluate(() => window.dragLog), errors, toast: await page.locator('.undo-toast').allTextContents(), tasks: (await taskSnapshot(page)).tasks.map((t) => [t.title, t.projectId?.slice(0, 6), t.sectionId, t.parentId, t.order]) }))
+    throw error
+  }
   await page.getByRole('button', { name: '管理分区', exact: true }).click()
   await page.getByRole('button', { name: '新建分区', exact: true }).click()
   dialog = page.getByRole('dialog', { name: '新建分区', exact: true })
