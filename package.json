@@ -3,6 +3,7 @@
   "version": "0.20.1",
   "description": "本地小说管理器与写作工作台",
   "author": "小男孩",
+  "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
   "main": "desktop/main.cjs",

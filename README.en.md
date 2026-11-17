@@ -222,3 +222,7 @@ The desktop app opens the same production build with Electron. On Windows, `npm 
 To publish a new version, specify the version and `windows`/`macos` target platforms explicitly in `release.json`; Mac-only releases do not upload a Windows installer. Bump `package.json` and the lockfile in the same PR and add `docs/releases/v<version>.md`. After merging to `main`, CI creates the official Release once Web, Windows, and both Mac chip checks pass, uploading installers and SHA-256 checksum files. You can also run Checks manually on `main` with a matching stable version tag to retry publishing. The artifact manifest is verified before publishing, rejecting files that do not match the target platforms.
 
 Interface copy lives in `locales/zh-CN.json` and `locales/en.json`. The build checks that keys and interpolation parameters match, then generates standalone language packs and a verification manifest. Desktop installers include the manifest but not the packs; the Release provides both language files, and the installer and app fetch only the selected language. After changing copy, update both source files and ship them with the next release.
+
+## License
+
+New World is released under the [GNU General Public License v3.0 or later (GPL-3.0-or-later)](LICENSE). You are free to use, modify, and distribute it; if you distribute a modified version, you must make its source code available under the same license. Third-party dependencies and fonts keep their own licenses.
