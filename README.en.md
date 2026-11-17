@@ -2,7 +2,7 @@
 
 [简体中文](README.md)
 
-New World v0.18.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.18.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
 ## Native projects
 
@@ -10,15 +10,15 @@ Export a complete `.newworld` project from a work's shelf menu; import from the 
 
 Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [format specification](docs/newworld-format.md) and [Schema 1 sample](docs/examples/雾港.newworld). The local library has used IndexedDB v8 since v0.18.0; older v7 apps cannot directly open the same upgraded library.
 
-## Work information and Schema 2 in development (unreleased)
+## Work information and Schema 2
 
-Current main adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX and PDF exports offer three optional work-information switches, all off by default, using the existing converters.
+v0.18.1 adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX and PDF exports offer three optional work-information switches, all off by default, using the existing converters.
 
-Current source reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Released v0.18.0 only reads Schema 1 and cannot read Schema 2. The database remains v8, without rewriting existing records. See the [compatibility rules](docs/newworld-format.md) and [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld). This work creates no Release; the stable download remains v0.18.0 below.
+v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. The database remains v8, without rewriting existing records. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.18.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.18.0). Adds the native `.newworld` project format to migrate a work's editions, chapters, rich text, annotations, sources, covers, related ideas and history. Imports are validated and previewed, with skip and independent-copy options, separately from full-library ZIP backup recovery. Desktop file associations open the import flow. Existing reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.18.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.18.1). This release adds work information and Schema 2 extensions while accepting Schema 1 projects; older v0.18.0 cannot read Schema 2. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -48,7 +48,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.18.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.18.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 

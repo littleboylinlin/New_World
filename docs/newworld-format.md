@@ -2,7 +2,7 @@
 
 状态：本仓库原生工程交换格式，扩展名 `.newworld`，MIME `application/vnd.newworld.project+zip`。
 
-工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1；本次开发中的写入器使用 Schema 2，读取器显式支持 Schema 1 和 2。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
+工程 Schema 与应用版本 `appVersion` 独立。v0.18.0 使用 Schema 1；v0.18.1 的写入器使用 Schema 2，读取器显式支持 Schema 1 和 2。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
 
 ## 1. 容器与文件布局
 
