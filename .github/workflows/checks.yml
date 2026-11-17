@@ -35,6 +35,7 @@ jobs:
             test-results/**/home-*.png
             test-results/**/editor-*.png
             test-results/**/export-*
+            test-results/**/attachments/*typing-performance*
           retention-days: 7
 
   windows-tests:
@@ -68,6 +69,7 @@ jobs:
           path: |
             test-results/desktop/**/windows-*.png
             test-results/desktop/**/error-context.md
+            test-results/desktop/**/attachments/*typing-performance*
           retention-days: 7
       - uses: actions/upload-artifact@v6
         if: github.event_name != 'pull_request' && steps.plan.outputs.windows == 'true'
@@ -114,6 +116,7 @@ jobs:
           path: |
             test-results/macos/**/macos-*.png
             test-results/macos/**/error-context.md
+            test-results/macos/**/attachments/*typing-performance*
           retention-days: 7
       - uses: actions/upload-artifact@v6
         if: github.event_name != 'pull_request' && steps.plan.outputs.macos == 'true'

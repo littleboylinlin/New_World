@@ -27,6 +27,7 @@ import './editor.css'
 import { createLinkedTask, takeTaskJump } from '../tasks/links'
 import { hashDocumentContent } from '../confirm-state'
 import { showNotice } from '../undo'
+import { writingMotion } from './writing-motion'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
 
@@ -68,6 +69,7 @@ export async function renderEdition(
   let chapter = await readChapter(edition, edition.chapters[0].id)
   signal.throwIfAborted()
   let editor!: Editor
+  let caret: ReturnType<typeof writingMotion> | undefined
   let destroyAnnotations: (() => void) | undefined
   let editing = true
   let change = 0
@@ -76,7 +78,10 @@ export async function renderEdition(
   let pending: Promise<boolean> | undefined
   let selectionRequest = 0
   let activeMatch = 0
-  let refreshFrame = 0
+  let contentsTimer: number | undefined
+  let formatFrame = 0
+  let currentWords = 0
+  let countedChange = 0
   // Word counts of the other chapters are read once. The open chapter is counted as it changes.
   let words: Map<string, number> | undefined
   const wordLabels = new Map<string, HTMLElement>()
@@ -281,7 +286,22 @@ export async function renderEdition(
 
   function scheduleSave() {
     window.clearTimeout(timer)
-    timer = window.setTimeout(() => { void flush() }, 700)
+    if (!editor.view.composing) timer = window.setTimeout(() => { void flush(false) }, 500)
+  }
+
+  function scheduleContents() {
+    window.clearTimeout(contentsTimer)
+    if (!editor.view.composing) contentsTimer = window.setTimeout(refreshContents, 400)
+  }
+
+  function scheduleFormat() {
+    if (signal.aborted || editor.isDestroyed) return
+    if (!formatFrame) formatFrame = requestAnimationFrame(() => {
+      formatFrame = 0
+      if (signal.aborted || editor.isDestroyed) return
+      refreshFormat()
+      refreshSearch()
+    })
   }
 
   function unsaved(event: BeforeUnloadEvent) {
@@ -289,13 +309,18 @@ export async function renderEdition(
     event.returnValue = ''
   }
 
-  async function flush() {
+  async function flush(immediate = true) {
     window.clearTimeout(timer)
     while (change !== saved || pending) {
       if (!pending) {
         if (editor.view.composing) {
           status.textContent = t('editor.saveAfterTypingFinishes')
           return false
+        }
+        // A chapter can be saved and switched before the deferred count has run.
+        if (immediate && countedChange !== change) {
+          window.clearTimeout(contentsTimer)
+          refreshContents()
         }
         const snapshot = editor.getJSON() as DocumentContent
         const checkpoint = change
@@ -310,6 +335,8 @@ export async function renderEdition(
         }, (cause) => { report(cause, true); return false }).finally(() => { pending = undefined })
       }
       if (!await pending) return false
+      // Background saves never pull another full snapshot into a new typing burst.
+      if (!immediate && change !== saved) { scheduleSave(); return false }
     }
     return true
   }
@@ -332,7 +359,10 @@ export async function renderEdition(
   }
 
   function refreshContents() {
+    if (editor.view.composing) return
     const current = liveCount()
+    currentWords = current
+    countedChange = change
     count.textContent = t('editor.chapterCharacters', [number(current)])
     words?.set(chapter.id, current)
     refreshWords(false)
@@ -346,6 +376,7 @@ export async function renderEdition(
         item.append(jump)
         links.append(item)
       }
+      return !node.isTextblock
     })
     if (links.childNodes.length) outline.append(element('strong', '', t('editor.sectionsInThisChapter')), links)
     refreshSearch()
@@ -399,6 +430,7 @@ export async function renderEdition(
     mode.setAttribute('aria-pressed', String(!editing))
     toolbar.hidden = chapterActions.hidden = save.hidden = !editing
     workspace.classList.toggle('edition-reading', !editing)
+    caret?.refresh()
     if (!editing) destroyAnnotations = readingAnnotations(documentSurface(editor), annotationTools, {
       kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id,
       chapterId: chapter.id, sourceRevision: chapter.revision,
@@ -410,6 +442,11 @@ export async function renderEdition(
     checkDocument(next.content)
     destroyAnnotations?.()
     destroyAnnotations = undefined
+    caret?.destroy()
+    caret = undefined
+    window.clearTimeout(contentsTimer)
+    window.cancelAnimationFrame(formatFrame)
+    formatFrame = 0
     editor?.destroy()
     paper.replaceChildren()
     chapter = next
@@ -420,6 +457,7 @@ export async function renderEdition(
     editor = new Editor({
       element: paper, extensions: [...documentExtensions, SearchHighlight, AnnotationDecorations], content: next.content, editable: editing,
       editorProps: {
+        handleScrollToSelection: () => caret?.handlesScroll() ?? false,
         attributes: { class: 'novel-body', 'aria-label': t('editor.chapterText'), 'aria-multiline': 'true', ...(turn ? { 'data-turn': turn } : {}) },
         transformPastedHTML: (markup) => {
           if (markup.length <= 36 * 1024 * 1024) return cleanMarkup(inertMarkup(markup))
@@ -433,19 +471,27 @@ export async function renderEdition(
       },
       onUpdate: () => {
         change++
-        status.textContent = t('editor.unsaved')
+        const unsavedLabel = t('editor.unsaved')
+        if (status.textContent !== unsavedLabel) status.textContent = unsavedLabel
         window.addEventListener('beforeunload', unsaved)
         scheduleSave()
-        window.cancelAnimationFrame(refreshFrame)
-        refreshFrame = window.requestAnimationFrame(refreshContents)
+        scheduleContents()
       },
     })
-    editor.on('transaction', refreshFormat)
-    editor.view.dom.addEventListener('compositionend', () => { if (change !== saved) scheduleSave() })
+    editor.on('transaction', scheduleFormat)
+    editor.view.dom.addEventListener('compositionstart', () => {
+      window.clearTimeout(timer)
+      window.clearTimeout(contentsTimer)
+    })
+    editor.view.dom.addEventListener('compositionend', () => {
+      if (change !== saved) { scheduleSave(); scheduleContents() }
+    })
+    caret = writingMotion(editor, paper)
     setSearch(editor, query.value)
     applyMode()
     refreshChapters()
     refreshContents()
+    refreshFormat()
     void refreshHistoryCount()
   }
 
@@ -731,9 +777,11 @@ export async function renderEdition(
     stopFollowing()
     setFocus(false)
     window.clearTimeout(timer)
-    window.cancelAnimationFrame(refreshFrame)
+    window.clearTimeout(contentsTimer)
+    window.cancelAnimationFrame(formatFrame)
     window.removeEventListener('beforeunload', unsaved)
     destroyAnnotations?.()
+    caret?.destroy()
     editor?.destroy()
   }, { once: true })
   mountChapter(chapter)
@@ -742,7 +790,7 @@ export async function renderEdition(
   if(jump?.chapterId){await switchChapter(jump.chapterId);if(!signal.aborted&&chapter.id===jump.chapterId&&jump.position){if(hashDocumentContent(chapter.content)===jump.position.contentHash&&jump.position.to<=editor.state.doc.content.size)editor.commands.setTextSelection({from:jump.position.from,to:jump.position.to});else showNotice(t('tasks.stalePosition'))}}
   void chapterWordCounts(edition).then((stored) => {
     if (signal.aborted) return
-    stored.set(chapter.id, liveCount())
+    stored.set(chapter.id, currentWords)
     words = stored
     refreshWords()
   }, () => {})

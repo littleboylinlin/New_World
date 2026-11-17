@@ -27,6 +27,8 @@ export interface Appearance {
   width: TextWidth
   /** Underline misspelt English words while writing. */
   spellcheck: boolean
+  /** Keep the writing line near the middle of the editor viewport. */
+  typewriter: boolean
 }
 
 export const minSize = 14
@@ -36,7 +38,7 @@ const key = 'new-world:appearance'
 const changed = 'new-world:appearance-change'
 export const defaults: Appearance = {
   theme: 'system', latin: 'times', cjk: 'auto', size: null,
-  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false,
+  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false, typewriter: false,
 }
 
 /** English names are the fonts' own names and are not translated. */
@@ -62,6 +64,7 @@ function normalize(value: unknown): Appearance {
     indent: record.indent === true,
     width: pick(record.width, textWidths, defaults.width),
     spellcheck: record.spellcheck === true,
+    typewriter: record.typewriter === true,
   }
 }
 

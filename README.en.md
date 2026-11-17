@@ -2,7 +2,15 @@
 
 [简体中文](README.md)
 
-New World v0.19.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.20.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+
+## Smooth writing (v0.20.1)
+
+The editor caret follows the current line's text size and theme. Typing on the same line uses smooth frame-by-frame following; clicks, navigation, undo/redo and line changes position it immediately. It hides for a selection or loss of focus. During IME composition it follows the native input position without changing the platform's selection. Window zoom, scrolling, fonts, images and table layout changes resynchronize its position.
+
+“Settings → Appearance → Typewriter mode” is off by default. When enabled, typing and newlines keep the current line near the middle of the editor. Scrolling to browse pauses following until you type again. Caret transitions and centering respect the system's reduced-motion preference.
+
+Word counts, the chapter outline and search results update after about 400ms without typing; autosave waits about 500ms. Manual saves and leaving a chapter still save immediately. Continuous typing no longer repeatedly scans the whole chapter or serializes save snapshots, so displayed counts may lag slightly. Database v9, project Schema 3 and full-library backup format 2 remain as in v0.19.0. See the [v0.20.1 release notes](docs/releases/v0.20.1.md).
 
 ## Local task workspace (v0.19.0)
 
@@ -20,11 +28,11 @@ Editing continues in the local library. Export again to save an updated project 
 
 v0.18.1 adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX and PDF exports offer three optional work-information switches, all off by default, using the existing converters.
 
-v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; see above for the current v0.19.0 database and project compatibility. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
+v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; the current release keeps the v0.19.0 database and project formats; see above for compatibility. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.19.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.19.0). It ships the local task workspace and Schema 3 projects while accepting Schema 1/2. Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.20.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.20.1). It fixes IME caret following and multi-character jumps with frame-by-frame smoothing, retaining typewriter mode, the local task workspace and Schema 3 projects while accepting Schema 1/2. Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -54,7 +62,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.19.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.20.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -189,7 +197,7 @@ Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, i
 
 ## Saving and privacy
 
-Text is auto-saved about 700 ms after changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
+Text is auto-saved after about 500 ms without changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
 
 The current database is IndexedDB v9 (v0.19.0 adds task stores). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
 
@@ -214,3 +222,7 @@ The desktop app opens the same production build with Electron. On Windows, `npm 
 To publish a new version, specify the version and `windows`/`macos` target platforms explicitly in `release.json`; Mac-only releases do not upload a Windows installer. Bump `package.json` and the lockfile in the same PR and add `docs/releases/v<version>.md`. After merging to `main`, CI creates the official Release once Web, Windows, and both Mac chip checks pass, uploading installers and SHA-256 checksum files. You can also run Checks manually on `main` with a matching stable version tag to retry publishing. The artifact manifest is verified before publishing, rejecting files that do not match the target platforms.
 
 Interface copy lives in `locales/zh-CN.json` and `locales/en.json`. The build checks that keys and interpolation parameters match, then generates standalone language packs and a verification manifest. Desktop installers include the manifest but not the packs; the Release provides both language files, and the installer and app fetch only the selected language. After changing copy, update both source files and ship them with the next release.
+
+## License
+
+New World is released under the [GNU General Public License v3.0 or later (GPL-3.0-or-later)](LICENSE). You are free to use, modify, and distribute it; if you distribute a modified version, you must make its source code available under the same license. Third-party dependencies and fonts keep their own licenses.
