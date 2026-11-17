@@ -1,3 +1,4 @@
+import { workTaskControls } from './tasks/links'
 import { t } from './i18n'
 import { workInformationPanel } from './work-information-view'
 import { annotateTextPreviews } from './annotations/preview'
@@ -185,6 +186,7 @@ export async function renderReader(
     title.append(element('p', 'eyebrow', reference ? (editionId ? t('reader.continuationDraft') : t('reader.readSource')) : t('navigation.workDetails')), element('h1', '', book.title))
     if (!reference || !editionId) title.append(fileDetails(book))
     heading.append(title)
+    if(!book.workId)heading.append(workTaskControls(book))
     if (linkedOriginal?.blob) {
       const original = linkedOriginal
       const download = button(t('reader.downloadOriginalFile'), 'button button-primary', 'download')

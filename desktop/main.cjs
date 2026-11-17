@@ -14,6 +14,7 @@ const { createAiStore } = require('./ai-store.cjs')
 const { createAiBridge } = require('./ai-bridge.cjs')
 const {
   isTrustedMainRenderer,
+  isTrustedTaskNotification,
   isTrustedAppRenderer,
   shouldCancelClientConfirmations,
 } = require('./ipc-guard.cjs')
@@ -864,8 +865,10 @@ if (!app.requestSingleInstanceLock()) {
       if (theme === 'system' && mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(windowBackground())
     })
     const local = session.defaultSession
-    local.setPermissionRequestHandler((_contents, _permission, allow) => allow(false))
-    local.setPermissionCheckHandler(() => false)
+    // Task reminders are opt-in in the app. Other renderer permissions remain denied.
+    const taskNotification = (contents, permission, details) => isTrustedTaskNotification(contents, permission, details, { appUrl, mainWindow })
+    local.setPermissionRequestHandler((contents, permission, allow, details) => allow(taskNotification(contents, permission, details)))
+    local.setPermissionCheckHandler((contents, permission, _origin, details) => taskNotification(contents, permission, details))
     if (process.platform !== 'darwin') {
       try {
         spelling.installDictionaries(profile)

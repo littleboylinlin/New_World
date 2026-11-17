@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
@@ -106,7 +106,7 @@ test('Schema 1 不补默认信息，编辑保留未知字段与未改动的 CRLF
   expect((await page.evaluate(databaseSnapshot)).books[0].metadata).toEqual({ ...book.metadata, future: { concurrent: true } })
 })
 
-for (const library of ['original', 'reference']) test(`${library} Schema 2 完整往返及副本保留未知元数据，全部原文/历史/批注数据不变`, async ({ page, browser }, info) => {
+for (const library of ['original', 'reference']) test(`${library} Schema 3 完整往返及副本保留未知元数据，全部原文/历史/批注数据不变`, async ({ page, browser }, info) => {
   await page.goto('/#/'); await expect(page.getByRole('button', { name: importName })).toBeVisible()
   const seeded = await page.evaluate(seedProject, projectFixture(library, pixel.toString('base64')))
   const metadata = { ...values, language: 'zh-Hans', future: { id: seeded.root, bookId: seeded.first, code: '<script>window.pwned=true</script>', nested: [null, true, 5] } }
@@ -116,8 +116,8 @@ for (const library of ['original', 'reference']) test(`${library} Schema 2 完�
   await page.goto(`/#/${library}`)
   const path = info.outputPath('带作品信息.newworld'); await exportProject(page, path)
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
-  const entries = await unpack(path); expect(JSON.parse(Buffer.from(entries.get('manifest.json')).toString()).schemaVersion).toBe(2)
-  if (process.env.UPDATE_METADATA_EXAMPLE === '1' && library === 'original') { await mkdir('docs/examples', { recursive: true }); await writeFile('docs/examples/雾港-作品信息.newworld', await readFile(path)) }
+  const entries = await unpack(path); expect(JSON.parse(Buffer.from(entries.get('manifest.json')).toString()).schemaVersion).toBe(3)
+  // Published Schema 2 sample stays immutable; Schema 3 task samples have a separate generator test.
   const context = await withoutRelease(await browser.newContext({ locale: 'zh-CN' }))
   const clean = await context.newPage(); await clean.addInitScript(() => { window.showSaveFilePicker = undefined })
   try {
@@ -153,7 +153,7 @@ test('不安全/超限元数据、未知结构字段及未来 Schema 明确拒�
     ['array', b => { b[0].metadata = { future: Array(257).fill(0) } }],
     ['structural', b => { b[0].unrecognizedStructuralField = { safeText: 'semantics unknown' } }],
     ['schema1-new-field', (b,m) => { b[0].metadata = values; m.schemaVersion = 1 }],
-    ['future', (b,m) => { m.schemaVersion = 3 }],
+    ['future', (b,m) => { m.schemaVersion = 999 }],
   ]
   for (const [name, mutate] of cases) await test.step(name, async () => {
     const path = info.outputPath(name + '.newworld')

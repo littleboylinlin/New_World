@@ -4,6 +4,12 @@
 
 New World v0.18.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
+## In development: local task workspace
+
+The repository now includes an offline task workspace; this work has no new release or app version. The published download remains v0.18.1. Projects, subtasks, filters, recurrence, reminders while running, four shared views, comments, attachments, templates, completion statistics and structured JSON transfer integrate with work/chapter links and manual idea conversion.
+
+Development builds use IndexedDB v9 and write `.newworld` Schema 3 while reading Schema 1/2/3. Older apps cannot read Schema 3 or open the upgraded database. Novel projects include only confirmed work-owned tasks; personal tasks and device preferences are excluded. See [task behavior, ownership, tests and limits](docs/tasks.md) and the [Schema 3 sample](docs/examples/雾港-创作任务.newworld). No reminders are scheduled after the application exits.
+
 ## Native projects
 
 Export a complete `.newworld` project from a work's shelf menu; import from the home or library page. Projects retain editions, sources, rich text, annotations, covers and related history. Imports are validated and previewed before a single atomic library transaction; conflicts can be skipped or imported as independent copies. Desktop file associations open the import flow.

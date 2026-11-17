@@ -1,8 +1,9 @@
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { runningVersion } from '../updates'
-import { limits, projectFormat, projectSchemaVersion, readableProjectSchemas, projectStores, ProjectError, recordPaths, requireValid as ok } from './model'
+import { limits, projectFormat, projectSchemaVersion, readableProjectSchemas, projectStores, legacyProjectStores, projectTaskStores, ProjectError, recordPaths, requireValid as ok } from './model'
 import { MetadataError, validateWorkMetadata } from '../work-metadata'
+import { TaskDataError } from '../tasks/model'
 import type { ProjectContents, ProjectData, ProjectManifest, ProjectRoot, Resource } from './model'
 import { detachedIds, fields, safeJson, sha256, sha256Pattern, validateData, validatePayloads } from './validate'
 
@@ -105,10 +106,11 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
     const manifest = await json(await read('manifest.json', limits.json)) as ProjectManifest
     fields(manifest, 'format schemaVersion appVersion createdAt root records detached resources')
     ok(manifest.format === projectFormat && Number.isSafeInteger(manifest.schemaVersion), 'format identifier')
-    if (!readableProjectSchemas.includes(manifest.schemaVersion as 1 | 2)) throw new ProjectError('version')
+    if (!readableProjectSchemas.includes(manifest.schemaVersion as 1 | 2 | 3)) throw new ProjectError('version')
     ok(typeof manifest.appVersion === 'string' && Number.isSafeInteger(manifest.createdAt) && manifest.createdAt >= 0, 'manifest metadata')
     fields(manifest.root, 'library id')
-    fields(manifest.records, projectStores.join(' '))
+    const stores=manifest.schemaVersion>=3?projectStores:legacyProjectStores
+    fields(manifest.records, stores.join(' '))
     ok(Array.isArray(manifest.resources), 'resource inventory')
     const resources = new Map<string, Resource>()
     for (const r of manifest.resources) {
@@ -148,17 +150,19 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
       return value
     }
     const data = {} as ProjectData
-    for (const name of projectStores) {
+    for (const name of stores) {
       const path = manifest.records[name]
       ok(path === recordPaths[name] && resources.get(path)?.kind === 'json', 'record path')
       used.add(path)
       ;(data[name] as unknown) = await decode(await json(decoded.get(path)!))
     }
+    if(manifest.schemaVersion<3){fields(manifest.detached,'books editions chapters ideas');manifest.detached.tasks=[];for(const name of projectTaskStores)(data[name] as unknown[])=[]}
     ok(used.size === resources.size, 'unreferenced resource')
     validateData(data, manifest.root, manifest.detached, manifest.schemaVersion)
     await validatePayloads(data)
     return { manifest, data }
   } catch (error) {
+    if(error instanceof TaskDataError)throw new ProjectError('unsupported',error.detail)
     if (error instanceof MetadataError) throw new ProjectError('metadata', error.field)
     if (error instanceof ProjectError) throw error
     throw new ProjectError('format')

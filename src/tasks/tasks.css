@@ -1,0 +1,198 @@
+.task-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 22px;
+}
+.task-workspace .page-heading {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.task-workspace .page-heading > div {
+  flex: 1;
+  min-width: 180px;
+}
+.task-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.task-nav h2 {
+  margin-top: 12px;
+  font-size: 1rem;
+}
+.task-nav-item {
+  display: block;
+  padding: 8px 10px;
+  border-inline-start: 4px solid var(--hair);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.task-nav-item[aria-current] {
+  background: var(--tint);
+  font-weight: 800;
+  border-color: var(--accent);
+}
+.task-content {
+  min-width: 0;
+}
+.task-toolbar,
+.task-bulk,
+.task-actions,
+.task-quick,
+.task-management-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.task-toolbar > .field-label {
+  flex: 1;
+  min-width: 170px;
+}
+.task-quick input {
+  flex: 1;
+  min-width: 160px;
+}
+.task-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.task-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--hair);
+  border-radius: 9px;
+  background: var(--sheet);
+  min-width: 0;
+}
+.task-row > .task-list {
+  flex-basis: 100%;
+  padding-inline-start: min(16px, 2vw);
+}
+.task-copy {
+  flex: 1;
+  min-width: 120px;
+  overflow-wrap: anywhere;
+}
+.task-title {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.task-actions {
+  margin: 0;
+}
+.task-actions .button {
+  font-size: 0.75rem;
+  min-height: 30px;
+  padding: 3px 7px;
+}
+.task-overdue {
+  color: var(--danger-text);
+  font-weight: 700;
+}
+.task-label-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.task-management {
+  display: grid;
+  gap: 10px;
+}
+.task-management-row > span {
+  flex: 1;
+  min-width: 120px;
+  overflow-wrap: anywhere;
+}
+.task-dialog {
+  overflow: auto;
+}
+.task-dialog .field-label {
+  margin-block: 9px;
+}
+.task-board {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+}
+.task-board-column {
+  min-width: 280px;
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--hair);
+  border-radius: 9px;
+}
+.task-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.task-table th,
+.task-table td {
+  border: 1px solid var(--hair);
+  padding: 8px;
+  text-align: start;
+  vertical-align: top;
+}
+.task-visuals {
+  overflow-x: auto;
+}
+.task-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  min-width: 1050px;
+}
+.task-calendar-day {
+  padding: 6px;
+  min-height: 110px;
+  border: 1px solid var(--hair);
+}
+.task-calendar-day h3 {
+  font-size: 0.8rem;
+}
+.task-calendar-day.is-today {
+  background: var(--tint);
+}
+.task-calendar-day .task-actions {
+  flex-basis: 100%;
+}
+.task-filter-group {
+  padding: 12px;
+  margin: 10px 0;
+  border: 1px solid var(--hair);
+}
+.task-filter-rule {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.task-reminder-controls {
+  margin-block: 24px;
+}
+@media (max-width: 780px) {
+  .task-layout {
+    grid-template-columns: 1fr;
+  }
+  .task-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .task-nav h2 {
+    width: 100%;
+  }
+  .task-actions {
+    flex-basis: 100%;
+  }
+}

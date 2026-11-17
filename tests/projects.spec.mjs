@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, open } from 'node:fs/promises'
+import { readFile, writeFile, open } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
@@ -78,15 +78,13 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   const packed = await unpack(path)
   const manifest = JSON.parse(Buffer.from(packed.get('manifest.json')).toString())
-  expect(manifest.schemaVersion).toBe(2)
+  expect(manifest.schemaVersion).toBe(3)
   expect(manifest.appVersion).not.toBe(manifest.schemaVersion)
   expect(manifest.detached.editions).toContain(seeded.missingEdition)
   for (const r of manifest.resources) expect(createHash('sha256').update(packed.get(r.path)).digest('hex')).toBe(r.sha256)
   const strings = [...packed.values()].map((b) => Buffer.from(b).toString()).join('')
   expect(strings).not.toContain('无关作品'); expect(strings).not.toContain('无关全局灵感'); expect(strings).not.toContain('should-not-export')
-  if (process.env.UPDATE_PROJECT_EXAMPLE === '1' && library === 'original') {
-    await mkdir('docs/examples', { recursive: true }); await writeFile('docs/examples/雾港.newworld', await readFile(path))
-  }
+  // The published Schema 1 fixture is immutable; new task samples use their own generator.
   const clean = await freshPage(browser)
   try {
     await choose(clean.page, path)
@@ -292,7 +290,7 @@ test('ZIP 重复路径、异常压缩率和超过 10000 条目被拒绝', async 
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
 })
 
-test('现有 v7 书库升级到 v8 后完整保留数据和索引主键', async ({ page }) => {
+test('现有 v7 书库升级到 v9 后完整保留数据和索引主键', async ({ page }) => {
   await page.goto('/appearance.js')
   await page.evaluate(async () => {
     const q = indexedDB.open('new-world-library', 7)
@@ -323,7 +321,8 @@ test('现有 v7 书库升级到 v8 后完整保留数据和索引主键', async 
     const books = db.transaction('books').objectStore('books')
     const result = { version: db.version, unique: books.index('byLibraryDigest').unique, keyPath: books.keyPath }; db.close(); return result
   })
-  expect(version).toEqual({ version: 8, unique: false, keyPath: ['library', 'id'] })
+  expect(version).toEqual({ version: 9, unique: false, keyPath: ['library', 'id'] })
+  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments']) before[name] = []
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')

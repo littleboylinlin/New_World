@@ -54,8 +54,8 @@ export function offerActionUndo(text: string, revert: () => Promise<unknown>) {
 }
 
 /** Archiving can be undone from the same notice as deleting. */
-export function offerArchiveUndo(title: string, unarchive: () => Promise<unknown>) {
-  showUndo(t('undo.archived', [shortTitle(title)]), async () => { await unarchive() })
+export function offerArchiveUndo(title: string, unarchive: () => Promise<unknown>, detail = '') {
+  showUndo(t('undo.archived', [shortTitle(title)])+(detail?' '+detail:''), async () => { await unarchive() })
 }
 
 function showUndo(text: string, revert: () => Promise<void>) {

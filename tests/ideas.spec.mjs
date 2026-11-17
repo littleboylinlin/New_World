@@ -44,7 +44,7 @@ test('灵感页可以记下、标记已用、关联作品、删除和撤销', as
   const first = ideaRow(page, '灯塔守望者其实是鸟')
   await first.getByRole('button', { name: '灵感操作' }).click()
   const menu = page.getByRole('menu', { name: '灵感操作' })
-  await expect(menu.getByRole('menuitem')).toHaveText(['标记已用', '关联作品…', '复制', '删除'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['标记已用', '关联作品…', '将灵感转换为任务', '复制', '删除'])
   await menu.getByRole('menuitem', { name: '标记已用' }).click()
   await expect(first).toContainText('已用')
   await expect(ideaList(page).locator('.idea-text').last()).toHaveText('灯塔守望者其实是鸟')

@@ -28,6 +28,13 @@ function isTrustedAppRenderer(event, { appUrl, mainWindow, captureWindow }) {
   return isTrustedMainRenderer(event, { appUrl, mainWindow }) || isTrustedCaptureRenderer(event, { appUrl, captureWindow })
 }
 
+function isTrustedTaskNotification(contents, permission, details, { appUrl, mainWindow }) {
+  return permission === 'notifications' && isWindowWebContents({ sender: contents }, mainWindow)
+    && details?.isMainFrame === true && typeof details.requestingUrl === 'string'
+    && details.requestingUrl.split('#')[0] === appUrl
+    && contents.getURL().split('#')[0] === appUrl
+}
+
 function shouldCancelClientConfirmations(previousClient, updatedClient) {
   if (!updatedClient || !updatedClient.enabled || !updatedClient.permissions?.delete) return true
   if (!previousClient) return false
@@ -47,5 +54,6 @@ module.exports = {
   isTrustedMainRenderer,
   isTrustedCaptureRenderer,
   isTrustedAppRenderer,
+  isTrustedTaskNotification,
   shouldCancelClientConfirmations,
 }

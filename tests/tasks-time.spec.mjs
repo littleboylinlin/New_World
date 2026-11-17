@@ -1,0 +1,285 @@
+import { test, expect } from './app-test.mjs'
+test.setTimeout(90000)
+async function state(page) {
+  return page.evaluate(async () => {
+    const db = await new Promise((r) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => r(q.result)
+    })
+    const names = [...db.objectStoreNames].filter((n) => n.startsWith('task')),
+      tx = db.transaction(names)
+    const values = await Promise.all(
+      names.map(
+        (n) =>
+          new Promise((r) => {
+            const q = tx.objectStore(n).getAll()
+            q.onsuccess = () => r([n, q.result])
+          }),
+      ),
+    )
+    db.close()
+    return Object.fromEntries(values)
+  })
+}
+const save = (dialog) => dialog.getByRole('button', { name: '保存任务', exact: true }).click()
+async function view(page, mode) {
+  await page.getByLabel('任务视图', { exact: true }).selectOption(mode)
+  await expect(page.locator('.task-visuals.task-' + mode)).toBeVisible()
+}
+test('自然语言必须确认，重复完成保留 ID 和历史，日期校验失败不写入', async ({ page }) => {
+  await page.goto('/#/tasks')
+  await page.locator('.task-toolbar').getByRole('button', { name: '添加任务', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
+  await dialog.getByLabel('任务标题', { exact: true }).fill('明天下午三点写作')
+  await dialog.getByRole('button', { name: '识别标题中的日期', exact: true }).click()
+  await expect(dialog.getByLabel('计划日期', { exact: true })).toHaveValue('')
+  await dialog.getByRole('button', { name: '采用识别结果', exact: true }).click()
+  await expect(dialog.getByLabel('计划时间', { exact: true })).toHaveValue('15:00')
+  await dialog.getByLabel('重复规则', { exact: true }).selectOption('day')
+  await dialog.getByLabel('持续分钟数', { exact: true }).fill('45')
+  await dialog.getByLabel('截止期限', { exact: true }).fill('2099-12-31')
+  await save(dialog)
+  await expect(dialog).toBeHidden()
+  const before = (await state(page)).tasks[0]
+  expect(before.title).toBe('明天下午三点写作')
+  await page.getByRole('button', { name: '完成任务', exact: true }).click()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(1)
+  const after = (await state(page)).tasks[0]
+  expect(after.id).toBe(before.id)
+  expect(after.completedAt).toBeNull()
+  expect(after.planDate > before.planDate).toBe(true)
+  expect(after.deadline).toBe(before.deadline)
+  await page.getByRole('button', { name: before.title, exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
+  await dialog.getByLabel('计划日期', { exact: true }).fill('2026-03-08')
+  await dialog.getByLabel('计划时间', { exact: true }).fill('02:30')
+  await dialog.getByLabel('时区（IANA）', { exact: true }).fill('America/New_York')
+  await save(dialog)
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  expect((await state(page)).tasks[0]).toEqual(after)
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+  await page.getByRole('link', { name: '已完成', exact: true }).click()
+  await page.getByText('完成历史', { exact: true }).click()
+  await page.getByRole('button', { name: '恢复本次完成', exact: true }).click()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(2)
+  expect((await state(page)).tasks[0].planDate).toBe(before.planDate)
+})
+test('看板和日历实际拖动、表格、保存项目视图及嵌套过滤器共享数据', async ({ page }) => {
+  await page.goto('/#/tasks')
+  await page.getByRole('button', { name: '新建项目', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: '新建项目' })
+  await dialog.getByLabel('项目名称', { exact: true }).fill('可视计划')
+  await dialog.getByRole('button', { name: '保存项目', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  let data = await state(page)
+  const project = data.taskProjects[0]
+  await page.goto('/#/tasks/project/' + project.id)
+  await page.getByRole('button', { name: '管理分区', exact: true }).click()
+  await page.getByRole('button', { name: '新建分区', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '新建分区' })
+  await dialog.getByLabel('分区名称', { exact: true }).fill('进行中')
+  await dialog.getByRole('button', { name: '保存分区', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await page
+    .getByRole('dialog', { name: '管理分区' })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click()
+  await page.getByRole('textbox', { name: '快速添加任务', exact: true }).fill('共享任务')
+  await page.locator('.task-quick').getByRole('button', { name: '添加任务', exact: true }).click()
+  await expect(page.getByRole('button', { name: '共享任务', exact: true })).toBeVisible()
+  data = await state(page)
+  const task = data.tasks[0],
+    section = data.taskSections[0]
+  await view(page, 'board')
+  await page
+    .locator(`[data-task-id="${task.id}"] .task-drag-handle`)
+    .dragTo(page.locator(`[data-section-id="${section.id}"]`))
+  await expect.poll(async () => (await state(page)).tasks[0].sectionId).toBe(section.id)
+  await view(page, 'calendar')
+  const target = page.locator('.task-calendar-day').nth(14),
+    date = await target.getAttribute('data-date')
+  const handle = page.locator(`[data-task-id="${task.id}"] .task-drag-handle`)
+  await handle.hover()
+  const bounds = await handle.boundingBox()
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 10, bounds.y + bounds.height / 2, {
+    steps: 5,
+  })
+  await target.scrollIntoViewIfNeeded()
+  await target.hover()
+  await target.hover()
+  await page.mouse.up()
+  await expect.poll(async () => (await state(page)).tasks[0].planDate).toBe(date)
+  await view(page, 'table')
+  await expect(page.locator('table.task-table')).toContainText('进行中')
+  await page.reload()
+  await expect(page.getByLabel('任务视图', { exact: true })).toHaveValue('table')
+  await page.getByRole('button', { name: '新建过滤器', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '新建过滤器', exact: true })
+  await dialog.getByLabel('过滤器名称', { exact: true }).fill('进行中的写作')
+  await dialog.getByRole('button', { name: '添加条件组', exact: true }).first().click()
+  await dialog.getByRole('button', { name: '添加条件', exact: true }).last().click()
+  await dialog.getByLabel('条件字段', { exact: true }).last().selectOption('text')
+  await dialog.getByLabel('条件值', { exact: true }).last().fill('共享')
+  await dialog.getByRole('button', { name: '保存过滤器', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('button', { name: '共享任务', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('link', { name: '进行中的写作', exact: true })).toBeVisible()
+  expect((await state(page)).tasks).toHaveLength(1)
+})
+test('通知需要明确启用，运行中提醒持久去重，关闭提醒后停止发送', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__notifications = []
+    class LocalNotification {
+      static permission = 'granted'
+      static async requestPermission() {
+        return this.permission
+      }
+      constructor(title, options) {
+        window.__notifications.push({ title, ...options })
+      }
+      close() {}
+    }
+    window.Notification = LocalNotification
+  })
+  await page.goto('/#/tasks')
+  await page.locator('.task-toolbar').getByRole('button', { name: '添加任务', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
+  await dialog.getByLabel('任务标题', { exact: true }).fill('本地提醒')
+  const now = new Date(Date.now() - 120000),
+    date = now.toLocaleDateString('sv-SE')
+  await dialog.getByLabel('计划日期', { exact: true }).fill(date)
+  await dialog.getByLabel('计划时间', { exact: true }).fill(now.toISOString().slice(11, 16))
+  await dialog.getByLabel('时区（IANA）', { exact: true }).fill('UTC')
+  await dialog.getByLabel('提醒时间', { exact: true }).selectOption('0')
+  await save(dialog)
+  await expect(dialog).toBeHidden()
+  expect(await page.evaluate(() => window.__notifications.length)).toBe(0)
+  await page.getByText('本地提醒与快捷键', { exact: true }).click()
+  await page.getByRole('button', { name: '启用本地提醒', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => window.__notifications.length)).toBe(1)
+  await page.reload()
+  await page.getByText('本地提醒与快捷键', { exact: true }).click()
+  await page.getByRole('button', { name: '停用本地提醒', exact: true }).click()
+  expect(await page.evaluate(() => window.__notifications.length)).toBe(0)
+  expect((await state(page)).taskSettings.find((s) => s.id === 'reminders:enabled').value).toBe(
+    'false',
+  )
+})
+
+test('日历拖到其他任务卡片只改日期，不改变项目、分区或父子关系', async ({ page }) => {
+  await page.goto('/#/tasks/all')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  const ids = await page.evaluate(async () => {
+    const p1 = crypto.randomUUID(),
+      p2 = crypto.randomUUID(),
+      s1 = crypto.randomUUID(),
+      s2 = crypto.randomUUID(),
+      source = crypto.randomUUID(),
+      target = crypto.randomUUID(),
+      parent = crypto.randomUUID(),
+      now = Date.now(),
+      current = new Date(),
+      format = (d) => d.toLocaleDateString('sv-SE'),
+      first = format(new Date(current.getFullYear(), current.getMonth(), 8)),
+      second = format(new Date(current.getFullYear(), current.getMonth(), 9)),
+      db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction(['tasks', 'taskProjects', 'taskSections'], 'readwrite')
+    for (const [id, name] of [
+      [p1, '来源项目'],
+      [p2, '目标项目'],
+    ])
+      tx.objectStore('taskProjects').add({
+        id,
+        name,
+        color: '#123456',
+        icon: '',
+        parentId: null,
+        order: 1024,
+        favorite: false,
+        archivedAt: null,
+        deletedAt: null,
+        revision: 0,
+      })
+    for (const [id, projectId] of [
+      [s1, p1],
+      [s2, p2],
+    ])
+      tx.objectStore('taskSections').add({
+        id,
+        projectId,
+        name: '原分区',
+        order: 1024,
+        deletedAt: null,
+      })
+    const base = {
+      description: '',
+      notes: '',
+      parentId: null,
+      priority: 4,
+      labelIds: [],
+      order: 1024,
+      expanded: true,
+      completedAt: null,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
+    }
+    tx.objectStore('tasks').add({
+      ...base,
+      id: source,
+      title: '只改日期',
+      projectId: p1,
+      sectionId: s1,
+      planDate: first,
+    })
+    tx.objectStore('tasks').add({
+      ...base,
+      id: parent,
+      title: '另一父任务',
+      projectId: p2,
+      sectionId: s2,
+      planDate: null,
+    })
+    tx.objectStore('tasks').add({
+      ...base,
+      id: target,
+      title: '目标卡片',
+      parentId: parent,
+      projectId: p2,
+      sectionId: s2,
+      planDate: second,
+    })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+    return { source, target, p1, s1, second }
+  })
+  await page.reload()
+  await page.getByLabel('任务视图', { exact: true }).selectOption('calendar')
+  const handle = page.locator(`[data-task-id="${ids.source}"] .task-drag-handle`),
+    target = page.locator(`[data-task-id="${ids.target}"] .task-title`)
+  await handle.hover()
+  const bounds = await handle.boundingBox()
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 10, bounds.y + bounds.height / 2, {
+    steps: 5,
+  })
+  await target.scrollIntoViewIfNeeded()
+  await target.hover()
+  await target.hover()
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await state(page)).tasks.find((t) => t.id === ids.source).planDate)
+    .toBe(ids.second)
+  expect((await state(page)).tasks.find((t) => t.id === ids.source)).toMatchObject({
+    projectId: ids.p1,
+    sectionId: ids.s1,
+    parentId: null,
+  })
+  expect((await state(page)).tasks).toHaveLength(3)
+})

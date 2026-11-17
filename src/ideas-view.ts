@@ -1,3 +1,6 @@
+import { createLinkedTask } from './tasks/links'
+import { readTasks } from './tasks/store'
+import { taskDialog } from './tasks/view'
 import { locale, t } from './i18n'
 import { captureForm } from './idea-capture'
 import { deleteIdea, listIdeaRevisionCounts, listIdeaRevisions, listIdeas, restoreIdeaRevision, saveIdea, setIdeaUsed } from './ideas'
@@ -227,6 +230,7 @@ export function ideaActions(idea: Idea, books: Book[], report: (message: string)
     items.push({ label: t('revisions.button'), icon: 'history', action: () => { void showIdeaRevisionsDialog(idea, books) } })
   }
   items.push(
+    { label:t('tasks.fromIdea'),icon:'plus',action:run(async()=>{const source=books.find(b=>b.id===idea.bookId&&b.library===idea.library),work=source?(books.find(b=>b.id===(source.workId??source.id)&&b.library===source.library)):undefined;const patch={title:idea.text.split('\n')[0].slice(0,500)||t('tasks.fromIdea'),description:idea.text};if(work)await createLinkedTask({library:work.library,bookId:work.id,title:work.title},patch);else await taskDialog(await readTasks(),undefined,patch)}) },
     { label: t('ideas.copy'), icon: 'copy', action: run(() => navigator.clipboard.writeText(idea.text)) },
     { label: t('shelf.delete'), icon: 'trash', danger: true, action: run(async () => {
       const entry = await deleteIdea(idea.id)
