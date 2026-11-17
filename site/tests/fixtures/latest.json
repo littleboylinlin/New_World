@@ -1,0 +1,11 @@
+{
+  "version": "9.8.7",
+  "tag": "v9.8.7",
+  "publishedAt": "2026-11-01T00:00:00Z",
+  "releaseUrl": "https://github.com/littleboylinlin/New_World/releases/tag/v9.8.7",
+  "assets": {
+    "windows-x64": { "name": "New-World-Setup-9.8.7-x64.exe", "url": "https://github.com/littleboylinlin/New_World/releases/download/v9.8.7/New-World-Setup-9.8.7-x64.exe", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "size": 1 },
+    "macos-arm64": { "name": "New-World-9.8.7-macos-arm64.dmg", "url": "https://github.com/littleboylinlin/New_World/releases/download/v9.8.7/New-World-9.8.7-macos-arm64.dmg", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "size": 1 },
+    "macos-x64": { "name": "New-World-9.8.7-macos-x64.dmg", "url": "https://github.com/littleboylinlin/New_World/releases/download/v9.8.7/New-World-9.8.7-macos-x64.dmg", "sha256": "3333333333333333333333333333333333333333333333333333333333333333", "size": 1 }
+  }
+}
