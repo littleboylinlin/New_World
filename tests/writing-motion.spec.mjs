@@ -8,6 +8,24 @@ test('平滑光标、选区、失焦、输入法、减少动态效果和打字�
   await writingMotionFlow(page)
 })
 
+test('输入同帧及之后的滚动通知不清零短距离光标过渡', async ({ page }) => {
+  await newWritingNovel(page)
+  const text = chapterText(page)
+  await text.fill('灯塔')
+  await text.evaluate((node) => node.editor.commands.focus('end'))
+  await expectCaretAligned(page)
+  await page.evaluate(() => Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished)))
+  await text.evaluate((node) => {
+    node.editor.view.dispatch(node.editor.state.tr.insertText('字'))
+    document.dispatchEvent(new Event('scroll'))
+  })
+  await expectCaretAligned(page)
+  await expect(caret(page)).toHaveCSS('transition-duration', '0.075s')
+  await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
+  await expectCaretAligned(page)
+  await expect(caret(page)).toHaveCSS('transition-duration', '0.075s')
+})
+
 test('光标随字号、主题、窗口缩放、字体、滚动、图片和表格布局变化同步，切章后清理', async ({ page }) => {
   await newWritingNovel(page)
   const text = chapterText(page)
@@ -66,6 +84,7 @@ test('连续输入时统计和保存等待停笔，输入法期间不计数也�
   await newWritingNovel(page)
   const text = chapterText(page)
   await text.evaluate((node) => node.editor.commands.focus('end'))
+  await expectCaretAligned(page)
   await page.clock.install()
   for (const character of '灯塔旁') {
     await page.keyboard.insertText(character)
@@ -116,6 +135,7 @@ test('打字机默认关闭，开关持久化；平滑滚动且不受光标布�
 test('11.5 万字章节：连续 60 次输入的处理耗时，期间不扫描全文或序列化快照', async ({ page }, info) => {
   await newWritingNovel(page, '长章节')
   const result = await measureTyping(page)
+  console.info('Typing performance:', JSON.stringify(result))
   await info.attach('typing-performance.json', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
   expect(result.fullCounts).toBe(0)
   expect(result.snapshots).toBe(0)

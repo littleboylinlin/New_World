@@ -17,7 +17,6 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
 
   let frame = 0
   let animate = false
-  let instant = false
   let center = false
   let composing = false
   let inputPending = false
@@ -40,9 +39,8 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     return { top: visibleTop + (toolbar?.offsetHeight ?? 0), bottom: visibleBottom }
   }
 
-  function schedule(move = false, snap = false) {
+  function schedule(move = false) {
     animate ||= move
-    instant ||= snap
     if (!frame) frame = requestAnimationFrame(sync)
   }
 
@@ -53,10 +51,9 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
 
   function sync() {
     frame = 0
-    const transition = animate && !instant && !reducedMotion.matches
-    const snap = instant
+    const transition = animate && !reducedMotion.matches
     const shouldCenter = center
-    animate = instant = center = false
+    animate = center = false
     if (!editor.isEditable || !editor.view.hasFocus() || document.hidden) { hide(); return }
     // Keep the last committed position while the platform owns the composition.
     if (composing || editor.view.composing) return
@@ -73,7 +70,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     const height = (coords.bottom - coords.top) / scaleY
     const moved = !previous || Math.abs(x - previous.x) > .1 || Math.abs(y - previous.y) > .1
     const shortMove = previous && Math.hypot(x - previous.x, y - previous.y) <= 80
-    if (moved || snap || reducedMotion.matches) caret.style.transition = transition && shortMove ? 'transform 75ms ease-out' : 'none'
+    if (moved || reducedMotion.matches) caret.style.transition = transition && shortMove ? 'transform 75ms ease-out' : 'none'
     caret.style.height = `${height}px`
     caret.style.transform = `translate(${x}px, ${y}px)`
     caret.hidden = false
@@ -92,7 +89,9 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     }
   }
 
-  function layout() { schedule(false, true) }
+  // Scrolling already carries the absolute caret with the paper. A layout notification
+  // must not cancel the horizontal typing transition when its local position is unchanged.
+  function layout() { schedule() }
   function resize() {
     const visible = viewport()
     paper.style.setProperty('--typewriter-space', `${Math.max(0, (visible.bottom - visible.top) / 2)}px`)
@@ -130,13 +129,14 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   body.addEventListener('input', () => { center = true; schedule(true) }, { signal })
   body.addEventListener('compositionstart', () => {
     composing = true
+    animate = false
     center = false
     caret.style.transition = 'none'
   }, { signal })
   body.addEventListener('compositionend', () => {
     composing = false
     center = true
-    schedule(false, true)
+    schedule()
   }, { signal })
   body.addEventListener('focus', () => schedule(), { signal })
   body.addEventListener('blur', () => { center = inputPending = false; hide() }, { signal })

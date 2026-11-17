@@ -89,6 +89,7 @@ test('桌面平滑写作：光标、输入法、打字机模式和长章节输�
     const page = await app.firstWindow()
     await writingMotionFlow(page)
     const result = await measureTyping(page)
+    console.info('Typing performance:', JSON.stringify(result))
     await info.attach('typing-performance.json', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
     expect(result.fullCounts).toBe(0)
     expect(result.snapshots).toBe(0)
