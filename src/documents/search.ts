@@ -10,6 +10,7 @@ interface SearchState {
   matches: Match[]
   overflow: boolean
   decorations: DecorationSet
+  dirty?: boolean
 }
 
 const searchKey = new PluginKey<SearchState>('novel-search')
@@ -44,11 +45,28 @@ export const SearchHighlight = Extension.create({
       state: {
         init: (_, state) => find(state.doc, ''),
         apply: (transaction, previous) => {
-          const query = transaction.getMeta(searchKey) as string | undefined
-          return query !== undefined || transaction.docChanged ? find(transaction.doc, query ?? previous.query) : previous
+          const result = transaction.getMeta(searchKey) as string | SearchState | undefined
+          if (typeof result === 'string') return find(transaction.doc, result)
+          if (result) return result
+          if (!transaction.docChanged || !previous.query) return previous
+          // Stale ranges must not be replaced while a search is waiting for the typing pause.
+          return { query: previous.query, matches: [], overflow: false, decorations: DecorationSet.empty, dirty: true }
         },
       },
       props: { decorations: (state) => searchKey.getState(state)?.decorations },
+      view: (view) => {
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const schedule = () => {
+          clearTimeout(timer)
+          if (!searchKey.getState(view.state)?.dirty) return
+          timer = setTimeout(() => {
+            if (view.composing) { schedule(); return }
+            const query = searchKey.getState(view.state)!.query
+            view.dispatch(view.state.tr.setMeta(searchKey, find(view.state.doc, query)).setMeta('addToHistory', false))
+          }, 400)
+        }
+        return { update: schedule, destroy: () => clearTimeout(timer) }
+      },
     })]
   },
 })

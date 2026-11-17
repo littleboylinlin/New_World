@@ -1097,5 +1097,8 @@
   "tasks.loadMore": "继续载入任务或历史记录",
   "tasks.invalidData": "任务数据无效或暂不支持：{0}",
   "tasks.calendarHint": "日历按本机日期显示。拖动保留任务时区中的时刻并对齐目标日；不存在的夏令时时刻会拒绝。",
-  "tasks.cycleMissing": "历史中的成员任务已移出或缺失，无法自动恢复该周期。历史记录仍保留，可手动调整当前任务。"
+  "tasks.cycleMissing": "历史中的成员任务已移出或缺失，无法自动恢复该周期。历史记录仍保留，可手动调整当前任务。",
+  "appearance.writing": "写作",
+  "appearance.typewriter": "打字机模式",
+  "appearance.typewriterHint": "输入时将当前行保持在编辑区中央附近。手动滚动时暂停跟随，再次输入后恢复。"
 }

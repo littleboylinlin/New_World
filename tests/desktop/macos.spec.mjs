@@ -1,3 +1,4 @@
+import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
@@ -81,6 +82,22 @@ async function openSettingsCategory(page, category, locale = 'zh-CN') {
   }
   return category ? settingsPage.locator(`.settings-panel[data-category="${category}"]`) : settingsPage
 }
+
+test('桌面平滑写作：光标、输入法、打字机模式和长章节输入性能', async ({}, info) => {
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    await writingMotionFlow(page)
+    const result = await measureTyping(page)
+    console.info('Typing performance:', JSON.stringify(result))
+    await info.attach('typing-performance.json', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
+    expect(result.fullCounts).toBe(0)
+    expect(result.snapshots).toBe(0)
+    expect(result.dispatch.median).toBeLessThan(16)
+    expect(result.dispatch.p95).toBeLessThan(50)
+    await page.screenshot({ path: info.outputPath('macos-writing-motion.png') })
+  } finally { await stop(app) }
+})
 
 test('从 DMG 安装后原生打开，标题栏、Command 保存、PDF 导出和重开恢复正常', async ({}, info) => {
   let app = await launch()
