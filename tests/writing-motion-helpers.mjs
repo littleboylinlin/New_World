@@ -16,8 +16,8 @@ export async function expectCaretAligned(page) {
   await expect.poll(() => chapterText(page).evaluate((body) => {
     const { view, state } = body.editor
     let coords = view.coordsAtPos(state.selection.head)
-    if (view.composing) {
-      const selection = getSelection()
+    const selection = getSelection()
+    if (selection?.focusNode && body.contains(selection.focusNode)) {
       const range = document.createRange()
       range.setStart(selection.focusNode, selection.focusOffset)
       range.collapse(true)
@@ -29,7 +29,7 @@ export async function expectCaretAligned(page) {
   })).toBeLessThan(2)
 }
 
-/** Observe painted positions, independent of whether motion uses CSS or JavaScript. */
+/** Observe positions relative to the paper, so scrolling cannot masquerade as caret motion. */
 export async function traceCaretMotion(page, action) {
   await caret(page).evaluate(async (node) => {
     let stable = 0
@@ -42,8 +42,8 @@ export async function traceCaretMotion(page, action) {
   })
   await caret(page).evaluate((node) => {
     const read = () => {
-      const rect = node.getBoundingClientRect()
-      return { x: rect.left, y: rect.top }
+      const rect = node.getBoundingClientRect(), paper = node.parentElement.getBoundingClientRect()
+      return { x: rect.left - paper.left, y: rect.top - paper.top }
     }
     const samples = []
     const observer = new MutationObserver(() => samples.push(read()))
@@ -57,14 +57,16 @@ export async function traceCaretMotion(page, action) {
       const { before, samples } = node.motionTrace
       const body = document.querySelector('.novel-body')
       let coords = body.editor.view.coordsAtPos(body.editor.state.selection.head)
-      if (body.editor.view.composing) {
-        const selection = getSelection(), range = document.createRange()
+      const selection = getSelection()
+      if (selection?.focusNode && body.contains(selection.focusNode)) {
+        const range = document.createRange()
         range.setStart(selection.focusNode, selection.focusOffset)
         range.collapse(true)
         const rect = range.getBoundingClientRect()
         if (rect.height) coords = rect
       }
-      return { before, samples, target: { x: coords.left, y: coords.top } }
+      const paper = node.parentElement.getBoundingClientRect()
+      return { before, samples, target: { x: coords.left - paper.left, y: coords.top - paper.top } }
     })
   } finally {
     await caret(page).evaluate((node) => { node.motionTrace.observer.disconnect(); delete node.motionTrace })
