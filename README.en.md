@@ -2,15 +2,15 @@
 
 [简体中文](README.md)
 
-New World v0.20.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.20.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
-## Smooth writing (v0.20.0)
+## Smooth writing (v0.20.1)
 
 The editor caret follows the current line's text size and theme. Typing on the same line uses smooth frame-by-frame following; clicks, navigation, undo/redo and line changes position it immediately. It hides for a selection or loss of focus. During IME composition it follows the native input position without changing the platform's selection. Window zoom, scrolling, fonts, images and table layout changes resynchronize its position.
 
 “Settings → Appearance → Typewriter mode” is off by default. When enabled, typing and newlines keep the current line near the middle of the editor. Scrolling to browse pauses following until you type again. Caret transitions and centering respect the system's reduced-motion preference.
 
-Word counts, the chapter outline and search results update after about 400ms without typing; autosave waits about 500ms. Manual saves and leaving a chapter still save immediately. Continuous typing no longer repeatedly scans the whole chapter or serializes save snapshots, so displayed counts may lag slightly. Database v9, project Schema 3 and full-library backup format 2 remain as in v0.19.0. See the [v0.20.0 release notes](docs/releases/v0.20.0.md).
+Word counts, the chapter outline and search results update after about 400ms without typing; autosave waits about 500ms. Manual saves and leaving a chapter still save immediately. Continuous typing no longer repeatedly scans the whole chapter or serializes save snapshots, so displayed counts may lag slightly. Database v9, project Schema 3 and full-library backup format 2 remain as in v0.19.0. See the [v0.20.1 release notes](docs/releases/v0.20.1.md).
 
 ## Local task workspace (v0.19.0)
 
@@ -32,7 +32,7 @@ v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bo
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.20.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.20.0). It adds smooth caret movement, typing performance improvements and optional typewriter mode, retaining the local task workspace and Schema 3 projects while accepting Schema 1/2. Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.20.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.20.1). It fixes IME caret following and multi-character jumps with frame-by-frame smoothing, retaining typewriter mode, the local task workspace and Schema 3 projects while accepting Schema 1/2. Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -62,7 +62,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.20.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.20.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
