@@ -7,10 +7,20 @@ import {
   taskStores,
   remapTasks,
   validateTasks,
+  taskEnvelope,
 } from './model'
 import type { TaskData } from './model'
 import { taskHash, validateTaskAssets } from './resources'
 import { changeTasks, readTasks } from './store'
+
+function encodedEnvelope(data: unknown) {
+  // A binary marker adds a node and path bytes compared with a stored Blob.
+  taskEnvelope(data, 1_200_000)
+  taskAssert(
+    new TextEncoder().encode(JSON.stringify(data)).byteLength <= 40 * 1024 * 1024,
+    'encoded task JSON size limit',
+  )
+}
 
 export async function encodeTaskResources(
   data: TaskData,
@@ -38,9 +48,10 @@ export async function decodeTaskResources(
   data: unknown,
   get: (id: string) => Promise<Blob>,
 ): Promise<TaskData> {
+  encodedEnvelope(data)
   let nodes = 0
   const visit = async (value: any, depth = 0): Promise<any> => {
-    taskAssert(depth <= 64 && ++nodes <= 1000000, 'task JSON complexity')
+    taskAssert(depth <= 64 && ++nodes <= 1_200_000, 'task JSON complexity')
     if (Array.isArray(value)) return Promise.all(value.map((v) => visit(v, depth + 1)))
     if (value && typeof value === 'object') {
       if (Object.hasOwn(value, '$taskResource')) {
@@ -124,6 +135,7 @@ export async function readTaskFile(blob: Blob): Promise<TaskData> {
       file.resources.length <= 30000,
     'task manifest',
   )
+  encodedEnvelope(file.data)
   const resources = new Map<string, Blob>(),
     used = new Set<string>()
   let total = 0

@@ -233,16 +233,50 @@ const time = (v: unknown) => num(v) && Number(v) <= 253402214399999
 const stamp = (v: unknown) => v === null || time(v)
 const color = (v: unknown) => typeof v === 'string' && /^#[a-f0-9]{6}$/i.test(v)
 
-/** Closed schema, bounded records and complete graph validation; used before every atomic write/import. */
-export function validateTasks(data: TaskData) {
+/** Preflight before asynchronous resource traversal; oversized arrays must not spawn promises. */
+export function taskEnvelope(data: unknown, nodeLimit = 1_000_000) {
   closed(data, taskStores.join(' '))
   let count = 0
   for (const key of taskStores) {
-    taskAssert(Array.isArray(data[key]), key)
-    count += data[key].length
+    const rows = (data as TaskData)[key]
+    taskAssert(Array.isArray(rows), key)
+    count += rows.length
+    taskAssert(count <= taskLimits.records, 'record limit')
+  }
+  let nodes = 0
+  const visit = (value: unknown, depth: number) => {
+    taskAssert(++nodes <= nodeLimit && depth <= 64, 'task JSON complexity')
+    if (
+      value === null ||
+      value === undefined ||
+      ['string', 'boolean'].includes(typeof value) ||
+      value instanceof Blob
+    )
+      return
+    if (typeof value === 'number') {
+      taskAssert(Number.isFinite(value), 'finite number')
+      return
+    }
+    taskAssert(typeof value === 'object', 'inert JSON value')
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1)
+      return
+    }
+    taskAssert([Object.prototype, null].includes(Object.getPrototypeOf(value)), 'plain task object')
+    for (const [key, item] of Object.entries(value!)) {
+      taskAssert(!['__proto__', 'prototype', 'constructor'].includes(key), 'unsafe task JSON key')
+      visit(item, depth + 1)
+    }
+  }
+  visit(data, 0)
+}
+
+/** Closed schema, bounded records and complete graph validation; used before every atomic write/import. */
+export function validateTasks(data: TaskData) {
+  taskEnvelope(data)
+  for (const key of taskStores) {
     taskAssert(new Set(data[key].map((r) => r.id)).size === data[key].length, 'duplicate ' + key)
   }
-  taskAssert(count <= taskLimits.records, 'record limit')
   taskAssert(
     new TextEncoder().encode(JSON.stringify(data)).byteLength <= 32 * 1024 * 1024,
     'JSON size limit',

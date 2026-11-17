@@ -92,3 +92,21 @@ test('optional task fields reject null and false history references rather than 
     assert.throws(() => validateTasks(invalid))
   }
 })
+
+test('task envelope bounds record count, complexity, depth and executable values before decoding', async () => {
+  const { taskEnvelope } = await import('../../src/tasks/model.ts'),
+    tooMany = emptyTasks()
+  tooMany.tasks = Array(30001).fill(null)
+  assert.throws(() => taskEnvelope(tooMany), /record limit/)
+  const deep = emptyTasks()
+  let group = {}
+  for (let i = 0; i < 66; i++) group = { group }
+  deep.taskFilters = [group]
+  assert.throws(() => taskEnvelope(deep), /complexity/)
+  const wide = emptyTasks()
+  wide.taskTemplates = [{ items: Array(1_000_001).fill(null) }]
+  assert.throws(() => taskEnvelope(wide), /complexity/)
+  const unsafe = emptyTasks()
+  unsafe.taskSettings = [{ id: 'unsafe', value: () => true }]
+  assert.throws(() => taskEnvelope(unsafe), /inert/)
+})

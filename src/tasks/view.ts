@@ -87,7 +87,7 @@ export async function taskDialog(data: TaskData, task?: Task, patch: Partial<Tas
     [
       ['', labelKey('inbox')],
       ...data.taskProjects
-        .filter((p) => p.deletedAt === null)
+        .filter((p) => p.deletedAt === null || p.id === initial.projectId)
         .map((p) => [p.id, p.icon + ' ' + p.name] as [string, string]),
     ],
     initial.projectId ?? '',
@@ -101,7 +101,11 @@ export async function taskDialog(data: TaskData, task?: Task, patch: Partial<Tas
     const sections = [
       ['', labelKey('unsectioned')],
       ...data.taskSections
-        .filter((s) => s.projectId === project.input.value && s.deletedAt === null)
+        .filter(
+          (s) =>
+            s.projectId === project.input.value &&
+            (s.deletedAt === null || s.id === initial.sectionId),
+        )
         .map((s) => [s.id, s.name]),
     ] as [string, string][]
     section.input.replaceChildren(
@@ -119,8 +123,7 @@ export async function taskDialog(data: TaskData, task?: Task, patch: Partial<Tas
       ...data.tasks
         .filter(
           (p) =>
-            p.deletedAt === null &&
-            p.completedAt === null &&
+            (p.id === initial.parentId || (p.deletedAt === null && p.completedAt === null)) &&
             p.projectId === (project.input.value || null) &&
             !excluded.has(p.id),
         )
@@ -207,7 +210,7 @@ function projectDialog(data: TaskData, current?: TaskProject) {
     [
       ['', labelKey('none')],
       ...data.taskProjects
-        .filter((p) => p.deletedAt === null && !excluded.has(p.id))
+        .filter((p) => (p.deletedAt === null || p.id === current?.parentId) && !excluded.has(p.id))
         .map((p) => [p.id, p.name] as [string, string]),
     ],
     current?.parentId ?? '',

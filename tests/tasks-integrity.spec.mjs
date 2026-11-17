@@ -256,3 +256,123 @@ test('分批列表不截断数据，连续搜索保留焦点，快捷添加与�
   await page.keyboard.press('Control+z')
   await expect.poll(async () => (await state(page)).tasks.length).toBe(205)
 })
+
+test('编辑已完成和项目回收站中的子任务只更新信息，保留父任务、项目和分区', async ({ page }) => {
+  await page.goto('/#/tasks')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  const ids = await page.evaluate(async () => {
+    const ancestor = crypto.randomUUID(),
+      project = crypto.randomUUID(),
+      section = crypto.randomUUID(),
+      parent = crypto.randomUUID(),
+      child = crypto.randomUUID(),
+      now = Date.now(),
+      db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction(['tasks', 'taskProjects', 'taskSections'], 'readwrite')
+    tx.objectStore('taskProjects').add({
+      id: project,
+      name: '保留归属的项目',
+      color: '#123456',
+      icon: '',
+      parentId: ancestor,
+      order: 1024,
+      favorite: false,
+      archivedAt: null,
+      deletedAt: null,
+      revision: 0,
+    })
+    tx.objectStore('taskProjects').add({
+      id: ancestor,
+      name: '祖项目',
+      color: '#654321',
+      icon: '',
+      parentId: null,
+      order: 2048,
+      favorite: false,
+      archivedAt: null,
+      deletedAt: null,
+      revision: 0,
+    })
+    tx.objectStore('taskSections').add({
+      id: section,
+      projectId: project,
+      name: '原分区',
+      order: 1024,
+      deletedAt: null,
+      revision: 0,
+    })
+    const task = {
+      title: '已完成父任务',
+      description: '',
+      notes: '',
+      projectId: project,
+      sectionId: section,
+      parentId: null,
+      priority: 4,
+      labelIds: [],
+      order: 1024,
+      expanded: true,
+      planDate: null,
+      completedAt: now,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
+    }
+    tx.objectStore('tasks').add({ ...task, id: parent })
+    tx.objectStore('tasks').add({ ...task, id: child, parentId: parent, title: '保留关系的子任务' })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+    return { project, section, parent, child, ancestor }
+  })
+  await page.goto('/#/tasks/completed')
+  await page.getByRole('button', { name: '保留关系的子任务', exact: true }).click()
+  let form = page.getByRole('dialog', { name: '编辑任务', exact: true })
+  await expect(form.getByLabel('父任务', { exact: true })).toHaveValue(ids.parent)
+  await form.getByLabel('任务备注', { exact: true }).fill('完成后编辑')
+  await save(form)
+  let task = (await state(page)).tasks.find((t) => t.id === ids.child)
+  expect(task).toMatchObject({
+    parentId: ids.parent,
+    projectId: ids.project,
+    sectionId: ids.section,
+    notes: '完成后编辑',
+  })
+  await page.goto('/#/tasks/project/' + ids.ancestor)
+  await page.getByRole('button', { name: '删除项目', exact: true }).click()
+  form = page.getByRole('dialog', { name: '删除项目', exact: true })
+  await form.getByRole('button', { name: '删除项目', exact: true }).click()
+  await expect(form).toBeHidden()
+  await page.getByRole('button', { name: '保留关系的子任务', exact: true }).click()
+  form = page.getByRole('dialog', { name: '编辑任务', exact: true })
+  await expect(form.getByLabel('父任务', { exact: true })).toHaveValue(ids.parent)
+  await expect(form.getByLabel('任务项目', { exact: true })).toHaveValue(ids.project)
+  await expect(form.getByLabel('任务分区', { exact: true })).toHaveValue(ids.section)
+  await form.getByLabel('任务描述', { exact: true }).fill('回收后补充信息')
+  await save(form)
+  await page.goto('/#/tasks/project/' + ids.project)
+  await page.getByRole('button', { name: '项目设置', exact: true }).click()
+  form = page.getByRole('dialog', { name: '编辑项目', exact: true })
+  await expect(form.getByLabel('上级项目', { exact: true })).toHaveValue(ids.ancestor)
+  await form.getByLabel('项目名称', { exact: true }).fill('更名后保留父项目')
+  await form.getByRole('button', { name: '保存项目', exact: true }).click()
+  await expect(form).toBeHidden()
+  expect((await state(page)).taskProjects.find((p) => p.id === ids.project).parentId).toBe(
+    ids.ancestor,
+  )
+  await page.goto('/#/tasks/trash')
+  await page.getByRole('button', { name: '恢复项目', exact: true }).first().click()
+  task = (await state(page)).tasks.find((t) => t.id === ids.child)
+  expect(task).toMatchObject({
+    parentId: ids.parent,
+    projectId: ids.project,
+    sectionId: ids.section,
+    notes: '完成后编辑',
+    description: '回收后补充信息',
+    deletedAt: null,
+  })
+  expect(task.completedAt).not.toBeNull()
+})

@@ -101,6 +101,7 @@ test('任务 JSON 真正跨书库导入与副本、模板和过滤器引用映�
       (v) => (v.data.tasks[0].execute = 'script'),
       (v) => (v.resources[0].bytes = 17 * 1024 * 1024),
       (v) => (v.schemaVersion = 99),
+      (v) => (v.data.tasks = Array(30001).fill(null)),
     ]) {
       const bad = structuredClone(file)
       mutate(bad)
@@ -158,13 +159,11 @@ test('章节位置联动、评论/附件、复制、模板、真实统计及灵�
     .getByLabel('添加文件附件', { exact: true })
     .setInputFiles({ name: '参考✦.txt', mimeType: 'text/plain', buffer: bytes })
   await expect.poll(async () => (await snapshot(page)).taskAttachments.length).toBe(1)
-  await extras
-    .getByLabel('添加文件附件', { exact: true })
-    .setInputFiles({
-      name: 'unsafe.js',
-      mimeType: 'text/javascript',
-      buffer: Buffer.from('alert(1)'),
-    })
+  await extras.getByLabel('添加文件附件', { exact: true }).setInputFiles({
+    name: 'unsafe.js',
+    mimeType: 'text/javascript',
+    buffer: Buffer.from('alert(1)'),
+  })
   await expect(page.locator('.undo-toast')).toBeVisible()
   expect((await snapshot(page)).taskAttachments).toHaveLength(1)
   const download = page.waitForEvent('download')
