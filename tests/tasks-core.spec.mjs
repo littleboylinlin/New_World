@@ -33,6 +33,22 @@ const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
 async function task(page, title) {
   return (await taskSnapshot(page)).tasks.find((t) => t.title === title)
 }
+// Rows slide in with the page, so wait until they rest, then move in several steps so the drop follows dragover.
+async function dragTask(page, sourceId, targetId) {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
+  await row(page, sourceId).locator('.task-drag-handle').hover()
+  await page.mouse.down()
+  const target = await row(page, targetId).boundingBox()
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 6 })
+  await page.mouse.up()
+}
 
 test('任务 CRUD、三层子任务、完成历史、复制、删除恢复和撤销持久化', async ({ page }) => {
   await page.goto('/#/tasks')
@@ -121,7 +137,7 @@ test('项目、分区、标签、今日/未来搜索、批量移动和拖动使�
   await expect(page.getByRole('button', { name: '日常任务', exact: true })).toBeVisible()
   const first = await task(page, '日常任务'),
     second = await task(page, '第二项')
-  await row(page, second.id).locator('.task-drag-handle').dragTo(row(page, first.id))
+  await dragTask(page, second.id, first.id)
   await expect
     .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
     .toBe(true)
@@ -217,4 +233,33 @@ test('并发编辑拒绝覆盖，任务写入中断整体回滚', async ({ page 
   expect(await taskSnapshot(page)).toEqual(before)
   await page.reload()
   expect((await task(page, '其他窗口的修改')).completedAt).toBeNull()
+})
+
+test('拖动途中后台刷新任务列表，松手后排序仍然生效', async ({ page }) => {
+  await page.goto('/#/tasks')
+  await quick(page, '日常任务')
+  await quick(page, '第二项')
+  const first = await task(page, '日常任务'),
+    second = await task(page, '第二项')
+  await page.evaluate(() => {
+    window.rowSwaps = 0
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.removedNodes)
+          if (node.nodeType === 1 && (node.matches('.task-row') || node.querySelector('.task-row'))) window.rowSwaps++
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await row(page, second.id).locator('.task-drag-handle').hover()
+  await page.mouse.down()
+  const target = await row(page, first.id).boundingBox()
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 5 })
+  // Focus refreshes the list in the background, as switching back to the window does.
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => window.rowSwaps)).toBe(0)
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
+    .toBe(true)
+  await expect(page.locator('.task-row .task-title').first()).toHaveText('第二项')
 })

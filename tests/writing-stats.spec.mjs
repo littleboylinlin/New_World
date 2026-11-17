@@ -21,14 +21,15 @@ async function manualSave(page) {
 
 async function goHome(page) {
   await page.getByRole('link', { name: '书库首页', exact: true }).click()
-  await expect(page.locator('.writing-stats')).toBeVisible()
-  await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
+  await ready(page)
 }
 
 // The grid is only painted once the database has opened, so 371 cells means the schema is ready to seed.
+// The panel then rises into place after a short delay; hovering before that lands on another day.
 async function ready(page) {
   await expect(page.locator('.writing-stats')).toBeVisible()
   await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
+  await page.locator('.writing-stats').evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)))
 }
 
 // Write past days straight into the global history store, then nudge the panel to re-read it.
