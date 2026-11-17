@@ -207,6 +207,48 @@ function revealOnScroll() {
   nodes.forEach((node) => observer.observe(node))
 }
 
+function stackPanels() {
+  const panels = [...document.querySelectorAll('.panel')]
+  if (!panels.length) return
+  if (reducedMotion.matches || !('IntersectionObserver' in window)) {
+    panels.forEach((panel) => panel.classList.add('in'))
+    return
+  }
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      entry.target.classList.add('in')
+      observer.unobserve(entry.target)
+    }
+  }, { threshold: 0.35 })
+  panels.forEach((panel) => observer.observe(panel))
+
+  const cards = panels.map((panel) => panel.querySelector('.panel-card'))
+  const tilts = cards.map((card) => getComputedStyle(card).getPropertyValue('--tilt').trim() || '0deg')
+  const shades = cards.map((card) => {
+    const shade = document.createElement('span')
+    shade.className = 'panel-shade'
+    card.append(shade)
+    return shade
+  })
+  let frame = 0
+  const update = () => {
+    frame = 0
+    const rects = panels.map((panel) => panel.getBoundingClientRect())
+    // How much of each sheet the next one has slid over, from 0 to 1.
+    const covered = rects.map((rect, i) => i + 1 < rects.length ? Math.min(Math.max((rect.bottom - rects[i + 1].top) / rect.height, 0), 1) : 0)
+    covered.forEach((amount, i) => {
+      cards[i].style.transform = `rotate(${tilts[i]}) scale(${(1 - amount * 0.06).toFixed(4)})`
+      shades[i].style.opacity = (amount * 0.32).toFixed(3)
+    })
+  }
+  const schedule = () => { frame ||= requestAnimationFrame(update) }
+  addEventListener('scroll', schedule, { passive: true })
+  addEventListener('resize', schedule)
+  update()
+}
+
 setUpDownloads()
 writingDemo()
 revealOnScroll()
+stackPanels()
