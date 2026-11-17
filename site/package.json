@@ -1,0 +1,15 @@
+{
+  "name": "new-world-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "playwright test",
+    "preview": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "wrangler": "4.164.0"
+  }
+}

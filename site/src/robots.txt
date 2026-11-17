@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /notice
+
+Sitemap: {{SITE_URL}}/sitemap.xml
