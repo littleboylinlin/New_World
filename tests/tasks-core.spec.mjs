@@ -33,6 +33,22 @@ const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
 async function task(page, title) {
   return (await taskSnapshot(page)).tasks.find((t) => t.title === title)
 }
+// Rows slide in with the page, so wait until they rest, then move in several steps so the drop follows dragover.
+async function dragTask(page, sourceId, targetId) {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
+  await row(page, sourceId).locator('.task-drag-handle').hover()
+  await page.mouse.down()
+  const target = await row(page, targetId).boundingBox()
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 6 })
+  await page.mouse.up()
+}
 
 test('任务 CRUD、三层子任务、完成历史、复制、删除恢复和撤销持久化', async ({ page }) => {
   await page.goto('/#/tasks')
@@ -121,29 +137,10 @@ for (const copy of Array.from({ length: 10 }, (_, i) => i)) test('项目、分�
   await expect(page.getByRole('button', { name: '日常任务', exact: true })).toBeVisible()
   const first = await task(page, '日常任务'),
     second = await task(page, '第二项')
-  await page.evaluate(() => {
-    window.dragLog = []
-    for (const type of ['mousedown', 'dragstart', 'dragenter', 'dragover', 'drop', 'dragend', 'mouseup'])
-      document.addEventListener(type, (e) => {
-        if (type === 'dragover' && window.dragLog.at(-1)?.startsWith('dragover')) return
-        const r = e.target.closest?.('[data-task-id]')
-        window.dragLog.push(`${type}@${Math.round(performance.now())} ${r ? r.dataset.taskId.slice(0, 6) : e.target.className || e.target.tagName}`)
-      }, { capture: true })
-    new MutationObserver(() => window.dragLog.push('mutation@' + Math.round(performance.now()))).observe(document.querySelector('.task-content'), { childList: true, subtree: true })
-  })
-  const errors = []
-  page.on('console', (m) => errors.push(m.type() + ': ' + m.text()))
-  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message))
-  const boxes = { first: await row(page, first.id).boundingBox(), second: await row(page, second.id).boundingBox(), handle: await row(page, second.id).locator('.task-drag-handle').boundingBox() }
-  await row(page, second.id).locator('.task-drag-handle').dragTo(row(page, first.id))
-  try {
-    await expect
-      .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
-      .toBe(true)
-  } catch (error) {
-    console.log('DRAG-DIAG', JSON.stringify({ ids: [first.id.slice(0, 6), second.id.slice(0, 6)], boxes, after: { first: await row(page, first.id).boundingBox(), second: await row(page, second.id).boundingBox() }, log: await page.evaluate(() => window.dragLog), errors, toast: await page.locator('.undo-toast').allTextContents(), tasks: (await taskSnapshot(page)).tasks.map((t) => [t.title, t.projectId?.slice(0, 6), t.sectionId, t.parentId, t.order]) }))
-    throw error
-  }
+  await dragTask(page, second.id, first.id)
+  await expect
+    .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
+    .toBe(true)
   await page.getByRole('button', { name: '管理分区', exact: true }).click()
   await page.getByRole('button', { name: '新建分区', exact: true }).click()
   dialog = page.getByRole('dialog', { name: '新建分区', exact: true })
