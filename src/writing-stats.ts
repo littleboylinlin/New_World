@@ -129,6 +129,8 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   legend.append(element('span', 'legend-end', t('writing.more')))
 
   const tooltip = element('div', 'heat-tooltip')
+  // Use the top layer, as reading annotations do, to escape desktop scroll-container clipping.
+  tooltip.setAttribute('popover', 'manual')
   tooltip.setAttribute('aria-hidden', 'true')
   tooltip.hidden = true
 
@@ -153,6 +155,9 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   }
 
   let active: HTMLElement | undefined
+  let pointer: { x: number; y: number } | undefined
+  let tipSource: 'pointer' | 'focus' = 'pointer'
+  let tipFrame = 0
 
   function setActive(node: HTMLElement) {
     if (active && active !== node) active.tabIndex = -1
@@ -169,40 +174,80 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   function showTip(target: HTMLElement) {
     const key = target.dataset.date
     if (!key) return
+    const view = window.visualViewport
+    const viewport = { left: view?.offsetLeft ?? 0, top: view?.offsetTop ?? 0, width: view?.width ?? innerWidth, height: view?.height ?? innerHeight }
+    const cellRect = target.getBoundingClientRect()
+    const gridRect = gridWrap.getBoundingClientRect()
+    const pageRect = panel.closest('.page')?.getBoundingClientRect()
+    // A focused date may have scrolled behind the desktop header or out of the horizontal grid.
+    const leftEdge = Math.max(viewport.left, gridRect.left, pageRect?.left ?? viewport.left)
+    const rightEdge = Math.min(viewport.left + viewport.width, gridRect.right, pageRect?.right ?? Infinity)
+    const topEdge = Math.max(viewport.top, gridRect.top, pageRect?.top ?? viewport.top)
+    const bottomEdge = Math.min(viewport.top + viewport.height, gridRect.bottom, pageRect?.bottom ?? Infinity)
+    if (cellRect.right <= leftEdge || cellRect.left >= rightEdge || cellRect.bottom <= topEdge || cellRect.top >= bottomEdge) {
+      hideTip()
+      return
+    }
     const words = Number(target.dataset.words ?? 0)
     const label = key === todayKey ? t('writing.today') : dateText(parseDay(key))
-    tooltip.textContent = `${label} · ${dayPhrase(words)}`
+    const text = `${label} · ${dayPhrase(words)}`
+    if (tooltip.textContent !== text) tooltip.textContent = text
+    tooltip.style.maxWidth = `${Math.max(1, viewport.width - 16)}px`
     tooltip.hidden = false
-    const heatRect = heatmap.getBoundingClientRect()
-    const cellRect = target.getBoundingClientRect()
-    const width = tooltip.getBoundingClientRect().width
+    if (!tooltip.matches(':popover-open')) tooltip.showPopover()
+    const { width, height } = tooltip.getBoundingClientRect()
     const half = width / 2
-    const center = cellRect.left - heatRect.left + cellRect.width / 2
-    const left = Math.max(half + 2, Math.min(center, heatRect.width - half - 2))
+    const center = cellRect.left + cellRect.width / 2
+    const left = Math.max(viewport.left + half + 8, Math.min(center, viewport.left + viewport.width - half - 8))
+    const below = cellRect.top - height - 8 < viewport.top + 8
+    const bottom = below ? cellRect.bottom + height + 8 : cellRect.top - 8
     tooltip.style.left = `${left}px`
-    tooltip.style.top = `${cellRect.top - heatRect.top - 8}px`
-    // The body clamps at the container edges, so the caret keeps pointing at the cell independently.
+    tooltip.style.top = `${Math.max(viewport.top + height + 8, Math.min(bottom, viewport.top + viewport.height - 8))}px`
+    tooltip.dataset.side = below ? 'below' : 'above'
+    // Clamp the body to the viewport while keeping the caret aimed at the date.
     const caret = Math.max(12, Math.min(center - (left - half), width - 12))
     tooltip.style.setProperty('--caret-x', `${caret}px`)
   }
 
   function hideTip() {
+    if (tooltip.matches(':popover-open')) tooltip.hidePopover()
     tooltip.hidden = true
   }
 
-  grid.addEventListener('pointerover', (event) => {
-    const target = (event.target as HTMLElement).closest<HTMLElement>('.heat-cell:not(.future)')
-    if (target) showTip(target)
-  }, { signal })
-  grid.addEventListener('pointerout', (event) => {
-    const target = (event.target as HTMLElement).closest('.heat-cell')
-    if (target && !target.contains(event.relatedTarget as Node)) hideTip()
-  }, { signal })
+  function updateTip() {
+    tipFrame = 0
+    if (signal.aborted || !panel.isConnected) return
+    const focused = document.activeElement
+    const target = tipSource === 'focus' && focused instanceof HTMLElement && grid.contains(focused) && focused.dataset.date
+      ? focused
+      : pointer ? document.elementFromPoint(pointer.x, pointer.y)?.closest<HTMLElement>('.heat-cell[data-date]') : undefined
+    if (!target || !grid.contains(target)) { hideTip(); return }
+    showTip(target)
+    // Entrance animations and the cell's hover transform move the anchor without scroll/resize events.
+    for (let node: Element | null = target; !tooltip.hidden && node; node = node.parentElement) {
+      if (node.getAnimations().some((animation) => animation.playState === 'running')) { scheduleTip(); break }
+    }
+  }
+
+  function scheduleTip() {
+    if (!tipFrame && !signal.aborted) tipFrame = requestAnimationFrame(updateTip)
+  }
+
+  function trackPointer(event: PointerEvent) {
+    const moved = !pointer || pointer.x !== event.clientX || pointer.y !== event.clientY
+    pointer = { x: event.clientX, y: event.clientY }
+    if (moved) tipSource = 'pointer'
+    scheduleTip()
+  }
+  grid.addEventListener('pointerover', trackPointer, { signal })
+  grid.addEventListener('pointermove', trackPointer, { signal })
+  grid.addEventListener('pointerout', scheduleTip, { signal })
+  grid.addEventListener('pointerleave', () => { pointer = undefined; scheduleTip() }, { signal })
   grid.addEventListener('focusin', (event) => {
     const target = (event.target as HTMLElement).closest<HTMLElement>('.heat-cell:not(.future)')
-    if (target) { setActive(target); showTip(target) }
+    if (target) { setActive(target); tipSource = 'focus'; scheduleTip() }
   }, { signal })
-  grid.addEventListener('focusout', hideTip, { signal })
+  grid.addEventListener('focusout', scheduleTip, { signal })
   grid.addEventListener('keydown', (event) => {
     const target = (event.target as HTMLElement).closest<HTMLElement>('.heat-cell:not(.future)')
     if (!target) return
@@ -213,7 +258,12 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
     const next = cellAt(Number(target.dataset.week) + move[0], Number(target.dataset.row) + move[1])
     if (next) { setActive(next); next.focus() }
   }, { signal })
-  gridWrap.addEventListener('scroll', hideTip, { signal, passive: true })
+  // Re-read the cell under a stationary pointer after queued auto-scroll, manual scroll or layout changes.
+  window.addEventListener('scroll', scheduleTip, { signal, passive: true, capture: true })
+  window.addEventListener('resize', scheduleTip, { signal })
+  window.visualViewport?.addEventListener('resize', scheduleTip, { signal })
+  window.visualViewport?.addEventListener('scroll', scheduleTip, { signal, passive: true })
+  signal.addEventListener('abort', () => { cancelAnimationFrame(tipFrame); hideTip() }, { once: true })
 
   function setValue(node: HTMLElement, value: string) {
     if (node.textContent !== value) {
@@ -229,6 +279,18 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
     setValue(totalValue, numberOf(total))
     hint.hidden = days.size > 0
 
+    // Refresh values in place: replacing cells drops keyboard focus, hover state and the user's scroll position.
+    if (grid.childElementCount) {
+      for (const cell of grid.querySelectorAll<HTMLElement>('.heat-cell[data-date]')) {
+        const key = cell.dataset.date!
+        const words = days.get(key) ?? 0
+        cell.dataset.words = String(words)
+        cell.dataset.level = String(levelOf(words, peak))
+        cell.setAttribute('aria-label', `${key === todayKey ? t('writing.today') : dateText(parseDay(key))} · ${dayPhrase(words)}`)
+      }
+      scheduleTip()
+      return
+    }
     months.replaceChildren()
     grid.replaceChildren()
     active = undefined
