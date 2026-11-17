@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, open } from 'node:fs/promises'
+import { readFile, writeFile, open } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
@@ -84,9 +84,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   for (const r of manifest.resources) expect(createHash('sha256').update(packed.get(r.path)).digest('hex')).toBe(r.sha256)
   const strings = [...packed.values()].map((b) => Buffer.from(b).toString()).join('')
   expect(strings).not.toContain('无关作品'); expect(strings).not.toContain('无关全局灵感'); expect(strings).not.toContain('should-not-export')
-  if (process.env.UPDATE_PROJECT_EXAMPLE === '1' && library === 'original') {
-    await mkdir('docs/examples', { recursive: true }); await writeFile('docs/examples/雾港.newworld', await readFile(path))
-  }
+  // The published Schema 1 fixture is immutable; new task samples use their own generator.
   const clean = await freshPage(browser)
   try {
     await choose(clean.page, path)

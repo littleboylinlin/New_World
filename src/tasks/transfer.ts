@@ -8,6 +8,7 @@ import {
   remapTasks,
   validateTasks,
   taskEnvelope,
+  taskBase64,
 } from './model'
 import type { TaskData } from './model'
 import { taskHash, validateTaskAssets } from './resources'
@@ -150,13 +151,12 @@ export async function readTaskFile(blob: Blob): Promise<TaskData> {
         r.bytes >= 0 &&
         r.bytes <= 16 * 1024 * 1024 &&
         typeof r.base64 === 'string' &&
-        r.base64.length === 4 * Math.ceil(r.bytes / 3) &&
-        /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(r.base64),
+        r.base64.length === 4 * Math.ceil(r.bytes / 3),
       'task resource',
     )
     total += r.bytes
     taskAssert(total <= 64 * 1024 * 1024, 'task asset total limit')
-    const bytes = Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0)),
+    const bytes = taskBase64(r.base64, r.bytes),
       content = new Blob([bytes], { type: r.type })
     taskAssert(
       content.size === r.bytes &&

@@ -110,3 +110,15 @@ test('task envelope bounds record count, complexity, depth and executable values
   unsafe.taskSettings = [{ id: 'unsafe', value: () => true }]
   assert.throws(() => taskEnvelope(unsafe), /inert/)
 })
+
+test('base64 validation handles the full 16 MiB resource limit and rejects noncanonical padding', async () => {
+  const { taskBase64 } = await import('../../src/tasks/model.ts'),
+    source = Buffer.alloc(16 * 1024 * 1024, 65),
+    decoded = taskBase64(source.toString('base64'), source.length)
+  assert.equal(decoded.length, source.length)
+  assert.equal(Buffer.compare(source, decoded), 0)
+  for (const value of ['A===', 'AA=A', 'AB==', '====', 'AA A', 'A'])
+    assert.throws(() => taskBase64(value, 1))
+  assert.throws(() => taskBase64('', 16 * 1024 * 1024 + 1))
+  assert.equal(taskBase64('', 0).length, 0)
+})

@@ -365,6 +365,8 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
   let data = emptyTasks(),
     request = 0,
     calendarDate = dateKey(),
+    clockDay = dateKey(),
+    ready = false,
     contextLink: TaskWorkLink | undefined,
     displayLimit = 200,
     rendered = 0,
@@ -1009,14 +1011,24 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
         }
       }
       for (const id of selected) if (!data.tasks.some((t) => t.id === id)) selected.delete(id)
+      ready = true
       paintNav()
       paintContent()
     } catch (e) {
+      ready = false
       if (!signal.aborted) content.replaceChildren(notice(storageError(e), true))
     }
   }
   taskChanges.addEventListener('update', () => void refresh(), { signal })
   window.addEventListener('focus', () => void refresh(), { signal })
+  const clock = window.setInterval(() => {
+    const next = dateKey()
+    if (next !== clockDay) {
+      clockDay = next
+      if (ready && !signal.aborted) paintContent()
+    }
+  }, 30_000)
+  signal.addEventListener('abort', () => window.clearInterval(clock), { once: true })
   window.addEventListener(
     'keydown',
     (event) => {

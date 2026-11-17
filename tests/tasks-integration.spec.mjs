@@ -235,3 +235,39 @@ test('章节位置联动、评论/附件、复制、模板、真实统计及灵�
     .click()
   await expect(page.locator('.undo-toast')).toContainText('关联作品已不在书库')
 })
+
+test('4 MiB 附件经真实任务 JSON 导出导入校验并按原字节下载', async ({ page, browser }, info) => {
+  await page.goto('/#/tasks')
+  await page.getByLabel('快速添加任务', { exact: true }).fill('大附件验收')
+  await page.locator('.task-quick button').click()
+  await page.getByRole('button', { name: '评论与附件', exact: true }).click()
+  let extras = page.getByRole('dialog', { name: '评论与附件', exact: true })
+  const bytes = Buffer.alloc(4 * 1024 * 1024, 65)
+  await extras
+    .getByLabel('添加文件附件', { exact: true })
+    .setInputFiles({ name: 'large.txt', mimeType: 'text/plain', buffer: bytes })
+  await expect(extras).toContainText('large.txt', {timeout:15000})
+  await extras.getByRole('button', { name: '关闭', exact: true }).click()
+  let download = page.waitForEvent('download')
+  await page.getByRole('button', { name: '导出任务数据（JSON）', exact: true }).click()
+  const path = info.outputPath('large-tasks.json')
+  await (await download).saveAs(path)
+  const context = await withoutRelease(await browser.newContext({ locale: 'zh-CN' })),
+    clean = await context.newPage()
+  try {
+    await clean.goto('/#/tasks')
+    await choose(clean, '导入任务数据（JSON）', path)
+    const preview = clean.getByRole('dialog', { name: '任务导入预览', exact: true })
+    await preview.getByRole('button', { name: '确认导入任务', exact: true }).click()
+    await expect(preview).toBeHidden()
+    await clean.getByRole('button', { name: '评论与附件', exact: true }).click()
+    extras = clean.getByRole('dialog', { name: '评论与附件', exact: true })
+    download = clean.waitForEvent('download')
+    await extras.getByRole('button', { name: '下载附件', exact: true }).click()
+    const restored = info.outputPath('large-restored.txt')
+    await (await download).saveAs(restored)
+    expect(await readFile(restored)).toEqual(bytes)
+  } finally {
+    await context.close()
+  }
+})

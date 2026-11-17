@@ -203,7 +203,7 @@ Windows 安装器通过 electron-builder 注册 `.newworld` 文件关联；macOS
 
 上述示例保持已发布 Schema 1 的原字节，用于旧文件回归。新增 [雾港-作品信息.newworld](examples/雾港-作品信息.newworld) 为 Schema 2，含作者、多段简介、副标题、标签、状态及安全未知扩展。`tests/work-information.spec.mjs` 通过实际 UI 导出、干净书库导入、数据库全部相关记录及字节对比、再次导出、副本冲突、编辑后保留扩展、并发修改冲突、错误/超限数据拒绝验证。Windows/macOS 安装测试还验证作品信息重启持久化及真实 PDF 标题页。
 
-运行 `npm test`；平台安装及系统文件关联在 `npm run test:desktop` 和 `npm run test:macos` 中验证。重新生成验收示例可运行 `UPDATE_PROJECT_EXAMPLE=1 npx playwright test tests/projects.spec.mjs --grep 'original 工程' --workers=1`（先 `npm run build`）。示例为测试数据，不包含真实用户信息。
+运行 `npm test`；平台安装及系统文件关联在 `npm run test:desktop` 和 `npm run test:macos` 中验证。已发布 Schema 1/2 样本保持不可覆盖；新任务示例使用独立的 Schema 3 生成命令，见任务文档。示例为测试数据，不包含真实用户信息。
 
 已发布 Schema 1/2 样本不可由新写入器替换。Schema 3 样本生成及任务验收见 [任务文档](tasks.md)。
 

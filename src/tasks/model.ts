@@ -271,6 +271,27 @@ export function taskEnvelope(data: unknown, nodeLimit = 1_000_000) {
   visit(data, 0)
 }
 
+/** Native codecs plus a linear alphabet check avoid regex stack exhaustion on large assets. */
+export function taskBase64(value: unknown, bytes: number): Uint8Array<ArrayBuffer> {
+  taskAssert(
+    typeof value === 'string' &&
+      Number.isSafeInteger(bytes) &&
+      bytes >= 0 &&
+      bytes <= 16 * 1024 * 1024 &&
+      value.length === 4 * Math.ceil(bytes / 3),
+    'base64 size',
+  )
+  taskAssert(!/[^A-Za-z0-9+/=]/.test(value), 'base64 alphabet')
+  let binary: string
+  try {
+    binary = atob(value)
+  } catch {
+    throw new TaskDataError('base64 encoding')
+  }
+  taskAssert(binary.length === bytes && btoa(binary) === value, 'canonical base64')
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0))
+}
+
 /** Closed schema, bounded records and complete graph validation; used before every atomic write/import. */
 export function validateTasks(data: TaskData) {
   taskEnvelope(data)

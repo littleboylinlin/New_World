@@ -2,6 +2,7 @@ import { test, expect } from './app-test.mjs'
 import { seedProject, projectFixture, databaseSnapshot } from './project-fixture.mjs'
 import { pixel } from './fixtures.mjs'
 test.setTimeout(90000)
+test.use({ timezoneId: 'UTC' })
 const state = (page) => page.evaluate(databaseSnapshot)
 const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
 async function save(dialog) {
@@ -375,4 +376,52 @@ test('编辑已完成和项目回收站中的子任务只更新信息，保留�
     deletedAt: null,
   })
   expect(task.completedAt).not.toBeNull()
+})
+
+test('今日和未来视图跨午夜自动更新，不修改计划日期或伪造完成记录', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-17T23:59:50Z') })
+  await page.clock.setFixedTime(new Date('2026-11-17T23:59:50Z'))
+  await page.goto('/#/tasks/today')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction('tasks', 'readwrite'),
+      now = Date.now(),
+      task = {
+        description: '',
+        notes: '',
+        parentId: null,
+        projectId: null,
+        sectionId: null,
+        priority: 4,
+        labelIds: [],
+        order: 1024,
+        expanded: true,
+        completedAt: null,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        revision: 0,
+      }
+    for (const [title, planDate] of [
+      ['今天计划', '2026-11-17'],
+      ['明天计划', '2026-11-18'],
+    ])
+      tx.objectStore('tasks').add({ ...task, id: crypto.randomUUID(), title, planDate })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+  })
+  await page.reload()
+  await expect(page.getByRole('button', { name: '今天计划', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '明天计划', exact: true })).toHaveCount(0)
+  const before = await state(page)
+  await page.clock.setFixedTime(new Date('2026-11-18T00:00:30Z'))
+  await page.clock.fastForward(40000)
+  await expect(page.getByRole('button', { name: '明天计划', exact: true })).toBeVisible()
+  expect(await state(page)).toEqual(before)
+  await page.getByRole('link', { name: '即将到来', exact: true }).click()
+  await expect(page.getByRole('button', { name: '明天计划', exact: true })).toHaveCount(0)
 })
