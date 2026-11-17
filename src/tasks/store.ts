@@ -7,6 +7,7 @@ import {
   descendants,
   nextOccurrence,
   addDays,
+  latestTaskCompletion,
 } from './model'
 import type {
   Task,
@@ -265,10 +266,7 @@ export function completeTasks(
       }
     const reopen = (task: Task) => {
       if (task.completedAt === null) return
-      const reversed = new Set(data.taskCompletions.map((e) => e.reverts))
-      const latest = data.taskCompletions
-        .filter((e) => e.taskId === task.id && !e.reverts && !reversed.has(e.id))
-        .at(-1)
+      const latest = latestTaskCompletion(data.taskCompletions, task.id)
       if (latest)
         data.taskCompletions.push({
           id: crypto.randomUUID(),
@@ -330,12 +328,7 @@ export function reopenCompletion(id: string) {
     const event = data.taskCompletions.find((e) => e.id === id && !e.reverts)
     if (!event || data.taskCompletions.some((e) => e.reverts === id))
       throw new Error(t('tasks.conflict'))
-    const reversed = new Set(data.taskCompletions.map((e) => e.reverts))
-    if (
-      data.taskCompletions
-        .filter((e) => e.taskId === event.taskId && !e.reverts && !reversed.has(e.id))
-        .at(-1)?.id !== id
-    )
+    if (latestTaskCompletion(data.taskCompletions, event.taskId)?.id !== id)
       throw new Error(t('tasks.latestCompletion'))
     const task = requireTask(data, event.taskId)
     if (task.deletedAt !== null) throw new Error(t('tasks.restoreFirst'))
@@ -386,14 +379,7 @@ export function reopenCompletion(id: string) {
     while (parent) {
       const p = requireTask(data, parent)
       if (p.completedAt !== null) {
-        const latest = data.taskCompletions
-          .filter(
-            (e) =>
-              e.taskId === p.id &&
-              !e.reverts &&
-              !data.taskCompletions.some((r) => r.reverts === e.id),
-          )
-          .at(-1)
+        const latest = latestTaskCompletion(data.taskCompletions, p.id)
         if (latest)
           data.taskCompletions.push({
             id: crypto.randomUUID(),

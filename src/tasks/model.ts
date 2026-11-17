@@ -619,6 +619,31 @@ export function taskMatches(task: Task, query: string) {
     .includes(query.toLocaleLowerCase())
 }
 
+/** Object-store UUID order is not event order. Never guess an ambiguous legacy timestamp tie. */
+export function latestTaskCompletion(
+  events: readonly TaskCompletion[],
+  taskId: string,
+): TaskCompletion | undefined {
+  const reversed = new Set(events.flatMap((e) => (e.reverts ? [e.reverts] : [])))
+  const actual = events.filter((e) => e.taskId === taskId && !e.reverts && !reversed.has(e.id))
+  if (!actual.length) return undefined
+  const stamp = actual.reduce((latest, e) => Math.max(latest, e.at), 0)
+  const recent = actual.filter((e) => e.at === stamp)
+  if (recent.length === 1) return recent[0]
+  const ranked = recent.map((event) => ({
+    event,
+    revision: event.cycle?.find((s) => s.taskId === taskId)?.revision,
+  }))
+  taskAssert(
+    ranked.every((r) => r.revision !== undefined),
+    'ambiguous completion timestamps; history retained',
+  )
+  const revision = ranked.reduce((latest, r) => Math.max(latest, r.revision!), 0)
+  const latest = ranked.filter((r) => r.revision === revision)
+  taskAssert(latest.length === 1, 'ambiguous completion revisions; history retained')
+  return latest[0].event
+}
+
 /** Only explicit identity/reference fields are remapped, never arbitrary text or provenance hashes. */
 export function taskIdentities(data: TaskData) {
   const ids = new Set<string>()

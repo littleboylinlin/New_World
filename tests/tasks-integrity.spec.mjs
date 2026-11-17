@@ -425,3 +425,117 @@ test('今日和未来视图跨午夜自动更新，不修改计划日期或伪�
   await page.getByRole('link', { name: '即将到来', exact: true }).click()
   await expect(page.getByRole('button', { name: '明天计划', exact: true })).toHaveCount(0)
 })
+
+test('连续完成历史使用真实时间，逆序 UUID 下正确恢复最新周期、取消完成及恢复父任务', async ({
+  page,
+}) => {
+  await page.goto('/#/tasks/completed')
+  await expect(page.getByRole('heading', { name: '任务管理', exact: true })).toBeVisible()
+  const ids = await page.evaluate(async () => {
+    const repeat = crypto.randomUUID(),
+      plain = crypto.randomUUID(),
+      parent = crypto.randomUUID(),
+      child = crypto.randomUUID(),
+      base = Date.now() - 10000,
+      db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction(['tasks', 'taskCompletions'], 'readwrite'),
+      store = tx.objectStore('tasks'),
+      history = tx.objectStore('taskCompletions')
+    const row = {
+      description: '',
+      notes: '',
+      projectId: null,
+      sectionId: null,
+      parentId: null,
+      priority: 4,
+      labelIds: [],
+      order: 1024,
+      expanded: true,
+      planDate: null,
+      completedAt: base + 3000,
+      deletedAt: null,
+      createdAt: base,
+      updatedAt: base + 3000,
+      revision: 6,
+    }
+    store.add({
+      ...row,
+      id: repeat,
+      title: '连续重复任务',
+      completedAt: null,
+      planDate: '2099-01-04',
+      repeat: { frequency: 'day', interval: 1, anchorDate: '2099-01-01' },
+    })
+    store.add({ ...row, id: plain, title: '取消最新完成' })
+    store.add({ ...row, id: parent, title: '恢复最新父完成' })
+    store.add({ ...row, id: child, title: '恢复子完成', parentId: parent })
+    const ids = [
+      'ffffffff-ffff-4fff-8fff-fffffffffff1',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+      '00000000-0000-4000-8000-000000000001',
+    ]
+    for (let i = 0; i < 3; i++) {
+      const date = '2099-01-0' + (i + 1),
+        next = '2099-01-0' + (i + 2)
+      history.add({
+        id: ids[i],
+        taskId: repeat,
+        title: '连续重复任务',
+        at: base + (i + 1) * 1000,
+        occurrence: date,
+        next,
+        cycle: [{ taskId: repeat, planDate: date, completedAt: null, revision: (i + 1) * 2 }],
+      })
+    }
+    const event = (id, taskId, title, at) => ({ id, taskId, title, at, occurrence: null }),
+      plainOld = 'ffffffff-ffff-4fff-8fff-fffffffffff2',
+      plainLatest = '00000000-0000-4000-8000-000000000002',
+      parentOld = 'ffffffff-ffff-4fff-8fff-fffffffffff3',
+      parentLatest = '00000000-0000-4000-8000-000000000003'
+    history.add(event(plainOld, plain, '取消最新完成', base + 1000))
+    history.add(event(plainLatest, plain, '取消最新完成', base + 3000))
+    history.add(event(parentOld, parent, '恢复最新父完成', base + 1000))
+    history.add(event(parentLatest, parent, '恢复最新父完成', base + 3000))
+    history.add(event(crypto.randomUUID(), child, '恢复子完成', base + 3000))
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+    return { repeat, plain, parent, child, latest: ids[2], plainLatest, parentLatest }
+  })
+  await page.reload()
+  await page.getByText('完成历史', { exact: true }).click()
+  await page
+    .locator('details p')
+    .filter({ hasText: '连续重复任务' })
+    .getByRole('button', { name: '恢复本次完成', exact: true })
+    .first()
+    .click()
+  await expect
+    .poll(async () => (await state(page)).taskCompletions.some((e) => e.reverts === ids.latest))
+    .toBe(true)
+  expect((await state(page)).tasks.find((t) => t.id === ids.repeat).planDate).toBe('2099-01-03')
+  await row(page, ids.plain).getByRole('button', { name: '取消完成', exact: true }).click()
+  await expect
+    .poll(async () =>
+      (await state(page)).taskCompletions.some((e) => e.reverts === ids.plainLatest),
+    )
+    .toBe(true)
+  await expect(
+    page.locator('details').filter({ has: page.getByText('完成历史', { exact: true }) }),
+  ).toHaveAttribute('open', '')
+  await page
+    .locator('details p')
+    .filter({ hasText: '恢复子完成' })
+    .getByRole('button', { name: '恢复本次完成', exact: true })
+    .click()
+  await expect
+    .poll(async () =>
+      (await state(page)).taskCompletions.some((e) => e.reverts === ids.parentLatest),
+    )
+    .toBe(true)
+  const after = await state(page)
+  expect(after.tasks.find((t) => t.id === ids.parent).completedAt).toBeNull()
+  expect(after.tasks.find((t) => t.id === ids.child).parentId).toBe(ids.parent)
+})
