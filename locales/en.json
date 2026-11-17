@@ -1097,5 +1097,8 @@
   "tasks.loadMore": "Load more tasks or history",
   "tasks.invalidData": "Invalid or unsupported task data: {0}",
   "tasks.calendarHint": "Calendar cells use this device time zone. Dragging keeps the task’s wall clock and aligns its local day; nonexistent DST times are rejected.",
-  "tasks.cycleMissing": "A historical cycle member is missing or was moved out. This cycle cannot be restored automatically. History is retained; adjust the current task manually."
+  "tasks.cycleMissing": "A historical cycle member is missing or was moved out. This cycle cannot be restored automatically. History is retained; adjust the current task manually.",
+  "appearance.writing": "Writing",
+  "appearance.typewriter": "Typewriter mode",
+  "appearance.typewriterHint": "Keep the current line near the middle of the editor while typing. Scroll freely to browse; following resumes when you type again."
 }

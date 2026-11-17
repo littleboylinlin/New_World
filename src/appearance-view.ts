@@ -259,7 +259,18 @@ export function mountAppearanceSettings(section: HTMLElement) {
     ...dictionaryControls(),
   )
 
-  section.append(themeGroup, typographyGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
+  const writingGroup = element('div', 'settings-subgroup')
+  const typewriter = element('label', 'appearance-check')
+  const typewriterBox = element('input')
+  typewriterBox.type = 'checkbox'
+  typewriterBox.addEventListener('change', () => updateAppearance({ typewriter: typewriterBox.checked }))
+  follow(typewriterBox, (value) => { typewriterBox.checked = value.typewriter }, true)
+  typewriter.append(typewriterBox, element('span', '', t('appearance.typewriter')))
+  writingGroup.append(
+    element('h3', 'settings-group-title', t('appearance.writing')),
+    typewriter, element('p', 'dialog-help', t('appearance.typewriterHint')),
+  )
+  section.append(themeGroup, typographyGroup, writingGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
 }
 
 /** The "Aa" button in the reading and writing toolbars, with a small appearance panel. */

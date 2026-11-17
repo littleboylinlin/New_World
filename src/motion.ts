@@ -1,6 +1,6 @@
 import './motion.css'
 
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
+export const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
 
 // Deeper pages enter from the right and going back enters from the left.
 function depth(hash: string) {

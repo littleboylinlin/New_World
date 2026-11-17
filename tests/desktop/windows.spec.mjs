@@ -1,3 +1,4 @@
+import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -124,6 +125,21 @@ test.afterAll(async () => {
   expect(await runSetup(uninstaller)).toBe(0)
   await expect(stat(installedApp)).rejects.toHaveProperty('code', 'ENOENT')
   expect((await stat(join(process.env.APPDATA, 'NewWorld', 'IndexedDB'))).isDirectory()).toBe(true)
+})
+
+test('桌面平滑写作：光标、输入法、打字机模式和长章节输入性能', async ({}, info) => {
+  const app = await launch(info)
+  try {
+    const page = await app.firstWindow()
+    await writingMotionFlow(page)
+    const result = await measureTyping(page)
+    await info.attach('typing-performance.json', { body: JSON.stringify(result, null, 2), contentType: 'application/json' })
+    expect(result.fullCounts).toBe(0)
+    expect(result.snapshots).toBe(0)
+    expect(result.dispatch.median).toBeLessThan(16)
+    expect(result.dispatch.p95).toBeLessThan(50)
+    await page.screenshot({ path: info.outputPath('windows-writing-motion.png') })
+  } finally { await stop(app) }
 })
 
 test('桌面离线打开、读写和导出，关闭及重新安装后保留原文和续写', async ({}, testInfo) => {
