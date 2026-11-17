@@ -42,8 +42,15 @@ test('点击、方向键、撤销重做和跨行跳转直接定位，不经过�
   await page.evaluate(() => Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished)))
   await text.evaluate((node) => node.scrollIntoView({ block: 'center' }))
   await expectCaretAligned(page)
-  const point = await text.evaluate((node) => node.editor.view.coordsAtPos(1))
-  expectSnapTrace(await traceCaretMotion(page, () => page.mouse.click(point.left + 1, (point.top + point.bottom) / 2)))
+  await text.evaluate((node) => node.scrollIntoView({ block: 'center', behavior: 'instant' }))
+  await expectCaretAligned(page)
+  expectSnapTrace(await traceCaretMotion(page, async () => {
+    const point = await text.evaluate((node) => {
+      const coords = node.editor.view.coordsAtPos(1), rect = node.getBoundingClientRect()
+      return { x: coords.left - rect.left + 1, y: (coords.top + coords.bottom) / 2 - rect.top }
+    })
+    await text.click({ position: point })
+  }))
   expectSnapTrace(await traceCaretMotion(page, () => page.keyboard.press('ArrowRight')))
   await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)

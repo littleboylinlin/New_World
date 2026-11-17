@@ -130,10 +130,16 @@ export async function writingMotionFlow(page) {
   expect(Math.abs(typed.target.x - typed.before.x)).toBeGreaterThan(80)
   expectSmoothTrace(typed)
   await expect(caret(page)).toHaveCSS('transition-duration', '0s')
-  await text.evaluate((node) => node.scrollIntoView({ block: 'center' }))
+  await text.evaluate((node) => node.scrollIntoView({ block: 'center', behavior: 'instant' }))
   await expectCaretAligned(page)
-  const nearby = await text.evaluate((node) => node.editor.view.coordsAtPos(node.editor.state.selection.head - 2))
-  const clicked = await traceCaretMotion(page, () => page.mouse.click(nearby.left + 1, (nearby.top + nearby.bottom) / 2))
+  const clicked = await traceCaretMotion(page, async () => {
+    const point = await text.evaluate((node) => {
+      const coords = node.editor.view.coordsAtPos(node.editor.state.selection.head - 2)
+      const rect = node.getBoundingClientRect()
+      return { x: coords.left - rect.left + 1, y: (coords.top + coords.bottom) / 2 - rect.top }
+    })
+    await text.click({ position: point })
+  })
   expect(Math.abs(clicked.target.x - clicked.before.x)).toBeLessThan(80)
   expectSnapTrace(clicked)
   await text.evaluate((node) => node.editor.commands.setTextSelection({ from: 1, to: 3 }))
