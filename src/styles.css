@@ -163,8 +163,10 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .legend-end:first-child { margin-right: 2px; }
 .legend-end:last-child { margin-left: 2px; }
 .legend-cell { width: 12px; height: 12px; }
-.heat-tooltip { position: absolute; z-index: 4; transform: translate(-50%, -100%); padding: 6px 10px; border: 2px solid var(--ink); border-radius: 8px; color: var(--paper); background: var(--ink); box-shadow: 3px 3px 0 var(--accent); font-size: .78rem; font-weight: 700; line-height: 1.4; white-space: nowrap; pointer-events: none; }
+.heat-tooltip { position: fixed; inset: auto; margin: 0; width: max-content; overflow: visible; transform: translate(-50%, -100%); padding: 6px 10px; border: 2px solid var(--ink); border-radius: 8px; color: var(--paper); background: var(--ink); box-shadow: 3px 3px 0 var(--accent); font-size: .78rem; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; pointer-events: none; }
 .heat-tooltip::after { content: ""; position: absolute; top: 100%; left: var(--caret-x, 50%); width: 8px; height: 8px; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); background: var(--ink); transform: translate(-50%, -50%) rotate(45deg); }
+.heat-tooltip[data-side="below"]::after { top: 0; transform: translate(-50%, -50%) rotate(225deg); }
+.heat-tooltip::backdrop { pointer-events: none; }
 .stats-hint { margin-top: 0; color: var(--muted); font-size: .82rem; line-height: 1.45; }
 
 .breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; color: var(--muted); font-size: .84rem; font-weight: 600; }

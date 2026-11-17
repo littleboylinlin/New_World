@@ -70,9 +70,7 @@ test('写作后首页显示总字数、连续天数与当日悬浮提示', async
   await expect(page.locator('.stats-hint')).toBeHidden()
   await expect(todayCell(page)).toHaveAttribute('data-words', '9')
   await expect(todayCell(page)).toHaveAttribute('data-level', '4')
-  // Today sits at the scrolled right edge; settle the auto-scroll so hovering does not re-trigger hide-on-scroll.
   await todayCell(page).scrollIntoViewIfNeeded()
-  await page.waitForTimeout(150)
   await todayCell(page).hover()
   await expect(tooltip(page)).toBeVisible()
   await expect(tooltip(page)).toContainText('今天')
@@ -102,9 +100,7 @@ test('多日历史计算连续天数、峰值分级、过去日期提示与键�
   await expect(tooltip(page)).toContainText('写了 40 字')
   await expect(tooltip(page)).not.toContainText('今天')
 
-  // Let any scroll/pointer event from the hover settle so it cannot hide a later focus tooltip.
   await page.mouse.move(0, 0)
-  await page.waitForTimeout(150)
   await todayCell(page).focus()
   await expect(tooltip(page)).toContainText('今天')
   const before = await todayCell(page).getAttribute('data-week')
@@ -130,6 +126,10 @@ test('空库显示引导提示，格子总数固定且没有高等级色块', as
   if (dow < 6) await expect(future.first()).toHaveAttribute('aria-hidden', 'true')
   await todayCell(page).hover()
   await expect(tooltip(page)).toContainText('没有写作')
+  if (dow < 6) {
+    await future.first().hover()
+    await expect(tooltip(page)).toBeHidden()
+  }
 })
 
 test('删除作品后总字数归零，但全局写作历史保留', async ({ page }) => {
@@ -221,6 +221,154 @@ test('英文正文按词计数，复用编辑器口径', async ({ page }) => {
   await goHome(page)
   await expect(total(page)).toHaveText('5')
   await expect(todayCell(page)).toHaveAttribute('data-words', '5')
+})
+
+// Flush actual queued scroll/layout events, without sleeping past the hover/scroll race.
+const layoutFrame = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+
+async function expectTipInFront(page) {
+  await expect(tooltip(page)).toBeVisible()
+  await expect.poll(() => tooltip(page).evaluate((node) => {
+    const rect = node.getBoundingClientRect()
+    // Hit testing ignores pointer-events:none. Temporarily include the tooltip to test actual clipping/stacking.
+    node.style.pointerEvents = 'auto'
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    node.style.pointerEvents = ''
+    const view = visualViewport
+    return rect.left >= (view?.offsetLeft ?? 0) && rect.top >= (view?.offsetTop ?? 0)
+      && rect.right <= (view ? view.offsetLeft + view.width : innerWidth)
+      && rect.bottom <= (view ? view.offsetTop + view.height : innerHeight) && hit === node
+  })).toBe(true)
+}
+
+test('横向滚动后静止指针下的新日期仍显示提示，移入间隙或移出时隐藏', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await ready(page)
+  const cell = page.locator('.heatmap-grid .heat-cell[data-week="51"][data-row="0"]')
+  await cell.hover()
+  await expect(tooltip(page)).toHaveText(await cell.getAttribute('aria-label'))
+  const point = await cell.evaluate((node) => {
+    const r = node.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  })
+  const before = await cell.getAttribute('data-date')
+  await page.locator('.heatmap-grid-wrap').evaluate(async (node) => {
+    const scrolled = new Promise((resolve) => node.addEventListener('scroll', resolve, { once: true }))
+    node.scrollLeft -= 16
+    await scrolled
+  })
+  await layoutFrame(page)
+  const underPointer = await page.evaluate(({ x, y }) => {
+    const node = document.elementFromPoint(x, y)?.closest('.heat-cell[data-date]')
+    return { date: node?.dataset.date, label: node?.getAttribute('aria-label') }
+  }, point)
+  expect(underPointer.date).toBeTruthy()
+  expect(underPointer.date).not.toBe(before)
+  await expect(tooltip(page)).toHaveText(underPointer.label)
+  await expectTipInFront(page)
+  await page.mouse.move(point.x + 8, point.y)
+  await expect(tooltip(page)).toBeHidden()
+  await cell.hover()
+  await page.mouse.move(0, 0)
+  await expect(tooltip(page)).toBeHidden()
+})
+
+test('键盘聚焦引发自动滚动后提示保留，窗口刷新保留焦点并更新字数', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await ready(page)
+  await page.mouse.move(0, 0)
+  const oldest = page.locator('.heatmap-grid .heat-cell[data-date]').first()
+  await oldest.focus()
+  await layoutFrame(page)
+  await expect(oldest).toBeFocused()
+  await expect(tooltip(page)).toHaveText(await oldest.getAttribute('aria-label'))
+  await page.keyboard.press('ArrowRight')
+  const focused = page.locator('.heatmap-grid .heat-cell:focus')
+  await expect(focused).toHaveAttribute('data-week', '1')
+  await expect(tooltip(page)).toHaveText(await focused.getAttribute('aria-label'))
+  await todayCell(page).focus()
+  await layoutFrame(page)
+  await seedDays(page, [[0, 12345]])
+  await expect(todayCell(page)).toHaveAttribute('data-words', '12345')
+  await expect(todayCell(page)).toBeFocused()
+  await expect(tooltip(page)).toHaveText('今天 · 写了 12,345 字')
+  // A real library update also refreshes the panel; opening its dialog must not leave the tooltip on top.
+  await page.keyboard.press('Control+Alt+KeyN')
+  const dialog = page.getByRole('dialog', { name: '记灵感', exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(tooltip(page)).toBeHidden()
+  await dialog.getByRole('textbox', { name: '灵感', exact: true }).fill('刷新统计时保留日期焦点')
+  await dialog.getByRole('textbox', { name: '灵感', exact: true }).press('Enter')
+  await expect(dialog).toHaveCount(0)
+  await expect(todayCell(page)).toBeFocused()
+  await expect(tooltip(page)).toHaveText('今天 · 写了 12,345 字')
+  await page.locator('.heatmap-grid-wrap').evaluate((node) => { node.scrollLeft = 0 })
+  await layoutFrame(page)
+  await expect(tooltip(page)).toBeHidden()
+  await page.getByRole('link', { name: '设置', exact: true }).focus()
+  await expect(tooltip(page)).toBeHidden()
+})
+
+test('静止悬停时刷新数据更新提示并保留横向位置，离开首页清理提示', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await ready(page)
+  const cell = page.locator('.heatmap-grid .heat-cell[data-week="10"][data-row="0"]')
+  await cell.hover()
+  const wrap = page.locator('.heatmap-grid-wrap')
+  const left = await wrap.evaluate((node) => node.scrollLeft)
+  await seedDays(page, [[0, 500]])
+  await expect(todayCell(page)).toHaveAttribute('data-words', '500')
+  expect(await wrap.evaluate((node) => node.scrollLeft)).toBe(left)
+  await expect(tooltip(page)).toHaveText(await cell.getAttribute('aria-label'))
+  await page.getByRole('link', { name: '进入原创库', exact: true }).click()
+  await expect(tooltip(page)).toHaveCount(0)
+  await expect(page.locator('.heat-tooltip:popover-open')).toHaveCount(0)
+})
+
+test('桌面滚动容器顶部的日期提示不会被标题栏裁切', async ({ page }, info) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 900, height: 220 })
+  await page.goto('/')
+  await ready(page)
+  await page.locator('html').evaluate((node) => node.classList.add('desktop'))
+  const cell = page.locator('.heatmap-grid .heat-cell[data-week="51"][data-row="0"]')
+  await cell.hover()
+  await page.locator('.page').evaluate((node) => {
+    const cell = document.querySelector('.heatmap-grid .heat-cell[data-week="51"][data-row="0"]')
+    node.scrollTop += cell.getBoundingClientRect().top - node.getBoundingClientRect().top - 12
+  })
+  await cell.hover()
+  await expect(tooltip(page)).toHaveText(await cell.getAttribute('aria-label'))
+  await expectTipInFront(page)
+  await page.screenshot({ path: info.outputPath('home-heatmap-desktop-top.png'), animations: 'disabled' })
+})
+
+test('首尾日期在缩放和窄视口中完整可见，视口变化后聚焦提示重新定位', async ({ page }, info) => {
+  await page.addInitScript(() => localStorage.setItem('new-world:language', 'en'))
+  await page.goto('/')
+  await ready(page)
+  const session = await page.context().newCDPSession(page)
+  for (const width of [1280, 390, 320]) {
+    await page.setViewportSize({ width, height: 420 })
+    for (const cell of [page.locator('.heatmap-grid .heat-cell[data-date]').first(), todayCell(page)]) {
+      await cell.focus()
+      await layoutFrame(page)
+      await expect(tooltip(page)).toHaveText(await cell.getAttribute('aria-label'))
+      await expectTipInFront(page)
+    }
+    // Zoom changes the CSS viewport and pixel density, without changing the app's layout styles.
+    await session.send('Emulation.setDeviceMetricsOverride', {
+      width: Math.floor(width / 1.5), height: 420, deviceScaleFactor: 1.5, mobile: false,
+    })
+    await todayCell(page).scrollIntoViewIfNeeded()
+    await layoutFrame(page)
+    await expectTipInFront(page)
+    await page.screenshot({ path: info.outputPath(`home-heatmap-zoom-${width}.png`), animations: 'disabled' })
+    await session.send('Emulation.clearDeviceMetricsOverride')
+  }
 })
 
 test.describe('手机视口', () => {
