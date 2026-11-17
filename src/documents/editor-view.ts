@@ -81,6 +81,7 @@ export async function renderEdition(
   let contentsTimer: number | undefined
   let formatFrame = 0
   let currentWords = 0
+  let countedChange = 0
   // Word counts of the other chapters are read once. The open chapter is counted as it changes.
   let words: Map<string, number> | undefined
   const wordLabels = new Map<string, HTMLElement>()
@@ -316,6 +317,11 @@ export async function renderEdition(
           status.textContent = t('editor.saveAfterTypingFinishes')
           return false
         }
+        // A chapter can be saved and switched before the deferred count has run.
+        if (immediate && countedChange !== change) {
+          window.clearTimeout(contentsTimer)
+          refreshContents()
+        }
         const snapshot = editor.getJSON() as DocumentContent
         const checkpoint = change
         status.textContent = t('editor.saving')
@@ -356,6 +362,7 @@ export async function renderEdition(
     if (editor.view.composing) return
     const current = liveCount()
     currentWords = current
+    countedChange = change
     count.textContent = t('editor.chapterCharacters', [number(current)])
     words?.set(chapter.id, current)
     refreshWords(false)

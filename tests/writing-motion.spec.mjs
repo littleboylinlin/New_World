@@ -108,8 +108,30 @@ test('连续输入时统计和保存等待停笔，输入法期间不计数也�
   await page.keyboard.insertText('信')
   await page.getByRole('button', { name: '手动保存', exact: true }).click()
   await expect(page.locator('.save-status')).toHaveText('已保存')
+  await expect(page.locator('.word-count')).toHaveText('本章 6 字')
+  await expect(page.locator('.chapter-words').first()).toHaveText('6')
   await page.reload()
   await expect(text).toHaveText('灯塔旁中文信')
+})
+
+test('停笔统计执行前切章，保存后的章节字数和全书字数仍正确', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await newWritingNovel(page)
+  await page.getByRole('button', { name: '新建章节', exact: true }).click()
+  await page.getByRole('textbox', { name: '章节名', exact: true }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节', exact: true }).click()
+  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await page.getByRole('button', { name: '第一章', exact: true }).click()
+  await expect(page.locator('.writing-header h3')).toHaveText('第一章')
+  await page.clock.install()
+  await page.clock.pauseAt(new Date(Date.now() + 1000))
+  await chapterText(page).evaluate((node) => {
+    node.editor.commands.insertContent('灯塔')
+    document.querySelectorAll('.chapter-jump')[1].click()
+  })
+  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(page.locator('.chapter-words')).toHaveText(['2', '0'])
+  await expect(page.locator('.word-total')).toHaveText('全书 2 字')
 })
 
 test('打字机默认关闭，开关持久化；平滑滚动且不受光标布局同步干扰', async ({ page }) => {
