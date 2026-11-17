@@ -6,7 +6,7 @@ New World v0.20.0 is a local novel manager. The original library is for writing 
 
 ## Smooth writing (v0.20.0)
 
-The editor caret follows the current line's text size and theme, with a smooth transition for short moves. It hides for a selection or when the editor loses focus, and stays at the last committed position during IME composition. Window zoom, scrolling, fonts, images and table layout changes resynchronize its position.
+The editor caret follows the current line's text size and theme. Typing on the same line uses smooth frame-by-frame following; clicks, navigation, undo/redo and line changes position it immediately. It hides for a selection or loss of focus. During IME composition it follows the native input position without changing the platform's selection. Window zoom, scrolling, fonts, images and table layout changes resynchronize its position.
 
 “Settings → Appearance → Typewriter mode” is off by default. When enabled, typing and newlines keep the current line near the middle of the editor. Scrolling to browse pauses following until you type again. Caret transitions and centering respect the system's reduced-motion preference.
 
@@ -197,7 +197,7 @@ Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, i
 
 ## Saving and privacy
 
-Text is auto-saved about 700 ms after changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
+Text is auto-saved after about 500 ms without changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
 
 The current database is IndexedDB v9 (v0.19.0 adds task stores). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
 

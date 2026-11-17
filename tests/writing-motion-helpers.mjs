@@ -15,10 +15,80 @@ export async function expectCaretAligned(page) {
   await expect(caret(page)).toBeVisible()
   await expect.poll(() => chapterText(page).evaluate((body) => {
     const { view, state } = body.editor
-    const coords = view.coordsAtPos(state.selection.head)
+    let coords = view.coordsAtPos(state.selection.head)
+    if (view.composing) {
+      const selection = getSelection()
+      const range = document.createRange()
+      range.setStart(selection.focusNode, selection.focusOffset)
+      range.collapse(true)
+      const native = range.getBoundingClientRect()
+      if (native.height) coords = native
+    }
     const rect = document.querySelector('.writing-caret').getBoundingClientRect()
     return Math.max(Math.abs(rect.left - coords.left), Math.abs(rect.top - coords.top), Math.abs(rect.height - (coords.bottom - coords.top)))
   })).toBeLessThan(2)
+}
+
+/** Observe painted positions, independent of whether motion uses CSS or JavaScript. */
+export async function traceCaretMotion(page, action) {
+  await caret(page).evaluate(async (node) => {
+    let stable = 0
+    for (let i = 0; i < 40 && stable < 2; i++) {
+      const before = node.style.transform
+      await new Promise(requestAnimationFrame)
+      stable = node.style.transform === before ? stable + 1 : 0
+    }
+    if (stable < 2) throw new Error('Caret motion did not stop')
+  })
+  await caret(page).evaluate((node) => {
+    const read = () => {
+      const rect = node.getBoundingClientRect()
+      return { x: rect.left, y: rect.top }
+    }
+    const samples = []
+    const observer = new MutationObserver(() => samples.push(read()))
+    node.motionTrace = { before: read(), samples, observer }
+    observer.observe(node, { attributes: true, attributeFilter: ['style'] })
+  })
+  try {
+    await action()
+    await expectCaretAligned(page)
+    return await caret(page).evaluate((node) => {
+      const { before, samples } = node.motionTrace
+      const body = document.querySelector('.novel-body')
+      let coords = body.editor.view.coordsAtPos(body.editor.state.selection.head)
+      if (body.editor.view.composing) {
+        const selection = getSelection(), range = document.createRange()
+        range.setStart(selection.focusNode, selection.focusOffset)
+        range.collapse(true)
+        const rect = range.getBoundingClientRect()
+        if (rect.height) coords = rect
+      }
+      return { before, samples, target: { x: coords.left, y: coords.top } }
+    })
+  } finally {
+    await caret(page).evaluate((node) => { node.motionTrace.observer.disconnect(); delete node.motionTrace })
+  }
+}
+
+export function expectSmoothTrace(trace) {
+  const { before, samples, target } = trace
+  const delta = target.x - before.x
+  expect(Math.abs(delta)).toBeGreaterThan(5)
+  const moved = samples.filter((point) => Math.abs(point.x - before.x) > .5)
+  expect(moved.length).toBeGreaterThan(1)
+  const first = (moved[0].x - before.x) / delta
+  expect(first).toBeGreaterThan(.25)
+  expect(first).toBeLessThan(.45)
+  expect(moved.some((point) => Math.abs(point.x - target.x) > 1)).toBe(true)
+}
+
+export function expectSnapTrace(trace) {
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y)
+  expect(distance(trace.before, trace.target)).toBeGreaterThan(5)
+  const moved = trace.samples.filter((point) => distance(point, trace.before) > 1)
+  expect(moved.length).toBeGreaterThan(0)
+  for (const point of moved) expect(distance(point, trace.target)).toBeLessThan(1)
 }
 
 export async function setTypewriter(page, enabled) {
@@ -52,12 +122,20 @@ export async function writingMotionFlow(page) {
   await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)
   await expect(text).toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)')
-  await page.evaluate(() => Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished)))
-  const before = await caret(page).evaluate((node) => node.style.transform)
-  await page.keyboard.insertText('夜')
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished))
+  })
+  const typed = await traceCaretMotion(page, () => page.keyboard.insertText('一二三四五六七八'))
+  expect(Math.abs(typed.target.x - typed.before.x)).toBeGreaterThan(80)
+  expectSmoothTrace(typed)
+  await expect(caret(page)).toHaveCSS('transition-duration', '0s')
+  await text.evaluate((node) => node.scrollIntoView({ block: 'center' }))
   await expectCaretAligned(page)
-  expect(await caret(page).evaluate((node) => node.style.transform)).not.toBe(before)
-  await expect(caret(page)).toHaveCSS('transition-duration', '0.075s')
+  const nearby = await text.evaluate((node) => node.editor.view.coordsAtPos(node.editor.state.selection.head - 2))
+  const clicked = await traceCaretMotion(page, () => page.mouse.click(nearby.left + 1, (nearby.top + nearby.bottom) / 2))
+  expect(Math.abs(clicked.target.x - clicked.before.x)).toBeLessThan(80)
+  expectSnapTrace(clicked)
   await text.evaluate((node) => node.editor.commands.setTextSelection({ from: 1, to: 3 }))
   await expect(caret(page)).toBeHidden()
   await text.evaluate((node) => node.editor.commands.focus('end'))
@@ -67,18 +145,18 @@ export async function writingMotionFlow(page) {
   await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)
 
-  const committed = await caret(page).evaluate((node) => node.style.transform)
-  await text.dispatchEvent('compositionstart', { data: '' })
-  await text.evaluate((node) => node.editor.commands.insertContent('中文'))
-  await expect(text).toContainText('中文')
-  await page.waitForTimeout(550)
-  expect(await caret(page).evaluate((node) => node.style.transform)).toBe(committed)
-  await text.dispatchEvent('compositionend', { data: '中文' })
-  await expectCaretAligned(page)
+  const cdp = await page.context().newCDPSession(page)
+  try {
+    expectSmoothTrace(await traceCaretMotion(page, () => cdp.send('Input.imeSetComposition', { text: 'zhongwen', selectionStart: 8, selectionEnd: 8 })))
+    expect(await text.evaluate((node) => node.editor.view.composing)).toBe(true)
+    expectSmoothTrace(await traceCaretMotion(page, () => cdp.send('Input.imeSetComposition', { text: '中文', selectionStart: 2, selectionEnd: 2 })))
+    expect(await text.evaluate(() => { const selection = getSelection(); return selection.focusNode.textContent.slice(0, selection.focusOffset).endsWith('中文') })).toBe(true)
+    await cdp.send('Input.insertText', { text: '中文' })
+    await expectCaretAligned(page)
+  } finally { await cdp.detach() }
 
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.keyboard.insertText('字')
-  await expectCaretAligned(page)
+  expectSnapTrace(await traceCaretMotion(page, () => page.keyboard.insertText('字')))
   await expect(caret(page)).toHaveCSS('transition-duration', '0s')
   await setTypewriter(page, true)
   await expect(page.locator('.editor-paper')).toHaveClass(/typewriter-writing/)

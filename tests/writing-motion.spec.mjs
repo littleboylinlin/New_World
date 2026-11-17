@@ -1,6 +1,6 @@
 import { expect, test } from './app-test.mjs'
 import { pixel } from './fixtures.mjs'
-import { caret, chapterText, expectCaretAligned, measureTyping, newWritingNovel, writingMotionFlow, setTypewriter, centerError } from './writing-motion-helpers.mjs'
+import { caret, chapterText, expectCaretAligned, measureTyping, newWritingNovel, writingMotionFlow, setTypewriter, centerError, traceCaretMotion, expectSmoothTrace, expectSnapTrace } from './writing-motion-helpers.mjs'
 
 test.beforeEach(async ({ page }) => { await page.goto('/') })
 
@@ -8,22 +8,50 @@ test('平滑光标、选区、失焦、输入法、减少动态效果和打字�
   await writingMotionFlow(page)
 })
 
-test('输入同帧及之后的滚动通知不清零短距离光标过渡', async ({ page }) => {
+test('一次上屏超过 80px 仍按 0.35 逐帧追赶；滚动通知不打断，停稳后不跑循环', async ({ page }) => {
   await newWritingNovel(page)
   const text = chapterText(page)
   await text.fill('灯塔')
   await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)
   await page.evaluate(() => Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished)))
-  await text.evaluate((node) => {
-    node.editor.view.dispatch(node.editor.state.tr.insertText('字'))
-    document.dispatchEvent(new Event('scroll'))
+  const trace = await traceCaretMotion(page, async () => {
+    await page.keyboard.insertText('一二三四五六七八九十')
+    await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
   })
+  expect(Math.abs(trace.target.x - trace.before.x)).toBeGreaterThan(80)
+  expectSmoothTrace(trace)
+  await expect(caret(page)).toHaveCSS('transition-duration', '0s')
+  await expect(page.locator('.save-status')).toHaveText('已保存')
+  const frames = await page.evaluate(async () => {
+    const original = window.requestAnimationFrame
+    let count = 0
+    window.requestAnimationFrame = (...args) => { count++; return original(...args) }
+    try { await new Promise((resolve) => setTimeout(resolve, 180)); return count }
+    finally { window.requestAnimationFrame = original }
+  })
+  expect(frames).toBe(0)
+})
+
+test('点击、方向键、撤销重做和跨行跳转直接定位，不经过中间位置', async ({ page }) => {
+  await newWritingNovel(page)
+  const text = chapterText(page)
+  await text.fill('灯塔旁的一封长信。')
+  await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)
-  await expect(caret(page)).toHaveCSS('transition-duration', '0.075s')
-  await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
+  await page.evaluate(() => Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished)))
+  await text.evaluate((node) => node.scrollIntoView({ block: 'center' }))
   await expectCaretAligned(page)
-  await expect(caret(page)).toHaveCSS('transition-duration', '0.075s')
+  const point = await text.evaluate((node) => node.editor.view.coordsAtPos(1))
+  expectSnapTrace(await traceCaretMotion(page, () => page.mouse.click(point.left + 1, (point.top + point.bottom) / 2)))
+  expectSnapTrace(await traceCaretMotion(page, () => page.keyboard.press('ArrowRight')))
+  await text.evaluate((node) => node.editor.commands.focus('end'))
+  await expectCaretAligned(page)
+  expectSnapTrace(await traceCaretMotion(page, () => page.keyboard.press('Enter')))
+  await page.keyboard.insertText('新段落')
+  await expectCaretAligned(page)
+  expectSnapTrace(await traceCaretMotion(page, () => text.evaluate((node) => node.editor.commands.undo())))
+  expectSnapTrace(await traceCaretMotion(page, () => text.evaluate((node) => node.editor.commands.redo())))
 })
 
 test('光标随字号、主题、窗口缩放、字体、滚动、图片和表格布局变化同步，切章后清理', async ({ page }) => {
