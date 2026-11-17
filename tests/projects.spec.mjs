@@ -78,7 +78,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   const packed = await unpack(path)
   const manifest = JSON.parse(Buffer.from(packed.get('manifest.json')).toString())
-  expect(manifest.schemaVersion).toBe(2)
+  expect(manifest.schemaVersion).toBe(3)
   expect(manifest.appVersion).not.toBe(manifest.schemaVersion)
   expect(manifest.detached.editions).toContain(seeded.missingEdition)
   for (const r of manifest.resources) expect(createHash('sha256').update(packed.get(r.path)).digest('hex')).toBe(r.sha256)
@@ -292,7 +292,7 @@ test('ZIP 重复路径、异常压缩率和超过 10000 条目被拒绝', async 
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
 })
 
-test('现有 v7 书库升级到 v8 后完整保留数据和索引主键', async ({ page }) => {
+test('现有 v7 书库升级到 v9 后完整保留数据和索引主键', async ({ page }) => {
   await page.goto('/appearance.js')
   await page.evaluate(async () => {
     const q = indexedDB.open('new-world-library', 7)

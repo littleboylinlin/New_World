@@ -1,3 +1,4 @@
+import { ZipReader, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
 import { expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
@@ -35,6 +36,12 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   const editor = page.getByRole('textbox', { name: '章节正文', exact: true })
   await expect(editor).toContainText('灯塔亮了。')
   const workId = new URL(page.url()).hash.split('/')[2]
+  await page.getByRole('button',{name:'从当前章节创建任务',exact:true}).click()
+  const taskForm=page.getByRole('dialog',{name:'添加任务',exact:true})
+  await taskForm.getByLabel('任务标题',{exact:true}).fill('Desktop linked task')
+  await taskForm.getByLabel('优先级',{exact:true}).selectOption('1')
+  await taskForm.getByRole('button',{name:'保存任务',exact:true}).click();await expect(taskForm).toBeHidden()
+  await page.goto('new-world://app/#/tasks');await page.getByLabel('快速添加任务',{exact:true}).fill('PRIVATE Desktop personal task');await page.locator('.task-quick button').click();await expect(page.getByRole('button',{name:'PRIVATE Desktop personal task',exact:true})).toBeVisible()
   await page.goto('new-world://app/#/original')
   const card = page.locator('.book-card').filter({ has: page.locator(`a[href="#/original/${workId}"]`) })
   await app.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }) }, output)
@@ -43,6 +50,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await page.getByRole('button', { name: '保存工程', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '导出 New_World 工程（.newworld）' })).toBeHidden()
   expect((await readFile(output)).subarray(0, 2).toString()).toBe('PK')
+  const taskZip=new ZipReader(new Uint8ArrayReader(await readFile(output)),{useWebWorkers:false});const zipEntries=await taskZip.getEntries();const manifest=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename==='manifest.json').getData(new Uint8ArrayWriter())).toString());expect(manifest.schemaVersion).toBe(3);const exportedTasks=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename===manifest.records.tasks).getData(new Uint8ArrayWriter())).toString());expect(exportedTasks.map(t=>t.title)).toEqual(['Desktop linked task']);await taskZip.close()
   await card.getByRole('link', { name: '查看 雾港 · 原创验收', exact: true }).click()
   await page.locator('.version-navigation').getByRole('link', { name: '初稿', exact: true }).click()
   await expect(editor).toBeVisible()
@@ -84,6 +92,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await expect(page.locator('.save-status')).toHaveText('已保存')
   await page.reload()
   await expect(editor).toHaveText('文件关联打开时仍在编辑的正文。')
+  const editorUrl=page.url();await page.goto('new-world://app/#/tasks/all');await expect(page.getByRole('button',{name:'Desktop linked task',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'PRIVATE Desktop personal task',exact:true})).toBeVisible();await page.reload();await expect(page.getByRole('button',{name:'Desktop linked task',exact:true})).toBeVisible();await page.goto(editorUrl);await expect(editor).toHaveText('文件关联打开时仍在编辑的正文。')
   expect(app.windows()).toHaveLength(1)
   return page.url()
 }

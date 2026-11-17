@@ -2,7 +2,9 @@ import { announced, committed, openDatabase, resultOf, writing } from '../librar
 import type { RevisionBlobRecord } from '../library'
 import { synchronousContentHash } from '../confirm-state'
 import { packProject } from './archive'
-import { projectStores, readableProjectSchemas, ProjectError, requireValid as ok } from './model'
+import { projectStores, projectTaskStores, readableProjectSchemas, ProjectError, requireValid as ok } from './model'
+import { taskIdentities, remapTasks, projectTaskData } from '../tasks/model'
+import { announceTasks } from '../tasks/store'
 import type { ProjectContents, ProjectData, ProjectRoot } from './model'
 import { detachedIds, referencedIds, validateData, validatePayloads } from './validate'
 
@@ -10,7 +12,8 @@ import { detachedIds, referencedIds, validateData, validatePayloads } from './va
 export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
   const db = await openDatabase()
   const tx = db.transaction([...projectStores])
-  const data: ProjectData = { books: [], files: [], editions: [], chapters: [], ideas: [], revisions: [], revisionBlobs: [], ideaRevisions: [], aiBaselines: [], trash: [] }
+  const data = Object.fromEntries(projectStores.map(name=>[name,[]])) as unknown as ProjectData
+  projectTaskStores.forEach(name=>{const q=tx.objectStore(name).getAll();q.onsuccess=()=>{(data[name] as unknown[])=q.result};return q})
   const owns = (r: { library?: string; bookId?: string }) => r.library === root.library && r.bookId === root.id
   const ideaHistory = new Map<string, ProjectData['ideaRevisions'][number]>()
   const requestedIdeas = new Set<string>()
@@ -67,6 +70,11 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
     }
   }
   await committed(tx)
+  // Task ownership is explicit and uniform throughout each subtree. Never pull a personal parent.
+  data.tasks=data.tasks.filter(t=>t.link&&!t.link.unconfirmed&&t.link.library===root.library&&t.link.bookId===root.id)
+  const taskIds=new Set(data.tasks.map(t=>t.id)),projects=new Set(data.tasks.flatMap(t=>t.projectId?[t.projectId]:[]))
+  for(let i=0;i<32;i++)for(const p of data.taskProjects)if(projects.has(p.id)&&p.parentId)projects.add(p.parentId)
+  data.taskProjects=data.taskProjects.filter(p=>projects.has(p.id));data.taskSections=data.taskSections.filter(s=>data.tasks.some(t=>t.sectionId===s.id));data.taskLabels=data.taskLabels.filter(l=>data.tasks.some(t=>t.labelIds.includes(l.id)));data.taskCompletions=data.taskCompletions.filter(e=>taskIds.has(e.taskId));data.taskAttachments=data.taskAttachments.filter(a=>taskIds.has(a.taskId))
   data.ideaRevisions = [...ideaHistory.values()].sort((a, b) => a.id.localeCompare(b.id))
   data.revisionBlobs.sort((a, b) => a.hash.localeCompare(b.hash))
   data.files.sort((a, b) => a.id.localeCompare(b.id))
@@ -83,6 +91,7 @@ function identities(data: ProjectData): Set<string> {
     annotations.push(...Object.values(b.readingAnnotations ?? {}).flatMap((a) => a.items.map((i) => i.id)))
   }
   return new Set([
+    ...taskIdentities(projectTaskData(data)),
     ...annotations,
     ...Object.values(refs).flatMap((v) => [...v]),
     ...data.revisions.map((v) => v.id), ...data.ideaRevisions.map((v) => v.id), ...data.trash.map((v) => v.id),
@@ -121,11 +130,13 @@ export function copyProject(contents: ProjectContents, reserved = new Set<string
     if (Array.isArray(value)) { value.forEach(walk); return }
     for (const [k, v] of Object.entries(value)) {
       if (k === 'metadata') continue // Unknown metadata may contain literal IDs; it is not a reference graph.
+      if((projectTaskStores as readonly string[]).includes(k))continue
       if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
       else walk(v)
     }
   }
   walk(data)
+  const taskData=projectTaskData(data);remapTasks(taskData,mapping);for(const task of taskData.tasks)walk(task.link)
   // The idea hash covers its historical owner, so remapping requires recalculating it.
   for (const r of data.ideaRevisions) r.contentHash = synchronousContentHash(JSON.stringify({ text: r.text, library: r.library ?? null, bookId: r.bookId ?? null, usedAt: r.usedAt ?? null }))
   return { data, manifest: { ...contents.manifest, root: { ...contents.manifest.root, id: mapped(contents.manifest.root.id) }, detached: detachedIds(data) } }
@@ -136,7 +147,7 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
   if (mode === 'skip') return null
   // Clone before async verification, preventing UI callers mutating already-validated records.
   const prepared = structuredClone(contents)
-  if (!readableProjectSchemas.includes(prepared.manifest.schemaVersion as 1 | 2)) throw new ProjectError('version')
+  if (!readableProjectSchemas.includes(prepared.manifest.schemaVersion as 1 | 2 | 3)) throw new ProjectError('version')
   validateData(prepared.data, prepared.manifest.root, prepared.manifest.detached, prepared.manifest.schemaVersion)
   await validatePayloads(prepared.data)
   const db = await openDatabase()
@@ -164,5 +175,5 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
     }
     return incoming.manifest.root
   })
-  return announced(done())
+  const imported=await announced(done());announceTasks();return imported
 }

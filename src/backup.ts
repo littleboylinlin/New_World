@@ -13,6 +13,9 @@ import type { Idea } from './ideas'
 import { validateWorkMetadata } from './work-metadata'
 import { taskStores, validateTasks } from './tasks/model'
 import type { TaskData } from './tasks/model'
+import { decodeTaskResources, encodeTaskResources } from './tasks/transfer'
+import { validateTaskAssets } from './tasks/resources'
+import { announceTasks } from './tasks/store'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
@@ -168,8 +171,15 @@ export async function createBackup(password?: string) {
   }
   const taskData = Object.fromEntries(await taskReads) as unknown as TaskData
   validateTasks(taskData)
+  await validateTaskAssets(taskData)
+  const taskAssets = new Set<string>()
+  const storedTasks = await encodeTaskResources(taskData, async (id, blob) => {
+    const path = `tasks/assets/${id}.bin`
+    if (!taskAssets.has(path)) { taskAssets.add(path); blobs.push([path, blob]) }
+    return path
+  })
   const manifest: Manifest = {
-    taskData,
+    taskData: storedTasks,
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
     editions, chapters, writingDays, ideas, revisions,
     revisionBlobs: storedRevisionBlobs,
@@ -282,8 +292,9 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       if (error instanceof BackupError) throw error
       throw new BackupError('format')
     }
-    if (manifest?.format !== formatName || typeof manifest.version !== 'number') throw new BackupError('format')
+    if (manifest?.format !== formatName || !Number.isSafeInteger(manifest.version) || manifest.version < 1) throw new BackupError('format')
     if (manifest.version > formatVersion) throw new BackupError('newer')
+    if ((manifest.version < 2 && manifest.taskData !== undefined) || (manifest.version === 2 && manifest.taskData === undefined)) throw new BackupError('format')
     for (const name of ['books', 'files', 'editions', 'chapters', 'trash'] as const) list(manifest[name])
     for (const record of [...manifest.books, ...manifest.editions, ...manifest.chapters]) {
       if (!record || (record.library !== 'original' && record.library !== 'reference') || typeof record.id !== 'string') {
@@ -342,8 +353,19 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
         validBlobHashes.add(item.hash)
       }
     }
+    let taskData: TaskData | undefined
+    if (manifest.taskData !== undefined) {
+      const attachments = [...manifest.taskData.taskAttachments, ...manifest.taskData.taskTemplates.flatMap(t => t.attachments)]
+      const types = new Map(attachments.map(a => [(a.content as unknown as { $taskResource?: string })?.$taskResource, a.type]))
+      taskData = await decodeTaskResources(manifest.taskData, async (path) => {
+        if (!/^tasks\/assets\/[a-f0-9]{64}\.bin$/.test(path) || !types.has(path)) throw new BackupError('format')
+        return read(path, types.get(path)!, 16 * 1024 * 1024)
+      })
+      validateTasks(taskData)
+      await validateTaskAssets(taskData)
+    }
     return {
-      ...(manifest.taskData !== undefined ? (validateTasks(manifest.taskData), { taskData: manifest.taskData }) : {}),
+      ...(taskData ? { taskData } : {}),
       summary: summarize(manifest),
       books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
       writingDays: (Array.isArray(manifest.writingDays) ? manifest.writingDays : [])
@@ -371,56 +393,58 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
   const incomingTasks = contents.taskData === undefined ? undefined : structuredClone(contents.taskData)
-  if (incomingTasks) validateTasks(incomingTasks)
+  if (incomingTasks) { validateTasks(incomingTasks); await validateTaskAssets(incomingTasks) }
   const db = await openDatabase()
   const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', ...taskStores], 'readwrite', { durability: 'strict' })
-  if (incomingTasks) for (const name of taskStores) {
-    tx.objectStore(name).clear()
-    for (const row of incomingTasks[name]) tx.objectStore(name).add(row)
-  }
-  for (const name of [...libraryStores, 'revisions', 'revisionBlobs', 'aiBaselines']) tx.objectStore(name).clear()
-  if (contents.revisions) {
-    const revisions = tx.objectStore('revisions')
-    for (const revision of contents.revisions) revisions.add(revision)
-  }
-  if (contents.revisionBlobs) {
-    const revisionBlobs = tx.objectStore('revisionBlobs')
-    for (const blob of contents.revisionBlobs) revisionBlobs.put(blob)
-  }
-  if (contents.ideas) {
-    const ideas = tx.objectStore('ideas')
-    ideas.clear()
-    for (const idea of contents.ideas) ideas.add(idea)
-    const ideaRevisions = tx.objectStore('ideaRevisions')
-    ideaRevisions.clear()
-    if (contents.ideaRevisions) {
+  try {
+    if (incomingTasks) for (const name of taskStores) {
+      tx.objectStore(name).clear()
+      for (const row of incomingTasks[name]) tx.objectStore(name).add(row)
+    }
+    for (const name of [...libraryStores, 'revisions', 'revisionBlobs', 'aiBaselines']) tx.objectStore(name).clear()
+    if (contents.revisions) {
+      const revisions = tx.objectStore('revisions')
+      for (const revision of contents.revisions) revisions.add(revision)
+    }
+    if (contents.revisionBlobs) {
+      const revisionBlobs = tx.objectStore('revisionBlobs')
+      for (const blob of contents.revisionBlobs) revisionBlobs.put(blob)
+    }
+    if (contents.ideas) {
+      const ideas = tx.objectStore('ideas')
+      ideas.clear()
+      for (const idea of contents.ideas) ideas.add(idea)
+      const ideaRevisions = tx.objectStore('ideaRevisions')
+      ideaRevisions.clear()
+      if (contents.ideaRevisions) {
+        for (const rev of contents.ideaRevisions) ideaRevisions.add(rev)
+      }
+    } else if (contents.ideaRevisions) {
+      const ideaRevisions = tx.objectStore('ideaRevisions')
+      ideaRevisions.clear()
       for (const rev of contents.ideaRevisions) ideaRevisions.add(rev)
     }
-  } else if (contents.ideaRevisions) {
-    const ideaRevisions = tx.objectStore('ideaRevisions')
-    ideaRevisions.clear()
-    for (const rev of contents.ideaRevisions) ideaRevisions.add(rev)
-  }
-  // Writing history is kept across restores: each day keeps the larger of the two counts.
-  const days = tx.objectStore('writingDays')
-  for (const day of contents.writingDays) {
-    const stored = days.get(day.date)
-    stored.onsuccess = () => {
-      const current = (stored.result as WritingDay | undefined)?.words ?? 0
-      if (day.words > current) days.put({ date: day.date, words: day.words })
+    // Writing history is kept across restores: each day keeps the larger of the two counts.
+    const days = tx.objectStore('writingDays')
+    for (const day of contents.writingDays) {
+      const stored = days.get(day.date)
+      stored.onsuccess = () => {
+        const current = (stored.result as WritingDay | undefined)?.words ?? 0
+        if (day.words > current) days.put({ date: day.date, words: day.words })
+      }
     }
-  }
-  for (const book of contents.books) tx.objectStore('books').add(book)
-  for (const file of contents.files) tx.objectStore('files').add(file)
-  for (const edition of contents.editions) tx.objectStore('editions').add(edition)
-  for (const chapter of contents.chapters) tx.objectStore('chapters').add(chapter)
-  for (const entry of contents.trash) tx.objectStore('trash').add(entry)
-  try {
+    for (const book of contents.books) tx.objectStore('books').add(book)
+    for (const file of contents.files) tx.objectStore('files').add(file)
+    for (const edition of contents.editions) tx.objectStore('editions').add(edition)
+    for (const chapter of contents.chapters) tx.objectStore('chapters').add(chapter)
+    for (const entry of contents.trash) tx.objectStore('trash').add(entry)
     await committed(tx)
   } catch (error) {
+    try { tx.abort() } catch { /* Already completed or aborted. */ }
     // Records that break the library's rules mean the backup is damaged; anything else (a full disk) is reported as is.
     if (error instanceof DOMException && ['ConstraintError', 'DataError'].includes(error.name)) throw new BackupError('format')
     throw error
   }
   libraryChanges.dispatchEvent(new Event('update'))
+  announceTasks()
 }

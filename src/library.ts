@@ -7,7 +7,7 @@ import type { ReadingAnnotations } from './annotations/model'
 import type { Idea } from './ideas'
 import { MetadataError, validateWorkMetadata } from './work-metadata'
 import type { WorkMetadata } from './work-metadata'
-import { taskStores } from './tasks/model'
+import { taskStores, TaskDataError } from './tasks/model'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -507,6 +507,7 @@ export async function removeWorkOriginal(workId: string, id: string, expectedFin
 }
 
 export function storageError(error: unknown) {
+  if(error instanceof TaskDataError)return t('tasks.invalidData',[error.detail])
   if (error instanceof MetadataError) return t('work.invalid', [error.field])
   if (error instanceof DOMException) {
     if (error.name === 'QuotaExceededError') return t('library.localStorageIsFullTheLatestChangesWere')

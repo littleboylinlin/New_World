@@ -65,6 +65,7 @@ async function previewImport(file: Blob) {
   summary.append(element('p', '', t('project.summary', [root.title, contents.data.chapters.length, contents.data.editions.length, contents.data.files.length])),
     element('p', 'dialog-help', t('project.library', [libraries[root.library].name])))
   summary.append(element('p', 'dialog-help', t('project.historySummary', [contents.data.revisions.length, contents.data.ideas.length, contents.data.trash.length])))
+  summary.append(element('p','dialog-help',t('tasks.projectSummary',[contents.data.tasks.length,contents.data.taskAttachments.length])))
   if (conflict) summary.append(element('p', 'dialog-help', t('project.conflicts', [conflicts.works, conflicts.originals, conflicts.ids])))
   const choices = element('label', 'field-label', t('project.mode'))
   const mode = element('select', 'title-input')

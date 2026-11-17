@@ -1,3 +1,4 @@
+import { workTaskControls } from './tasks/links'
 import { showProjectExport } from './projects/view'
 import { workInformationPanel } from './work-information-view'
 import { t } from './i18n'
@@ -96,7 +97,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
       }
       originalList.replaceChildren(sourceList.childElementCount ? (arriving ? stagger(sourceList) : sourceList) : element('p', 'continuation-empty', t('continuation.noSourceFilesYet')))
       const information = workInformationPanel(work, signal, undefined, false)
-      body.replaceChildren(heading, information, lists)
+      body.replaceChildren(heading, workTaskControls(work), information, lists)
     } catch (error) {
       if (!signal.aborted && current === request) body.replaceChildren(notice(storageError(error), true))
     }

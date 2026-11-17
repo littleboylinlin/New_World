@@ -9,6 +9,8 @@ import { maxCoverSize, maxTitleLength } from '../library'
 import type { Book, ChapterRevision, IdeaRevision } from '../library'
 import { synchronousContentHash } from '../confirm-state'
 import { limits, projectStores, requireValid as ok, ProjectError } from './model'
+import { validateTasks, projectTaskData } from '../tasks/model'
+import { validateTaskAssets } from '../tasks/resources'
 import type { Detached, ProjectData, ProjectRoot } from './model'
 import { MetadataError, validateWorkMetadata } from '../work-metadata'
 
@@ -141,7 +143,7 @@ function annotationsValid(v: NonNullable<ProjectData['chapters'][number]['readin
 
 /** All references must resolve to stored data or to an explicit detached identity. */
 export function referencedIds(data: ProjectData) {
-  const refs = { books: new Set<string>(), editions: new Set<string>(), chapters: new Set<string>(), ideas: new Set<string>() }
+  const refs = { books: new Set<string>(), editions: new Set<string>(), chapters: new Set<string>(), ideas: new Set<string>(),tasks:new Set<string>() }
   const visit = (d: Pick<ProjectData, 'books' | 'editions' | 'chapters' | 'ideas'>) => {
     d.books.forEach((v) => { refs.books.add(v.id); if (v.workId) refs.books.add(v.workId) })
     d.editions.forEach((v) => { refs.books.add(v.bookId); refs.editions.add(v.id); if (v.originalId) refs.books.add(v.originalId); if (v.copiedFrom) refs.editions.add(v.copiedFrom); v.chapters.forEach((c) => refs.chapters.add(c.id)) })
@@ -153,6 +155,8 @@ export function referencedIds(data: ProjectData) {
   data.revisions.forEach((v) => { refs.books.add(v.bookId); refs.editions.add(v.editionId); refs.chapters.add(v.chapterId) })
   data.ideaRevisions.forEach((v) => { refs.ideas.add(v.ideaId); if (v.bookId) refs.books.add(v.bookId) })
   data.aiBaselines.forEach((v) => { refs.books.add(v.bookId); refs.editions.add(v.editionId); refs.chapters.add(v.chapterId) })
+  data.tasks.forEach(t=>{refs.tasks.add(t.id);if(t.link){refs.books.add(t.link.bookId);if(t.link.editionId)refs.editions.add(t.link.editionId);if(t.link.chapterId)refs.chapters.add(t.link.chapterId)}})
+  data.taskCompletions.forEach(e=>e.cycle?.forEach(c=>refs.tasks.add(c.taskId)))
   return refs
 }
 export function detachedIds(data: ProjectData): Detached {
@@ -162,6 +166,7 @@ export function detachedIds(data: ProjectData): Detached {
     editions: [...data.editions, ...data.trash.flatMap((v) => v.editions)],
     chapters: [...data.chapters, ...data.trash.flatMap((v) => v.chapters)],
     ideas: [...data.ideas, ...data.trash.flatMap((v) => v.ideas ?? [])],
+    tasks:data.tasks,
   }
   return Object.fromEntries(Object.entries(refs).map(([key, ids]) => {
     const stored = new Set(all[key as keyof Detached].map((v) => v.id))
@@ -169,7 +174,7 @@ export function detachedIds(data: ProjectData): Detached {
   })) as unknown as Detached
 }
 
-export function validateData(data: ProjectData, root: ProjectRoot, detached: Detached, schemaVersion = 2) {
+export function validateData(data: ProjectData, root: ProjectRoot, detached: Detached, schemaVersion = 3) {
   fields(data, projectStores.join(' '))
   safeJson(data)
   ok(lib(root.library) && uuid(root.id), 'root')
@@ -179,6 +184,11 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
     count += data[key].length
   }
   if (count > limits.records) throw new ProjectError('limit')
+  const taskData=projectTaskData(data);validateTasks(taskData)
+  if(schemaVersion<3)ok(!taskData.tasks.length&&!taskData.taskProjects.length&&!taskData.taskSections.length&&!taskData.taskLabels.length&&!taskData.taskCompletions.length&&!taskData.taskAttachments.length,'tasks require Schema 3')
+  for(const task of data.tasks){ok(task.link&&!task.link.unconfirmed&&task.link.library===root.library&&task.link.bookId===root.id,'unrelated/unconfirmed task');const chapter=task.link.chapterId?[...data.chapters,...data.trash.flatMap(t=>t.chapters)].find(c=>c.id===task.link!.chapterId):undefined;if(chapter)ok(chapter.editionId===task.link.editionId,'task chapter relation')}
+  const neededProjects=new Set(data.tasks.flatMap(t=>t.projectId?[t.projectId]:[]));for(let i=0;i<32;i++)for(const p of data.taskProjects)if(neededProjects.has(p.id)&&p.parentId)neededProjects.add(p.parentId)
+  ok(data.taskProjects.every(p=>neededProjects.has(p.id))&&data.taskSections.every(s=>data.tasks.some(t=>t.sectionId===s.id))&&data.taskLabels.every(l=>data.tasks.some(t=>t.labelIds.includes(l.id))),'unrelated task organization')
   const rootBook = data.books.find((v) => v.id === root.id)
   ok(rootBook && rootBook.library === root.library && !rootBook.workId, 'root book')
   const belongs = (v: { library: string; bookId: string }) => v.library === root.library && v.bookId === root.id
@@ -253,7 +263,7 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
     fields(v, 'clientId library bookId editionId chapterId peakWords anchorWords anchorText updatedAt')
     ok(belongs(v) && id(v.clientId) && id(v.editionId) && id(v.chapterId) && num(v.peakWords) && num(v.anchorWords) && str(v.anchorText) && num(v.updatedAt), 'work safety baseline')
   }
-  fields(detached, 'books editions chapters ideas')
+  fields(detached, 'books editions chapters ideas tasks')
   const expected = detachedIds(data)
   for (const key of Object.keys(expected) as (keyof Detached)[]) {
     ok(Array.isArray(detached[key]) && detached[key].every(id) && new Set(detached[key]).size === detached[key].length
@@ -263,6 +273,7 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
 
 /** Bounded nested gzip decoding: ZIP limits alone do not protect history payloads. */
 export async function validatePayloads(data: ProjectData) {
+  await validateTaskAssets(projectTaskData(data))
   const books = [...data.books, ...data.trash.flatMap((v) => v.books)]
   for (const book of books) if (book.cover) {
     const bytes = new Uint8Array(await book.cover.slice(0, 32).arrayBuffer())

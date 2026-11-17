@@ -1,0 +1,258 @@
+import { test, expect } from './app-test.mjs'
+import { seedProject, projectFixture, databaseSnapshot } from './project-fixture.mjs'
+import { pixel } from './fixtures.mjs'
+test.setTimeout(90000)
+const state = (page) => page.evaluate(databaseSnapshot)
+const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
+async function save(dialog) {
+  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
+  await expect(dialog).toBeHidden()
+}
+async function addChild(page, parent, title, date) {
+  await row(page, parent).getByRole('button', { name: '添加子任务', exact: true }).first().click()
+  const dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
+  await dialog.getByLabel('任务标题', { exact: true }).fill(title)
+  if (date) await dialog.getByLabel('计划日期', { exact: true }).fill(date)
+  await save(dialog)
+  return (await state(page)).tasks.find((t) => t.title === title)
+}
+test('重复树真实完成、双击不重入、删除成员不复活，历史恢复最小状态且拒绝覆盖新修改', async ({
+  page,
+}) => {
+  await page.goto('/#/tasks')
+  await page.locator('.task-toolbar').getByRole('button', { name: '添加任务', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
+  await dialog.getByLabel('任务标题', { exact: true }).fill('月末写作')
+  await dialog.getByLabel('计划日期', { exact: true }).fill('2099-01-31')
+  await dialog.getByLabel('重复规则', { exact: true }).selectOption('month')
+  await save(dialog)
+  const parent = (await state(page)).tasks[0],
+    child = await addChild(page, parent.id, '本期工作', '2099-02-01'),
+    done = await addChild(page, parent.id, '先完成的工作'),
+    deleted = await addChild(page, parent.id, '先删除的工作')
+  await row(page, done.id).getByRole('button', { name: '完成任务', exact: true }).click()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(1)
+  await row(page, deleted.id).getByRole('button', { name: '删除任务', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '删除任务', exact: true })
+  await dialog.getByRole('button', { name: '删除任务', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  const before = await state(page)
+  await row(page, parent.id)
+    .getByRole('button', { name: '完成任务', exact: true })
+    .first()
+    .dblclick()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(3)
+  let advanced = await state(page)
+  expect(advanced.tasks.find((t) => t.id === parent.id).planDate).toBe('2099-02-28')
+  expect(advanced.tasks.find((t) => t.id === child.id).planDate).toBe('2099-03-01')
+  expect(advanced.tasks.find((t) => t.id === deleted.id)).toEqual(
+    before.tasks.find((t) => t.id === deleted.id),
+  )
+  expect(advanced.tasks.find((t) => t.id === done.id).completedAt).toBeNull()
+  await page.goto('/#/tasks/completed')
+  await page.getByText('完成历史', { exact: true }).click()
+  await page
+    .locator('details p')
+    .filter({ hasText: '月末写作' })
+    .getByRole('button', { name: '恢复本次完成', exact: true })
+    .click()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(5)
+  const restored = await state(page)
+  for (const task of before.tasks) {
+    const current = restored.tasks.find((t) => t.id === task.id)
+    expect({
+      date: current.planDate,
+      completed: current.completedAt,
+      deleted: current.deletedAt,
+    }).toEqual({ date: task.planDate, completed: task.completedAt, deleted: task.deletedAt })
+  }
+  await page.goto('/#/tasks/all')
+  await row(page, parent.id).getByRole('button', { name: '完成任务', exact: true }).first().click()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(7)
+  await page.getByRole('button', { name: '本期工作', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
+  await dialog.getByLabel('任务备注', { exact: true }).fill('后续独立修改')
+  await save(dialog)
+  const changed = await state(page)
+  await page.goto('/#/tasks/completed')
+  await page.getByText('完成历史', { exact: true }).click()
+  await page
+    .locator('details p')
+    .filter({ hasText: '月末写作' })
+    .getByRole('button', { name: '恢复本次完成', exact: true })
+    .click()
+  await expect(page.locator('.undo-toast')).toBeVisible()
+  expect(await state(page)).toEqual(changed)
+})
+test('已发布 v8 升级中断原子回滚，再次升级保留元数据、原文、批注、历史、灵感及索引', async ({
+  page,
+}) => {
+  await page.goto('/appearance.js')
+  await page.evaluate(async () => {
+    const q = indexedDB.open('new-world-library', 8)
+    q.onupgradeneeded = () => {
+      const db = q.result,
+        books = db.createObjectStore('books', { keyPath: ['library', 'id'] })
+      books.createIndex('byLibrary', 'library')
+      books.createIndex('byLibraryDigest', ['library', 'digest'], { unique: false })
+      db.createObjectStore('files', { keyPath: ['library', 'id'] })
+      const editions = db.createObjectStore('editions', { keyPath: ['library', 'bookId', 'id'] })
+      editions.createIndex('byBook', ['library', 'bookId'])
+      editions.createIndex('byName', ['library', 'bookId', 'name'], { unique: true })
+      const chapters = db.createObjectStore('chapters', {
+        keyPath: ['library', 'bookId', 'editionId', 'id'],
+      })
+      chapters.createIndex('byBook', ['library', 'bookId'])
+      chapters.createIndex('byEdition', ['library', 'bookId', 'editionId'])
+      for (const [name, keyPath] of [
+        ['trash', 'id'],
+        ['ideas', 'id'],
+        ['writingDays', 'date'],
+        ['revisionBlobs', 'hash'],
+      ])
+        db.createObjectStore(name, { keyPath })
+      const revisions = db.createObjectStore('revisions', { keyPath: 'id' })
+      revisions.createIndex('byChapter', ['library', 'bookId', 'editionId', 'chapterId'])
+      revisions.createIndex('byEdition', ['library', 'bookId', 'editionId'])
+      revisions.createIndex('byBook', ['library', 'bookId'])
+      const baselines = db.createObjectStore('aiBaselines', {
+        keyPath: ['clientId', 'library', 'bookId', 'editionId', 'chapterId'],
+      })
+      baselines.createIndex('byEdition', ['library', 'bookId', 'editionId'])
+      baselines.createIndex('byBook', ['library', 'bookId'])
+      const ideas = db.createObjectStore('ideaRevisions', { keyPath: 'id' })
+      ideas.createIndex('byIdea', 'ideaId')
+      ideas.createIndex('byBook', ['library', 'bookId'])
+    }
+    await new Promise((r, j) => {
+      q.onsuccess = r
+      q.onerror = () => j(q.error)
+    })
+    q.result.close()
+  })
+  const work = await page.evaluate(
+    seedProject,
+    projectFixture('reference', pixel.toString('base64')),
+  )
+  await page.evaluate(async (id) => {
+    const db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction('books', 'readwrite'),
+      store = tx.objectStore('books'),
+      q = store.get(['reference', id])
+    q.onsuccess = () =>
+      store.put({
+        ...q.result,
+        metadata: {
+          author: '旧作品作者',
+          synopsis: '第一段\r\n\r\n第二段',
+          future: { stable: true },
+        },
+      })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+  }, work.root)
+  const before = await state(page)
+  await page.addInitScript(() => {
+    if (location.hash !== '#/tasks/abort-upgrade') return
+    const open = indexedDB.open.bind(indexedDB)
+    indexedDB.open = function (...args) {
+      const q = open(...args)
+      q.addEventListener('upgradeneeded', () => {
+        if (q.result.version === 9) queueMicrotask(() => q.transaction?.abort())
+      })
+      return q
+    }
+  })
+  await page.goto('/#/tasks/abort-upgrade')
+  await expect(page.locator('.task-content .notice-error')).toBeVisible()
+  expect(await state(page)).toEqual(before)
+  await page.goto('/appearance.js')
+  await page.goto('/#/tasks')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  const expected = { ...before }
+  for (const name of [
+    'tasks',
+    'taskProjects',
+    'taskSections',
+    'taskLabels',
+    'taskCompletions',
+    'taskSettings',
+    'taskFilters',
+    'taskTemplates',
+    'taskAttachments',
+  ])
+    expected[name] = []
+  expect(await state(page)).toEqual(expected)
+  expect(
+    await page.evaluate(async () => {
+      const q = indexedDB.open('new-world-library')
+      await new Promise((r) => (q.onsuccess = r))
+      const result = {
+        version: q.result.version,
+        unique: q.result.transaction('books').objectStore('books').index('byLibraryDigest').unique,
+      }
+      q.result.close()
+      return result
+    }),
+  ).toEqual({ version: 9, unique: false })
+  await page.goto(`/#/reference/${work.root}/${work.firstEdition}`)
+  await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText(
+    '灯塔亮了。',
+  )
+})
+test('分批列表不截断数据，连续搜索保留焦点，快捷添加与撤销真实写入', async ({ page }) => {
+  await page.goto('/#/tasks/all')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction('tasks', 'readwrite')
+    for (let i = 0; i < 205; i++)
+      tx.objectStore('tasks').add({
+        id: crypto.randomUUID(),
+        title: '批量任务 ' + i,
+        description: '',
+        notes: '',
+        parentId: null,
+        projectId: null,
+        sectionId: null,
+        priority: 4,
+        labelIds: [],
+        order: (i + 1) * 1024,
+        expanded: true,
+        planDate: null,
+        completedAt: null,
+        deletedAt: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        revision: 0,
+      })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+  })
+  await page.reload()
+  await expect(page.locator('.task-row')).toHaveCount(200)
+  await page.getByRole('button', { name: '继续载入任务或历史记录', exact: true }).click()
+  await expect(page.locator('.task-row')).toHaveCount(205)
+  const search = page.getByRole('searchbox', { name: '搜索任务', exact: true })
+  await search.pressSequentially('批量任务')
+  await expect(search).toBeFocused()
+  await expect(search).toHaveValue('批量任务')
+  expect((await state(page)).tasks).toHaveLength(205)
+  await search.fill('')
+  await page.getByRole('heading', { name: '任务管理', exact: true }).click()
+  await page.keyboard.press('n')
+  const quick = page.getByLabel('快速添加任务', { exact: true })
+  await expect(quick).toBeFocused()
+  await quick.fill('快捷新任务')
+  await quick.press('Enter')
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(206)
+  await page.getByRole('heading', { name: '任务管理', exact: true }).click()
+  await page.keyboard.press('Control+z')
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(205)
+})

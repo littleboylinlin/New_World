@@ -1,8 +1,8 @@
-# New_World 工程格式规范（Schema 1 / 2）
+# New_World 工程格式规范（Schema 1 / 2 / 3）
 
 状态：本仓库原生工程交换格式，扩展名 `.newworld`，MIME `application/vnd.newworld.project+zip`。
 
-工程 Schema 与应用版本 `appVersion` 独立。v0.18.0 使用 Schema 1；v0.18.1 的写入器使用 Schema 2，读取器显式支持 Schema 1 和 2。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
+工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。本轮尚未发行的任务功能写入 **Schema 3**，显式读取 Schema 1、2、3；本轮不改变应用版本号。v0.18.1 及更旧应用不能读取 Schema 3。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
 
 ## 1. 容器与文件布局
 
@@ -16,16 +16,22 @@ originals/<resource-key>.bin       # 原始文件字节
 editions/index.json
 chapters/index.json
 ideas/index.json
-assets/<resource-key>.bin          # 封面（现有正文插图仍在 Tiptap JSON 中）
+assets/<resource-key>.bin          # 封面/任务附件（正文插图仍在 Tiptap JSON 中）
 revisions/chapters.json
 revisions/blobs.json
 revisions/payloads/<resource-key>.bin
 revisions/ideas.json
 revisions/baselines.json
 trash/index.json                  # 只包含当前作品的回收记录
+tasks/index.json                  # 以下六项仅 Schema 3，均必需
+tasks/projects.json
+tasks/sections.json
+tasks/labels.json
+tasks/completions.json
+tasks/attachments.json
 ```
 
-十个索引文件全部必需，均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
+Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项，均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
 
 ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只能使用小写字母、数字、`-`、`.`、`/`。路径分段不得为空、`.`、`..`；禁止反斜线、驱动器、绝对路径、NUL、URI 和百分号编码。永远不将归档解压到本机路径，也不执行其中任何内容。
 
@@ -36,15 +42,15 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 | 字段 | 类型与含义 |
 | --- | --- |
 | `format` | 固定字符串 `new-world-project` |
-| `schemaVersion` | 整数 `1` 或 `2`，工程 Schema 版本；当前写入 `2` |
+| `schemaVersion` | 整数 `1`、`2` 或 `3`；当前开发写入器写 `3` |
 | `appVersion` | 字符串，导出时应用版本，仅作来源信息 |
 | `createdAt` | 非负安全整数，导出时间，Unix 毫秒 |
 | `root` | `{ "library": "original" 或 "reference", "id": "作品 UUID" }` |
 | `records` | 下述固定表名与索引路径的对象 |
-| `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[] }` |
+| `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[], tasks: string[] }`（tasks 仅 Schema 3） |
 | `resources` | 全部索引及二进制资源的清单（不含 manifest 自身） |
 
-`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。
+`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。
 
 每项资源必填：
 
@@ -162,7 +168,7 @@ Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 S
 - 逐项校验 ZIP CRC、本地/中央目录、声明及实际流入字节数、SHA-256、UTF-8 JSON、类型、唯一键、章节双向引用、原文件摘要、历史载荷及 detached 集合；全部成功后才显示摘要。Manifest 自身由 ZIP CRC 与严格解析保护；清单 SHA-256 能发现损坏，不提供发布者身份认证或数字签名。
 - 物理归档 ≤512 MiB，累计解压 ≤512 MiB，单项 ≤128 MiB，JSON 索引/manifest ≤32 MiB，条目 ≤10000，顶层记录总量 ≤50000；JSON 最大 64 层、1000000 个遍历值；大于 1 MiB 的条目压缩率不得超过 200:1。
 - 章节历史 gzip 单项原始 JSON ≤32 MiB，累计解码 ≤512 MiB；原文件沿用 ≤128 MiB，封面 ≤32 MiB，插图沿用单图 ≤4 MiB、文档预算 ≤24 MiB。声明偏小也不能绕过流式限额。
-- 当前读取器明确支持 Schema 1 / 2，写入器始终写 Schema 2。Schema 1 直接按原规则验证、恢复，缺少 metadata 不做填充；再次导出生成 Schema 2。更高/更低/无版本均明确拒绝，不能按应用版本猜测。已发布 v0.18.0 的 Schema 1 读取器**无法读取 Schema 2**，不能承诺旧软件兼容未来格式。未来升级须显式实现迁移并测试；只有 metadata 内符合本规范的未知 JSON 值允许保留，其他未知持久化字段仍拒绝。
+- 当前开发读取器明确支持 Schema 1 / 2 / 3，写入器始终写 Schema 3。Schema 1 直接按原规则验证、恢复，缺少 metadata 不做填充；再次导出生成 Schema 3。更高/更低/无版本均明确拒绝，不能按应用版本猜测。已发布 v0.18.0 **无法读取 Schema 2/3**，v0.18.1 **无法读取 Schema 3**。读旧文件时新增任务表正规化为空数组、断开的 tasks 为空，不填造任务；不承诺旧软件兼容未来格式。未来升级须显式实现迁移并测试；只有 metadata 内符合本规范的未知 JSON 值允许保留，其他未知持久化字段仍拒绝。
 - 无网络资源加载、代码执行或原文件自动打开；原文件只按现有受限预览器读取。安全检查失败不会打开写事务。
 
 ## 5. 导入、冲突与本地存储
@@ -175,9 +181,9 @@ Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 S
 
 写入前重新验证数据，确认后在**单个 strict IndexedDB 事务**中重新读冲突、映射及 `add` 全部记录。禁止 `clear` 或覆盖已有记录；任意 Constraint/Quota/其他错误整体 abort。历史载荷若同一旧指纹对应不同压缩字节则拒绝并提示冲突，不覆盖已有载荷（指纹不是抗碰撞摘要）。
 
-IndexedDB 自 v0.18.0 起为 v8：`byLibraryDigest` 是非唯一索引，允许副本保有独立原文身份但相同字节。原有普通文件导入仍在串行写事务中查重，不重复添加。本次作品信息使用可选嵌套字段，数据库继续为 v8，无批量重写、默认作者/状态或破坏性迁移；旧作品记录保持原样。表的主键、版本名唯一索引及原有正文、批注结构不变；不把工程 schemaVersion 当作数据库版本。全库备份沿用独立机制，同时验证并保留作品 metadata；不复用它来导入工程。
+IndexedDB 自 v0.18.0 起为 v8：`byLibraryDigest` 是非唯一索引，允许副本保有独立原文身份但相同字节。原有普通文件导入仍在串行写事务中查重，不重复添加。作品信息使用可选嵌套字段；本轮任务功能数据库升至 v9，仅新增九个独立任务表，不改写旧记录、不填造作者/状态。旧软件不能直接打开 v9 数据库，回退需要升级前备份。表的主键、版本名唯一索引及原有正文、批注结构不变；不把工程 schemaVersion 当作数据库版本。全库备份独立升为格式 2，包含全部任务及附件，读取器仍支持格式 1；恢复旧备份无任务数据时保留本机任务。不复用全库恢复来导入工程。
 
-不包含全局写作统计、未关联灵感、其他作品、其他作品回收数据、主题/字体/窗口/存储位置/备份设置、AI 授权及令牌、缓存、当前选区、编辑器未保存缓冲或会话撤销栈。作品导出入口设于书架菜单及续写详情，读取已持久化的一致快照，不修改原作品。
+不包含全局写作统计、个人任务/其他作品任务/未确认外部任务链接、全局任务过滤器/模板、本机提醒设置、未关联灵感、其他作品、其他作品回收数据、主题/字体/窗口/存储位置/备份设置、AI 授权及令牌、缓存、当前选区、编辑器未保存缓冲或会话撤销栈。作品导出入口设于书架菜单及续写详情，读取已持久化的一致快照，不修改原作品。
 
 ## 6. 文件保存与桌面关联
 
@@ -199,4 +205,34 @@ Windows 安装器通过 electron-builder 注册 `.newworld` 文件关联；macOS
 
 运行 `npm test`；平台安装及系统文件关联在 `npm run test:desktop` 和 `npm run test:macos` 中验证。重新生成验收示例可运行 `UPDATE_PROJECT_EXAMPLE=1 npx playwright test tests/projects.spec.mjs --grep 'original 工程' --workers=1`（先 `npm run build`）。示例为测试数据，不包含真实用户信息。
 
-Schema 2 示例生成：先 `npm run build`，再 `UPDATE_METADATA_EXAMPLE=1 npx playwright test tests/work-information.spec.mjs --grep 'original Schema 2' --workers=1`。不要替换 Schema 1 验收样本。
+已发布 Schema 1/2 样本不可由新写入器替换。Schema 3 样本生成及任务验收见 [任务文档](tasks.md)。
+
+## 8. Schema 3 任务记录（正式结构升级）
+
+Schema 3 在 Schema 2 的作品/元数据规范之上增加六个任务表及 `detached.tasks`。字段是正式结构，不放进 metadata 扩展。字段全集如下；未注明可选的均必填，未知结构字段拒绝。各项更详细的运行语义和独立任务 JSON 见 [任务规范](tasks.md)。
+
+| 表 | 必填字段 | 可选字段 |
+| --- | --- | --- |
+| `tasks` | `id,title,description,notes,projectId,sectionId,parentId,priority,labelIds,order,expanded,planDate,completedAt,deletedAt,createdAt,updatedAt,revision` | `deletionId,planTime,zone,fold,deadline,durationMinutes,repeat,reminderMinutes,link,comments` |
+| `taskProjects` | `id,name,color,icon,parentId,order,favorite,archivedAt,deletedAt,revision` | `deletionId,view` |
+| `taskSections` | `id,projectId,name,order,deletedAt` | `deletionId,revision` |
+| `taskLabels` | `id,name,color,favorite,deletedAt` | `revision` |
+| `taskCompletions` | `id,taskId,title,at,occurrence` | `reverts,next,cycle` |
+| `taskAttachments` | `id,taskId,name,type,bytes,sha256,content` | 无 |
+
+身份为小写 UUID；归类及父 ID 可为 null 表示收件箱、无分区、根任务。`priority` 为 1/2/3/4，`order` 和 `revision` 为非负安全整数。颜色为 `#RRGGBB`，图标是至多 16 字符的惰性文字/表情。名称和标题非空、至多 500 字符；描述/备注/评论至多 20000，禁 NUL 等控制符。任务最多 100 标签、1000 评论；层级最多 32，禁止循环及跨项目/分区的父子关系。全部任务及组织/完成记录去重、验证必要引用。副本保留同名标签，按身份区别，不覆盖名称相同的现有标签。
+
+日期是有效 `YYYY-MM-DD`（1900–9999），`planDate` 可 null，截止日期独立；具体时间 `HH:mm` 必须同时提供计划日期与 IANA 时区，`fold` 为 earlier/later。持续分钟数 0–525600，提醒提前分钟 0–43200，提醒需具体时刻。时间戳为非负有效 Unix 毫秒，任务实现还约束在可用的四位公历年份范围。布尔字段不接受数值代替；可选字段省略，不用 null 代替（已明确可 null 的归类、日期、状态除外）。
+
+- `repeat`：`{frequency,interval,anchorDate}`，可选 `weekdays,monthDays,until`。frequency 为 day/week/month/year；interval 为 1–3660；原始锚点不晚于当前计划日期。weekdays 为 weekly 的不重复 0–6 星期数组，monthDays 为 monthly 的不重复 1–31 数组；结束日期含当日。重复父任务的子树不得另有独立重复规则。
+- `view`：`{mode,calendar,sort}`，mode 为 list/board/calendar/table，calendar 为 month/week，sort 为 order/priority/date/title。
+- `comments`：数组，每项 `{id,text,createdAt,updatedAt,deletedAt}`。deletedAt 可 null；删除评论仍保留内容，可恢复。
+- `link`：`{library,bookId,title}`，可选 `editionId,chapterId,position,unconfirmed`。title 是真实关联时的名称快照，不冒充当前作品标题。章节需版本；position 为 `{from,to,quote,contentHash}`，非负文档位置、to≥from、上限 10000000，引用文字最多 2000，contentHash 是当前编辑器既有 16 位正文指纹，**不是安全校验 SHA-256**。正文变动后不猜测新位置。工程内 link 必须确认、归属根作品；断开的目标在相应 detached 数组声明，存在的目标还须匹配版本/章节关系。
+- 完成事件 `occurrence` 为本次计划日期或 null，`reverts` 指向同任务已发生且尚未被撤销的完成事件；不得重复撤销或指向撤销事件。`next` 是本次重复计算出的下一日期。`cycle` 保存恢复周期需要的最小 `{taskId,planDate,completedAt,revision}[]`；修订号是推进后的防覆盖检查值，不保存第二份正文/描述。成员后来移动、重新关联或缺失时，只保留历史状态与身份，恢复不能覆盖其后续改动。
+- 附件 `content` 是标准 Blob `$resource` 引用，原始字节、MIME 和 `sha256` 一致。附件名只作显示/下载，不作 ZIP 路径，禁止斜线、反斜线和控制符，最多 255 字符。允许的媒体、签名和 UTF-8 规则见任务规范；每个最多 16 MiB，累计 64 MiB，仍受工程整体限制。无自动执行、自动打开或嵌入预览。
+
+**归属闭包**：只收集 `link.library/bookId` 确认指向根作品的任务，包括完成和删除状态；同一子树统一归属。组织只包含任务实际引用的项目与祖先、分区、标签。完成/附件只能属于这些任务。每个任务的父、项目、分区、标签必须实际存在，不能以 detached 豁免。全局个人任务、其他作品任务、待确认的外部链接、全局模板/过滤器和本机提醒/视图设置不导出。
+
+`detached.tasks` 仅声明周期历史成员的断开任务身份，重新计算并严格比对，不包含任务当前的个人描述、评论或附件，也不能代替存活任务关系。这样原成员后来移出作品时可保留真实历史，而不把它当前的其他个人内容混入小说。保留原身份导入也检查这些历史身份冲突；副本同步重映射历史身份、周期成员、父/项目/分区/标签、评论和附件引用。
+
+Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再在内存中正规化六个空任务表和空 detached.tasks。原文件字节不改写，不虚构任务；再次导出用 Schema 3。旧版本不能读取新的六表结构，界面和文档明确提示，不承诺前向兼容。

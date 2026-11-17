@@ -24,6 +24,9 @@ import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEd
 import { AnnotationDecorations, documentSurface } from '../annotations/surface'
 import { readingAnnotations } from '../annotations/view'
 import './editor.css'
+import { createLinkedTask, takeTaskJump } from '../tasks/links'
+import { hashDocumentContent } from '../confirm-state'
+import { showNotice } from '../undo'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
 
@@ -64,7 +67,7 @@ export async function renderEdition(
   let edition = initial
   let chapter = await readChapter(edition, edition.chapters[0].id)
   signal.throwIfAborted()
-  let editor: Editor
+  let editor!: Editor
   let destroyAnnotations: (() => void) | undefined
   let editing = true
   let change = 0
@@ -95,6 +98,9 @@ export async function renderEdition(
   const exportButton = button(t('editor.export'), 'button button-quiet button-small', 'download')
   const removeVersion = button(t('editor.deleteVersion'), 'button button-quiet button-small remove-button', 'trash')
   commands.append(status, save, mode, saveCopy, exportButton, removeVersion)
+  const taskButton=button(t('tasks.addChapterTask'),'button button-quiet button-small')
+  taskButton.addEventListener('click',()=>{const {from,to}=editor.state.selection,content=editor.getJSON() as DocumentContent;void createLinkedTask({library:edition.library,bookId:edition.bookId,title:book.title,editionId:edition.id,chapterId:chapter.id,position:{from,to,quote:editor.state.doc.textBetween(from,to,'\n').slice(0,2000),contentHash:hashDocumentContent(content)}}).catch(e=>showNotice(storageError(e)))})
+  commands.append(taskButton)
   top.append(about, commands)
 
   const error = element('p', 'notice notice-error')
@@ -732,6 +738,8 @@ export async function renderEdition(
   }, { once: true })
   mountChapter(chapter)
   registerLeave(flush)
+  const jump=takeTaskJump(edition)
+  if(jump?.chapterId){await switchChapter(jump.chapterId);if(!signal.aborted&&chapter.id===jump.chapterId&&jump.position){if(hashDocumentContent(chapter.content)===jump.position.contentHash&&jump.position.to<=editor.state.doc.content.size)editor.commands.setTextSelection({from:jump.position.from,to:jump.position.to});else showNotice(t('tasks.stalePosition'))}}
   void chapterWordCounts(edition).then((stored) => {
     if (signal.aborted) return
     stored.set(chapter.id, liveCount())
