@@ -2,29 +2,29 @@
 
 [简体中文](README.md)
 
-New World v0.18.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World v0.19.0 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
 
-## In development: local task workspace
+## Local task workspace (v0.19.0)
 
-The repository now includes an offline task workspace; this work has no new release or app version. The published download remains v0.18.1. Projects, subtasks, filters, recurrence, reminders while running, four shared views, comments, attachments, templates, completion statistics and structured JSON transfer integrate with work/chapter links and manual idea conversion.
+v0.19.0 ships an offline task workspace. It needs no account and has no Todoist cloud sync or account system. Projects, subtasks, filters, recurrence, reminders while running, four shared views, comments, attachments, templates, completion statistics and structured JSON transfer integrate with work/chapter links and manual idea conversion.
 
-Development builds use IndexedDB v9 and write `.newworld` Schema 3 while reading Schema 1/2/3. Older apps cannot read Schema 3 or open the upgraded database. Novel projects include only confirmed work-owned tasks; personal tasks and device preferences are excluded. See [task behavior, ownership, tests and limits](docs/tasks.md) and the [Schema 3 sample](docs/examples/雾港-创作任务.newworld). No reminders are scheduled after the application exits.
+**Back up in v0.18.1 before upgrading and keep that backup.** v0.19.0 upgrades IndexedDB v8 to v9, reads `.newworld` Schema 1/2/3 and writes Schema 3. Full-library backups use format 2 while the reader still accepts format 1. v0.18.1 cannot directly open v9, import Schema 3 or restore format 2; rolling back requires a pre-upgrade backup. Novel projects include only confirmed work-owned tasks; personal tasks and device preferences are excluded. See [task behavior, ownership, tests and limits](docs/tasks.md) and the [Schema 3 sample](docs/examples/雾港-创作任务.newworld). Local reminders are checked only while the app is running and the renderer is active. Background checks may be delayed; fully exiting, closing the browser or shutting down stops notifications. See the [v0.19.0 release notes](docs/releases/v0.19.0.md) for downloads and upgrade guidance.
 
 ## Native projects
 
 Export a complete `.newworld` project from a work's shelf menu; import from the home or library page. Projects retain editions, sources, rich text, annotations, covers and related history. Imports are validated and previewed before a single atomic library transaction; conflicts can be skipped or imported as independent copies. Desktop file associations open the import flow.
 
-Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [format specification](docs/newworld-format.md) and [Schema 1 sample](docs/examples/雾港.newworld). The local library has used IndexedDB v8 since v0.18.0; older v7 apps cannot directly open the same upgraded library.
+Editing continues in the local library. Export again to save an updated project file; changes are not automatically written back. Existing manuscript exports remain available and do not carry complete project state. See the [format specification](docs/newworld-format.md) and [Schema 1 sample](docs/examples/雾港.newworld). v0.18.0 introduced IndexedDB v8; v0.19.0 upgrades it to v9 by adding task stores without rewriting existing works. Older apps cannot directly open the upgraded library; rolling back requires a pre-upgrade backup.
 
-## Work information and Schema 2
+## Work information (introduced in v0.18.1)
 
 v0.18.1 adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX and PDF exports offer three optional work-information switches, all off by default, using the existing converters.
 
-v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. The database remains v8, without rewriting existing records. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
+v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; see above for the current v0.19.0 database and project compatibility. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.18.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.18.1). This release adds work information and Schema 2 extensions while accepting Schema 1 projects; older v0.18.0 cannot read Schema 2. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is [v0.19.0](https://github.com/littleboylinlin/New_World/releases/tag/v0.19.0). It ships the local task workspace and Schema 3 projects while accepting Schema 1/2. Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 
@@ -54,7 +54,7 @@ Simplified Chinese and English are supported. The first Windows install or first
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.18.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.19.0\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -156,14 +156,15 @@ Every work card's menu has "Archive". Archived works disappear from the original
 
 ## Backup and restore
 
-"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes and writing stats into one `.zip` file.
+"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes, writing stats and all task data (including projects, labels, templates, filters, completion history and attachments) into one `.zip` file.
 
 - Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
 - Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
 - Backup location (desktop): `New World Backups` in Documents by default; choose another folder, go back to the default, or open the folder.
 - Encryption: none, or a password (AES-256, which tools such as 7-Zip can open). The desktop app keeps the password encrypted with the system keychain, so automatic backups are encrypted too; the web version asks for a password with each backup. A forgotten password cannot be recovered.
 - Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
-- Device settings such as appearance, language and storage location are not part of a backup.
+- v0.19.0 writes backup format 2; restoring it replaces all task stores, including task views and reminder settings. Reading legacy format 1 preserves existing tasks. Older apps reject format 2; rolling back requires a pre-upgrade format 1 backup and cannot directly reuse the upgraded database.
+- App device settings such as appearance, language and storage location are not part of a backup.
 
 ## Format support
 
@@ -190,7 +191,7 @@ Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, i
 
 Text is auto-saved about 700 ms after changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
 
-IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
+The current database is IndexedDB v9 (v0.19.0 adds task stores). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
 
 Import, conversion, editing, and export all happen locally. Illustrations are stored in manuscripts; HTML import and rich-text paste strip executable content and remote addresses.
 
