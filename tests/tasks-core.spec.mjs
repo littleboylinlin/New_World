@@ -218,3 +218,32 @@ test('并发编辑拒绝覆盖，任务写入中断整体回滚', async ({ page 
   await page.reload()
   expect((await task(page, '其他窗口的修改')).completedAt).toBeNull()
 })
+
+test('拖动途中后台刷新任务列表，松手后排序仍然生效', async ({ page }) => {
+  await page.goto('/#/tasks')
+  await quick(page, '日常任务')
+  await quick(page, '第二项')
+  const first = await task(page, '日常任务'),
+    second = await task(page, '第二项')
+  await page.evaluate(() => {
+    window.rowSwaps = 0
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.removedNodes)
+          if (node.nodeType === 1 && (node.matches('.task-row') || node.querySelector('.task-row'))) window.rowSwaps++
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  await row(page, second.id).locator('.task-drag-handle').hover()
+  await page.mouse.down()
+  const target = await row(page, first.id).boundingBox()
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 5 })
+  // Focus refreshes the list in the background, as switching back to the window does.
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => window.rowSwaps)).toBe(0)
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
+    .toBe(true)
+  await expect(page.locator('.task-row .task-title').first()).toHaveText('第二项')
+})

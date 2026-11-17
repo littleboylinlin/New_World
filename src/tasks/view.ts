@@ -1012,6 +1012,10 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
       }
       for (const id of selected) if (!data.tasks.some((t) => t.id === id)) selected.delete(id)
       ready = true
+      if (dragging) {
+        repaintAfterDrag = true
+        return
+      }
       paintNav()
       paintContent()
     } catch (e) {
@@ -1019,13 +1023,31 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
       if (!signal.aborted) content.replaceChildren(notice(storageError(e), true))
     }
   }
+  // Replacing the rows mid-drag would drop the move, so background refreshes wait for the drag to end.
+  let dragging = false,
+    repaintAfterDrag = false
+  content.addEventListener('dragstart', () => (dragging = true), { capture: true, signal })
+  document.addEventListener(
+    'dragend',
+    () => {
+      dragging = false
+      if (!repaintAfterDrag || signal.aborted) return
+      repaintAfterDrag = false
+      paintNav()
+      paintContent()
+    },
+    { capture: true, signal },
+  )
   taskChanges.addEventListener('update', () => void refresh(), { signal })
   window.addEventListener('focus', () => void refresh(), { signal })
   const clock = window.setInterval(() => {
     const next = dateKey()
     if (next !== clockDay) {
       clockDay = next
-      if (ready && !signal.aborted) paintContent()
+      if (ready && !signal.aborted) {
+        if (dragging) repaintAfterDrag = true
+        else paintContent()
+      }
     }
   }, 30_000)
   signal.addEventListener('abort', () => window.clearInterval(clock), { once: true })
