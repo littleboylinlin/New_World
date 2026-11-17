@@ -8,17 +8,21 @@ import { editTask, moveTasks } from './store'
 
 const key = (name: string) => t('tasks.' + name)
 export const taskMime = 'application/x-newworld-task'
-function drop(target: HTMLElement, action: (id: string) => Promise<unknown>) {
+function drop(target: HTMLElement, action: (id: string) => Promise<unknown>, capture = false) {
   target.addEventListener('dragover', (e) => {
     if (e.dataTransfer?.types.includes(taskMime)) e.preventDefault()
   })
-  target.addEventListener('drop', (e) => {
-    const id = e.dataTransfer?.getData(taskMime)
-    if (!id) return
-    e.preventDefault()
-    e.stopPropagation()
-    void action(id).catch((e) => showNotice(storageError(e)))
-  })
+  target.addEventListener(
+    'drop',
+    (e) => {
+      const id = e.dataTransfer?.getData(taskMime)
+      if (!id) return
+      e.preventDefault()
+      e.stopPropagation()
+      void action(id).catch((e) => showNotice(storageError(e)))
+    },
+    { capture },
+  )
 }
 /** Views receive the same persisted records. Only explicit store actions mutate them. */
 export function taskVisuals(
@@ -146,10 +150,14 @@ export function taskVisuals(
         ),
       )
       if (date === dateKey()) cell.classList.add('is-today')
-      drop(cell, async (id) => {
-        const task = data.tasks.find((t) => t.id === id)
-        if (task) await editTask(id, task.revision, { planDate: planDateForLocalDay(task, date) })
-      })
+      drop(
+        cell,
+        async (id) => {
+          const task = data.tasks.find((t) => t.id === id)
+          if (task) await editTask(id, task.revision, { planDate: planDateForLocalDay(task, date) })
+        },
+        true,
+      ) // The date owns drops on cards too; never invoke a row's project/tree move.
       for (const task of tasks.filter((t) => scheduleDay(t) === date)) cell.append(flat(task))
       grid.append(cell)
     }

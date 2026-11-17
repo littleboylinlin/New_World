@@ -167,3 +167,119 @@ test('通知需要明确启用，运行中提醒持久去重，关闭提醒后�
     'false',
   )
 })
+
+test('日历拖到其他任务卡片只改日期，不改变项目、分区或父子关系', async ({ page }) => {
+  await page.goto('/#/tasks/all')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  const ids = await page.evaluate(async () => {
+    const p1 = crypto.randomUUID(),
+      p2 = crypto.randomUUID(),
+      s1 = crypto.randomUUID(),
+      s2 = crypto.randomUUID(),
+      source = crypto.randomUUID(),
+      target = crypto.randomUUID(),
+      parent = crypto.randomUUID(),
+      now = Date.now(),
+      current = new Date(),
+      format = (d) => d.toLocaleDateString('sv-SE'),
+      first = format(new Date(current.getFullYear(), current.getMonth(), 8)),
+      second = format(new Date(current.getFullYear(), current.getMonth(), 9)),
+      db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction(['tasks', 'taskProjects', 'taskSections'], 'readwrite')
+    for (const [id, name] of [
+      [p1, '来源项目'],
+      [p2, '目标项目'],
+    ])
+      tx.objectStore('taskProjects').add({
+        id,
+        name,
+        color: '#123456',
+        icon: '',
+        parentId: null,
+        order: 1024,
+        favorite: false,
+        archivedAt: null,
+        deletedAt: null,
+        revision: 0,
+      })
+    for (const [id, projectId] of [
+      [s1, p1],
+      [s2, p2],
+    ])
+      tx.objectStore('taskSections').add({
+        id,
+        projectId,
+        name: '原分区',
+        order: 1024,
+        deletedAt: null,
+      })
+    const base = {
+      description: '',
+      notes: '',
+      parentId: null,
+      priority: 4,
+      labelIds: [],
+      order: 1024,
+      expanded: true,
+      completedAt: null,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
+    }
+    tx.objectStore('tasks').add({
+      ...base,
+      id: source,
+      title: '只改日期',
+      projectId: p1,
+      sectionId: s1,
+      planDate: first,
+    })
+    tx.objectStore('tasks').add({
+      ...base,
+      id: parent,
+      title: '另一父任务',
+      projectId: p2,
+      sectionId: s2,
+      planDate: null,
+    })
+    tx.objectStore('tasks').add({
+      ...base,
+      id: target,
+      title: '目标卡片',
+      parentId: parent,
+      projectId: p2,
+      sectionId: s2,
+      planDate: second,
+    })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+    return { source, target, p1, s1, second }
+  })
+  await page.reload()
+  await page.getByLabel('任务视图', { exact: true }).selectOption('calendar')
+  const handle = page.locator(`[data-task-id="${ids.source}"] .task-drag-handle`),
+    target = page.locator(`[data-task-id="${ids.target}"] .task-title`)
+  await handle.hover()
+  const bounds = await handle.boundingBox()
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width / 2 + 10, bounds.y + bounds.height / 2, {
+    steps: 5,
+  })
+  await target.scrollIntoViewIfNeeded()
+  await target.hover()
+  await target.hover()
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await state(page)).tasks.find((t) => t.id === ids.source).planDate)
+    .toBe(ids.second)
+  expect((await state(page)).tasks.find((t) => t.id === ids.source)).toMatchObject({
+    projectId: ids.p1,
+    sectionId: ids.s1,
+    parentId: null,
+  })
+  expect((await state(page)).tasks).toHaveLength(3)
+})
