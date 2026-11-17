@@ -1,7 +1,14 @@
 import type { Editor } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
+import type { Transaction } from '@tiptap/pm/state'
+import { isHistoryTransaction } from '@tiptap/pm/history'
 import { appearance, onAppearanceChange } from '../appearance'
 import { reducedMotion } from '../motion'
+
+const smoothing = .35
+const precision = .5
+type Move = 'input' | 'snap'
+interface Point { x: number; y: number }
 
 /** A sibling of ProseMirror, so neither the document nor the IME's DOM is changed. */
 export function writingMotion(editor: Editor, paper: HTMLElement) {
@@ -16,12 +23,14 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   paper.classList.add('smooth-writing')
 
   let frame = 0
-  let animate = false
+  let needsMeasure = false
+  let move: Move | undefined
   let center = false
   let composing = false
   let inputPending = false
   let typewriter = appearance().typewriter
-  let previous: { x: number; y: number } | undefined
+  let position: Point | undefined
+  let target: Point | undefined
 
   // The desktop scrolls .page; the web version scrolls the document.
   let scroller = paper.parentElement
@@ -39,28 +48,73 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     return { top: visibleTop + (toolbar?.offsetHeight ?? 0), bottom: visibleBottom }
   }
 
-  function schedule(move = false) {
-    animate ||= move
-    if (!frame) frame = requestAnimationFrame(sync)
+  function requestFrame() {
+    if (!frame) frame = requestAnimationFrame(tick)
+  }
+
+  function schedule(reason?: Move) {
+    needsMeasure = true
+    // An explicit jump takes precedence over input notifications in the same frame.
+    if (reason === 'snap' || move !== 'snap' && reason) move = reason
+    requestFrame()
   }
 
   function hide() {
     caret.hidden = true
-    previous = undefined
+    position = target = undefined
   }
 
-  function sync() {
-    frame = 0
-    const transition = animate && !reducedMotion.matches
-    const shouldCenter = center
-    animate = center = false
-    if (!editor.isEditable || !editor.view.hasFocus() || document.hidden) { hide(); return }
-    // Keep the last committed position while the platform owns the composition.
-    if (composing || editor.view.composing) return
-    const selection = editor.state.selection
-    if (!(selection instanceof TextSelection) || !selection.empty) { hide(); return }
+  function paint() {
+    if (position) caret.style.transform = `translate(${position.x}px, ${position.y}px)`
+  }
 
-    const coords = editor.view.coordsAtPos(selection.head)
+  function tick() {
+    frame = 0
+    if (needsMeasure) {
+      needsMeasure = false
+      measure()
+    }
+    if (!position || !target) return
+    if (reducedMotion.matches) {
+      position = { ...target }
+      paint()
+      return
+    }
+    position.x += (target.x - position.x) * smoothing
+    position.y += (target.y - position.y) * smoothing
+    const settled = Math.hypot(target.x - position.x, target.y - position.y) < precision
+    if (settled) position = { ...target }
+    paint()
+    if (!settled) requestFrame()
+  }
+
+  function compositionCoords() {
+    // The native DOM selection can lead the ProseMirror state during composition.
+    // Read a separate Range; never change the platform's selection or composition.
+    const selection = body.ownerDocument.getSelection()
+    if (!selection?.focusNode || !body.contains(selection.focusNode)) return
+    const range = document.createRange()
+    range.setStart(selection.focusNode, selection.focusOffset)
+    range.collapse(true)
+    const rect = range.getClientRects()[0] ?? range.getBoundingClientRect()
+    if (rect.height) return { left: rect.left, top: rect.top, bottom: rect.bottom }
+  }
+
+  function measure() {
+    const reason = move
+    move = undefined
+    const shouldCenter = center
+    center = false
+    if (!editor.isEditable || !editor.view.hasFocus() || document.hidden) { hide(); return }
+    const inComposition = composing || editor.view.composing
+    const selection = editor.state.selection
+    const nativeSelection = body.ownerDocument.getSelection()
+    if (!inComposition && (!(selection instanceof TextSelection) || !selection.empty || nativeSelection && !nativeSelection.isCollapsed)) {
+      hide()
+      return
+    }
+
+    const coords = inComposition && compositionCoords() || editor.view.coordsAtPos(selection.head)
     const rect = paper.getBoundingClientRect()
     if (!rect.width || !rect.height) { hide(); return }
     const scaleX = rect.width / paper.offsetWidth
@@ -68,19 +122,18 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     const x = (coords.left - rect.left) / scaleX + paper.scrollLeft - paper.clientLeft
     const y = (coords.top - rect.top) / scaleY + paper.scrollTop - paper.clientTop
     const height = (coords.bottom - coords.top) / scaleY
-    const moved = !previous || Math.abs(x - previous.x) > .1 || Math.abs(y - previous.y) > .1
-    const shortMove = previous && Math.hypot(x - previous.x, y - previous.y) <= 80
-    if (moved || reducedMotion.matches) caret.style.transition = transition && shortMove ? 'transform 75ms ease-out' : 'none'
+    const moved = !target || Math.abs(x - target.x) > .01 || Math.abs(y - target.y) > .01
+    const sameLine = target && Math.abs(y - target.y) < precision
+    if (!position || reason === 'snap' || reducedMotion.matches || moved && (reason !== 'input' || !sameLine)) position = { x, y }
+    target = { x, y }
     caret.style.height = `${height}px`
-    caret.style.transform = `translate(${x}px, ${y}px)`
     caret.hidden = false
     if (moved) {
       // Restart the blink without forcing layout, keeping the caret lit while typing.
       for (const animation of caret.getAnimations({ subtree: true })) animation.startTime = document.timeline.currentTime
     }
-    previous = { x, y }
 
-    if (typewriter && shouldCenter) {
+    if (typewriter && shouldCenter && !inComposition) {
       const visible = viewport()
       const delta = (coords.top + coords.bottom - visible.top - visible.bottom) / 2
       if (visible.bottom > visible.top && Math.abs(delta) > 2) {
@@ -89,8 +142,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     }
   }
 
-  // Scrolling already carries the absolute caret with the paper. A layout notification
-  // must not cancel the horizontal typing transition when its local position is unchanged.
+  // Scrolling carries the caret with the paper. Unchanged local targets keep following.
   function layout() { schedule() }
   function resize() {
     const visible = viewport()
@@ -102,12 +154,14 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     // Stop an in-flight smooth scroll as soon as the user starts browsing.
     if (typewriter) scrollRoot.scrollTo({ top: scrollRoot.scrollTop, behavior: 'instant' })
   }
-  function transaction({ transaction }: { transaction: { docChanged: boolean; selectionSet: boolean } }) {
+  function transaction({ transaction }: { transaction: Transaction }) {
     if (transaction.docChanged) {
       center ||= inputPending
       inputPending = false
     }
-    if (transaction.docChanged || transaction.selectionSet) schedule(true)
+    if (isHistoryTransaction(transaction) || transaction.getMeta('pointer')) schedule('snap')
+    else if (transaction.docChanged || (composing || editor.view.composing) && transaction.selectionSet) schedule('input')
+    else if (transaction.selectionSet) schedule('snap')
     else schedule()
   }
   function preferences() {
@@ -116,35 +170,45 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     resize()
   }
   function motionPreference() {
-    caret.style.transition = 'none'
     if (reducedMotion.matches) cancelCenter()
-    layout()
+    schedule('snap')
   }
 
   body.addEventListener('keydown', (event) => {
+    if (event.isComposing || composing || editor.view.composing) return
     inputPending = !event.metaKey && !event.ctrlKey && !event.altKey
       && (event.key.length === 1 || ['Enter', 'Backspace', 'Delete'].includes(event.key))
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)
+      || (event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) schedule('snap')
   }, { capture: true, signal })
-  body.addEventListener('beforeinput', () => { inputPending = true }, { signal })
-  body.addEventListener('input', () => { center = true; schedule(true) }, { signal })
+  const input = (event: Event) => {
+    const inputType = (event as InputEvent).inputType ?? ''
+    const typing = !inputType.startsWith('history') && (composing || editor.view.composing || /^(insert|delete)/.test(inputType))
+    inputPending = typing
+    center ||= typing
+    schedule(typing ? 'input' : 'snap')
+  }
+  body.addEventListener('beforeinput', input, { signal })
+  body.addEventListener('input', input, { signal })
   body.addEventListener('compositionstart', () => {
     composing = true
-    animate = false
     center = false
-    caret.style.transition = 'none'
+    schedule('input')
   }, { signal })
+  body.addEventListener('compositionupdate', () => schedule('input'), { signal })
   body.addEventListener('compositionend', () => {
     composing = false
     center = true
-    schedule()
+    schedule('input')
   }, { signal })
-  body.addEventListener('focus', () => schedule(), { signal })
+  body.addEventListener('focus', () => schedule('snap'), { signal })
   body.addEventListener('blur', () => { center = inputPending = false; hide() }, { signal })
   document.addEventListener('visibilitychange', layout, { signal })
   document.addEventListener('scroll', layout, { capture: true, passive: true, signal })
   document.addEventListener('wheel', cancelCenter, { capture: true, passive: true, signal })
   document.addEventListener('touchstart', cancelCenter, { capture: true, passive: true, signal })
-  document.addEventListener('pointerdown', cancelCenter, { capture: true, passive: true, signal })
+  document.addEventListener('pointerdown', () => { cancelCenter(); schedule('snap') }, { capture: true, passive: true, signal })
+  document.addEventListener('selectionchange', () => schedule(composing || editor.view.composing ? 'input' : undefined), { signal })
   window.addEventListener('resize', resize, { signal })
   window.visualViewport?.addEventListener('resize', resize, { signal })
   window.visualViewport?.addEventListener('scroll', layout, { signal })
