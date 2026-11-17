@@ -11,10 +11,12 @@ import { runningVersion } from './updates'
 import type { WritingDay } from './writing-stats'
 import type { Idea } from './ideas'
 import { validateWorkMetadata } from './work-metadata'
+import { taskStores, validateTasks } from './tasks/model'
+import type { TaskData } from './tasks/model'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
-const formatVersion = 1
+const formatVersion = 2
 
 export const maxBackupZipEntries = 10_000
 export const maxBackupManifestBytes = 64 * 1024 * 1024
@@ -40,6 +42,7 @@ interface StoredRevisionBlob {
 type StoredTrashEntry = Omit<TrashEntry, 'files'> & { files: StoredFile[] }
 
 interface Manifest {
+  taskData?: TaskData
   format: typeof formatName
   version: number
   app: string
@@ -70,6 +73,7 @@ export interface BackupSummary {
 }
 
 export interface BackupContents {
+  taskData?: TaskData
   summary: BackupSummary
   books: Book[]
   files: BookFile[]
@@ -116,7 +120,8 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions'])
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', ...taskStores])
+  const taskReads = Promise.all(taskStores.map(async name => [name, await resultOf(tx.objectStore(name).getAll())]))
   const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions]: [
     Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[],
   ] = await Promise.all([
@@ -161,7 +166,10 @@ export async function createBackup(password?: string) {
     blobs.push([path, cover])
     return { ...rest, cover: { path, type: cover.type } as unknown as Blob } as Book
   }
+  const taskData = Object.fromEntries(await taskReads) as unknown as TaskData
+  validateTasks(taskData)
   const manifest: Manifest = {
+    taskData,
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
     editions, chapters, writingDays, ideas, revisions,
     revisionBlobs: storedRevisionBlobs,
@@ -335,6 +343,7 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       }
     }
     return {
+      ...(manifest.taskData !== undefined ? (validateTasks(manifest.taskData), { taskData: manifest.taskData }) : {}),
       summary: summarize(manifest),
       books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
       writingDays: (Array.isArray(manifest.writingDays) ? manifest.writingDays : [])
@@ -361,8 +370,14 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
+  const incomingTasks = contents.taskData === undefined ? undefined : structuredClone(contents.taskData)
+  if (incomingTasks) validateTasks(incomingTasks)
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines'], 'readwrite', { durability: 'strict' })
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', ...taskStores], 'readwrite', { durability: 'strict' })
+  if (incomingTasks) for (const name of taskStores) {
+    tx.objectStore(name).clear()
+    for (const row of incomingTasks[name]) tx.objectStore(name).add(row)
+  }
   for (const name of [...libraryStores, 'revisions', 'revisionBlobs', 'aiBaselines']) tx.objectStore(name).clear()
   if (contents.revisions) {
     const revisions = tx.objectStore('revisions')

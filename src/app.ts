@@ -18,6 +18,7 @@ import { libraries, notice } from './ui'
 import { mountWindowControls } from './window-controls'
 import { libraryChanges, listBooks, storageError } from './library'
 import type { LibraryId } from './library'
+import { renderTasks } from './tasks/view'
 
 for (const node of document.querySelectorAll<HTMLElement>('[data-i18n]')) node.textContent = t(node.dataset.i18n!)
 for (const node of document.querySelectorAll<HTMLElement>('[data-i18n-label]')) node.setAttribute('aria-label', t(node.dataset.i18nLabel!))
@@ -90,6 +91,9 @@ function render(moveFocus = false) {
       if (view === scope) leaveGuard = guard
     })
     else renderShelf(main, library, view.signal)
+  } else if (/^#\/tasks(?:\/.*)?$/.test(activeHash)) {
+    document.title = t('tasks.workspace') + ' · New World'
+    renderTasks(main, view.signal)
   } else if (/^#\/ideas\/?$/.test(activeHash)) {
     document.title = t('ideas.pageTitle')
     renderIdeas(main, view.signal)

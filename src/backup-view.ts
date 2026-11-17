@@ -275,7 +275,7 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
     const { summary } = contents
     formDialog(document.body, {
       title: t('backup.restoreTitle'), action: t('backup.restoreConfirm'), danger: true,
-      description: t('backup.restoreDescription', [when(summary.createdAt), summary.works, summary.chapters])
+      description: t('backup.restoreDescription', [when(summary.createdAt), summary.works, summary.chapters]) + ' ' + (contents.taskData ? t('tasks.backupReplace', [contents.taskData.tasks.length]) : t('tasks.backupKeep'))
         + (desktop ? ` ${t('backup.restoreSafety')}` : ` ${t('backup.restoreWebWarning')}`),
     }, async () => {
       setBusy(true)

@@ -7,6 +7,7 @@ import type { ReadingAnnotations } from './annotations/model'
 import type { Idea } from './ideas'
 import { MetadataError, validateWorkMetadata } from './work-metadata'
 import type { WorkMetadata } from './work-metadata'
+import { taskStores } from './tasks/model'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -133,7 +134,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 8)
+    const request = indexedDB.open('new-world-library', 9)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -182,6 +183,9 @@ export function openDatabase() {
         const books = request.transaction!.objectStore('books')
         books.deleteIndex('byLibraryDigest')
         books.createIndex('byLibraryDigest', ['library', 'digest'])
+      }
+      if (event.oldVersion < 9) {
+        for (const name of taskStores) db.createObjectStore(name, { keyPath: 'id' })
       }
     }
     request.onsuccess = () => {

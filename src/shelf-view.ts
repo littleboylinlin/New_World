@@ -52,7 +52,7 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const ideaCount = element('span', 'list-count archive-count')
   ideas.append(icon('idea'), element('span', '', t('ideas.title')), ideaCount)
   const entries = element('div', 'home-entries')
-  entries.append(projectImportButton(), ideas, archive)
+  entries.append(projectImportButton(), link('#/tasks', t('tasks.workspace'), 'archive-entry home-entry-tasks'), ideas, archive)
   head.append(intro, entries)
   home.append(head, stagger(cards))
   renderWritingStats(home, signal)
