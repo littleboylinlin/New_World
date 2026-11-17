@@ -114,7 +114,7 @@ test('任务 CRUD、三层子任务、完成历史、复制、删除恢复和撤
   })
 })
 
-for (const copy of Array.from({ length: 10 }, (_, i) => i)) test('项目、分区、标签、今日/未来搜索、批量移动和拖动使用同一数据' + (copy ? ' #' + copy : ''), async ({ page }) => {
+test('项目、分区、标签、今日/未来搜索、批量移动和拖动使用同一数据', async ({ page }) => {
   await page.goto('/#/tasks')
   await quick(page, '日常任务')
   await quick(page, '第二项')
