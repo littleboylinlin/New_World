@@ -122,3 +122,43 @@ test('base64 validation handles the full 16 MiB resource limit and rejects nonca
   assert.throws(() => taskBase64('', 16 * 1024 * 1024 + 1))
   assert.equal(taskBase64('', 0).length, 0)
 })
+
+test('completion history follows timestamps and existing cycle revisions, never UUID order', async () => {
+  const { latestTaskCompletion } = await import('../../src/tasks/model.ts'),
+    taskId = id(),
+    old = {
+      id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      taskId,
+      title: '任务',
+      at: 1,
+      occurrence: null,
+    },
+    latest = { ...old, id: '00000000-0000-4000-8000-000000000000', at: 3 },
+    middle = { ...old, id: id(), at: 2 },
+    events = [latest, middle, old]
+  assert.equal(latestTaskCompletion(events, taskId).id, latest.id)
+  assert.equal(
+    latestTaskCompletion(
+      [...events, { id: id(), taskId, title: '任务', at: 4, occurrence: null, reverts: latest.id }],
+      taskId,
+    ).id,
+    middle.id,
+  )
+  const sameTime = [
+    { ...old, at: 5, cycle: [{ taskId, planDate: null, completedAt: null, revision: 2 }] },
+    { ...latest, at: 5, cycle: [{ taskId, planDate: null, completedAt: null, revision: 4 }] },
+  ]
+  assert.equal(latestTaskCompletion(sameTime, taskId).id, latest.id)
+  assert.throws(
+    () =>
+      latestTaskCompletion(
+        [
+          { ...old, at: 5 },
+          { ...latest, at: 5 },
+        ],
+        taskId,
+      ),
+    /ambiguous/,
+  )
+  assert.equal(latestTaskCompletion(events, id()), undefined)
+})
