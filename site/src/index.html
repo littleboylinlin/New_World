@@ -91,29 +91,77 @@
     </section>
 
     <section class="shell features" aria-labelledby="features-title">
-      <h2 id="features-title" class="visually-hidden"><span data-l="zh">功能</span><span data-l="en" lang="en">Features</span></h2>
-      <ul class="feature-row">
-        <li class="feature" data-reveal data-tone="red">
-          <span class="feature-no" aria-hidden="true">01</span>
-          <h3><span data-l="zh">本地优先</span><span data-l="en" lang="en">Local first</span></h3>
-          <p><span data-l="zh">作品存在你的电脑里，不上云，断网也能写。</span><span data-l="en" lang="en">Your books stay on your computer — no cloud, and writing works offline.</span></p>
+      <h2 id="features-title" class="features-title" data-reveal><span data-l="zh">写作需要的，都在这里</span><span data-l="en" lang="en">Everything writing needs</span></h2>
+      <ol class="stack">
+        <li class="panel" data-tone="red" style="--k: 0">
+          <div class="panel-card">
+            <div class="panel-copy">
+              <span class="panel-no" aria-hidden="true">01</span>
+              <h3><span data-l="zh">本地优先</span><span data-l="en" lang="en">Local first</span></h3>
+              <p><span data-l="zh">作品存在你的电脑里，不上云，断网也能写。</span><span data-l="en" lang="en">Your books stay on your computer — no cloud, and writing works offline.</span></p>
+            </div>
+            <div class="panel-art art-local" aria-hidden="true">
+              <div class="art-screen pop" style="--d: 0">
+                <span class="spine" style="--s: var(--red)"></span><span class="spine" style="--s: var(--blue)"></span><span class="spine" style="--s: var(--yellow)"></span><span class="spine" style="--s: var(--ink)"></span>
+              </div>
+              <div class="art-cloud pop" style="--d: 2">
+                <svg viewBox="0 0 48 32" width="64" height="44"><path d="M13 28h23a9 9 0 0 0 1-18 12 12 0 0 0-23-1A9.5 9.5 0 0 0 13 28Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M6 4l36 26" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg>
+              </div>
+              <span class="art-badge pop" style="--d: 3"><span data-l="zh">离线</span><span data-l="en">Offline</span></span>
+            </div>
+          </div>
         </li>
-        <li class="feature" data-reveal data-tone="blue">
-          <span class="feature-no" aria-hidden="true">02</span>
-          <h3><span data-l="zh">章节与灵感</span><span data-l="en" lang="en">Chapters &amp; ideas</span></h3>
-          <p><span data-l="zh">按章节写正文，闪过的灵感随手记下。</span><span data-l="en" lang="en">Write chapter by chapter and catch every passing idea.</span></p>
+        <li class="panel" data-tone="blue" style="--k: 1">
+          <div class="panel-card">
+            <div class="panel-copy">
+              <span class="panel-no" aria-hidden="true">02</span>
+              <h3><span data-l="zh">章节与灵感</span><span data-l="en" lang="en">Chapters &amp; ideas</span></h3>
+              <p><span data-l="zh">按章节写正文，闪过的灵感随手记下。</span><span data-l="en" lang="en">Write chapter by chapter and catch every passing idea.</span></p>
+            </div>
+            <div class="panel-art art-chapters" aria-hidden="true">
+              <ul class="art-list">
+                <li class="pop" style="--d: 0"><b>01</b><span data-l="zh">雾港</span><span data-l="en">Fog Harbor</span></li>
+                <li class="pop is-on" style="--d: 1"><b>02</b><span data-l="zh">回信</span><span data-l="en">The Reply</span></li>
+                <li class="pop" style="--d: 2"><b>03</b><span data-l="zh">灯塔</span><span data-l="en">Lighthouse</span></li>
+              </ul>
+              <div class="art-note pop" style="--d: 3"><span data-l="zh">灵感：钥匙藏在灯里</span><span data-l="en">Idea: the key is in the lamp</span></div>
+            </div>
+          </div>
         </li>
-        <li class="feature" data-reveal data-tone="yellow">
-          <span class="feature-no" aria-hidden="true">03</span>
-          <h3><span data-l="zh">任务管理</span><span data-l="en" lang="en">Tasks</span></h3>
-          <p><span data-l="zh">看板、日历和提醒，把写作计划排得清清楚楚。</span><span data-l="en" lang="en">Boards, calendars and reminders keep your writing plan clear.</span></p>
+        <li class="panel" data-tone="yellow" style="--k: 2">
+          <div class="panel-card">
+            <div class="panel-copy">
+              <span class="panel-no" aria-hidden="true">03</span>
+              <h3><span data-l="zh">任务管理</span><span data-l="en" lang="en">Tasks</span></h3>
+              <p><span data-l="zh">看板、日历和提醒，把写作计划排得清清楚楚。</span><span data-l="en" lang="en">Boards, calendars and reminders keep your writing plan clear.</span></p>
+            </div>
+            <div class="panel-art art-board" aria-hidden="true">
+              <div class="art-col pop" style="--d: 0"><i></i><i></i><i class="tint"></i></div>
+              <div class="art-col pop" style="--d: 1"><i class="tint-blue"></i><i></i></div>
+              <div class="art-col pop" style="--d: 2"><i class="done"></i></div>
+            </div>
+          </div>
         </li>
-        <li class="feature" data-reveal data-tone="ink">
-          <span class="feature-no" aria-hidden="true">04</span>
-          <h3><span data-l="zh">AI 协作</span><span data-l="en" lang="en">AI collaboration</span></h3>
-          <p><span data-l="zh">接入你自己的 AI，每次改动都由你确认。</span><span data-l="en" lang="en">Connect your own AI — every change waits for your approval.</span></p>
+        <li class="panel" data-tone="ink" style="--k: 3">
+          <div class="panel-card">
+            <div class="panel-copy">
+              <span class="panel-no" aria-hidden="true">04</span>
+              <h3><span data-l="zh">AI 协作</span><span data-l="en" lang="en">AI collaboration</span></h3>
+              <p><span data-l="zh">接入你自己的 AI，每次改动都由你确认。</span><span data-l="en" lang="en">Connect your own AI — every change waits for your approval.</span></p>
+            </div>
+            <div class="panel-art art-ai" aria-hidden="true">
+              <div class="art-suggest pop" style="--d: 0">
+                <span class="line"></span><span class="line short"></span>
+                <span class="line mark"></span>
+              </div>
+              <div class="art-choices pop" style="--d: 2">
+                <span class="yes"><span data-l="zh">接受</span><span data-l="en">Accept</span></span>
+                <span class="no"><span data-l="zh">不用了</span><span data-l="en">Skip</span></span>
+              </div>
+            </div>
+          </div>
         </li>
-      </ul>
+      </ol>
     </section>
 
     <section class="shell first-run" data-reveal>

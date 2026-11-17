@@ -110,6 +110,23 @@ test.describe('motion', () => {
     expect(await page.evaluate(() => document.getAnimations().length)).toBeGreaterThan(0)
   })
 
+  test('feature sheets stack one by one while scrolling', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/')
+    const panels = page.locator('.panel')
+    await expect(panels).toHaveCount(4)
+    await expect(panels.nth(0)).not.toHaveClass(/\bin\b/)
+
+    await panels.nth(0).scrollIntoViewIfNeeded()
+    await expect(panels.nth(0)).toHaveClass(/\bin\b/)
+    await expect(panels.nth(0).locator('.pop').first()).toHaveCSS('opacity', '1')
+
+    await page.evaluate(() => scrollTo(0, document.querySelector('.panel:nth-child(2)').offsetTop - 40))
+    await expect(panels.nth(1)).toHaveClass(/\bin\b/)
+    const scale = () => panels.nth(0).locator('.panel-card').evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).a)
+    await expect.poll(scale).toBeLessThan(0.99)
+  })
+
   test('reduced motion shows the final state without animations', async ({ browser }) => {
     const context = await browser.newContext({ reducedMotion: 'reduce', locale: 'zh-CN' })
     const page = await context.newPage()
@@ -120,7 +137,7 @@ test.describe('motion', () => {
     expect(await page.evaluate(() => document.getAnimations().length)).toBe(0)
     await page.locator('.first-run').scrollIntoViewIfNeeded()
     expect(await page.evaluate(() => document.getAnimations().length)).toBe(0)
-    for (const selector of ['.title-word', '.lede', '.actions', '.demo', '.feature']) {
+    for (const selector of ['.title-word', '.lede', '.actions', '.demo', '.panel-card', '.panel .pop']) {
       await expect(page.locator(selector).first()).toHaveCSS('opacity', '1')
     }
     await context.close()
