@@ -38,6 +38,23 @@ jobs:
             test-results/**/attachments/*typing-performance*
           retention-days: 7
 
+  # Key cases again in WebKit, Safari's engine, including iPhone sizes. The Playwright image
+  # already holds WebKit and its system libraries, which are slow to fetch with apt.
+  webkit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: mcr.microsoft.com/playwright:v1.65.0-noble
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run test:webkit
+
   windows-tests:
     runs-on: windows-2025
     timeout-minutes: 20
@@ -131,7 +148,7 @@ jobs:
 
   release:
     if: github.repository == 'littleboylinlin/New_World' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [browser-tests, windows-tests, macos-tests]
+    needs: [browser-tests, webkit-tests, windows-tests, macos-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: desktop-release

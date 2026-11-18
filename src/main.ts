@@ -1,6 +1,10 @@
 import './styles.css'
 import './appearance'
 import { initializeLanguage } from './i18n'
+import { installFieldTyping } from './typing/field-typing'
+
+// Every text field, in the main window and the quick note window, shares one caret and reading box.
+installFieldTyping()
 
 async function start() {
   try {

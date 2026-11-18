@@ -259,7 +259,18 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .web-storage-value[data-state="on"] { color: var(--ink); }
 .web-storage-row .button { margin-top: 10px; }
 
-.manage-dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; overflow: hidden; border: 2px solid var(--pop-border); border-radius: 18px; color: var(--ink); background: var(--sheet); box-shadow: 6px 6px 0 var(--pop-hard), 0 26px 60px -18px var(--pop-soft); }
+.manage-dialog { width: min(460px, calc(100% - 32px)); padding: 0; border: 2px solid var(--pop-border); border-radius: 18px; color: var(--ink); background: var(--sheet); box-shadow: 6px 6px 0 var(--pop-hard), 0 26px 60px -18px var(--pop-soft); }
+.manage-dialog, .ai-confirm-dialog {
+  bottom: env(safe-area-inset-bottom, 0px);
+  max-height: calc(100% - 32px - env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+}
+@supports (height: 100dvh) {
+  .manage-dialog, .ai-confirm-dialog {
+    bottom: calc(max(0px, 100% - 100dvh) + env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 32px - env(safe-area-inset-bottom, 0px));
+  }
+}
 /* The brand stripe of the header, on top of every dialog. */
 .manage-dialog::before { content: ""; display: block; height: 5px; background: linear-gradient(90deg, var(--red) 0 34%, var(--yellow) 34% 67%, var(--blue) 67%); }
 .manage-dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(3px); }
@@ -568,7 +579,6 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 
 /* Optional work information uses the existing dialog and typography. */
 .work-metadata-fields { display: grid; gap: 12px; margin-block-start: 12px; }
-.manage-dialog:has(.work-metadata-fields) { overflow: auto; }
 .work-information { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-block: 0 18px; }
 .work-information-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .work-information-copy:empty { display: none; }
@@ -620,7 +630,11 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 .sidebar-collapsed .sidebar-toggle { margin-inline: auto; }
 .sidebar-collapsed .sidebar-link { justify-content: center; }
 .sidebar-collapsed .trash-dot { position: absolute; inset: 6px 4px auto auto; }
-.desktop .sidebar-top :is(img, .brand-name) { display: none; }
+/* Desktop: the title bar keeps only the icon; the name sits beside the collapse button and folds away with the rail. */
+.desktop .site-header .brand-name, .desktop .sidebar-top img { display: none; }
+.desktop .sidebar-top { gap: 0; }
+.desktop .sidebar-top .brand-name { display: block; flex: 0 1 auto; min-width: 0; max-width: 10em; overflow: hidden; white-space: nowrap; padding-inline: 6px 8px; }
+.desktop.sidebar-collapsed .sidebar-top .brand-name { display: block; max-width: 0; padding-inline: 0; opacity: 0; visibility: hidden; }
 @media screen and (min-width: 641px) {
   html:not(.desktop) .site-header { display: none; }
   html:not(.desktop) .app-sidebar { position: fixed; inset-inline-start: 0; }
@@ -628,6 +642,7 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 }
 @media (prefers-reduced-motion: no-preference) and (min-width: 641px) {
   .app-sidebar { transition: width 180ms var(--ease-out); }
+  .desktop .sidebar-top .brand-name { transition: max-width 180ms var(--ease-out), padding 180ms var(--ease-out), opacity 140ms var(--ease-out), visibility 180ms; }
   html:not(.desktop) .workspace { transition: padding-inline-start 180ms var(--ease-out); }
 }
 @media screen and (max-width: 640px) {
@@ -637,6 +652,9 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
   .app-sidebar, .desktop .app-sidebar { display: none; position: fixed; inset: 52px auto 0 0; height: auto; align-self: auto; z-index: 5; width: min(264px, 82vw); box-shadow: var(--shadow); }
   .app-sidebar.drawer-open { display: flex; }
   .sidebar-top { display: none; }
+  /* The desktop drawer carries the name, since the title bar shows only the icon. */
+  .desktop .sidebar-top { display: flex; }
+  .desktop .sidebar-toggle { display: none; }
   #drawer-backdrop { position: fixed; z-index: 4; inset: 52px 0 0; background: var(--backdrop); }
   .site-header { position: sticky; top: 0; z-index: 5; }
 }
