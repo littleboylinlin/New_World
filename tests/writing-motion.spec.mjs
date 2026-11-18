@@ -67,7 +67,8 @@ for (const desktop of [false, true]) {
     const before = await sample()
     let last = before
     try {
-      for (let i = 0; i < 75; i++) {
+      // Enough characters to wrap at least twice at this width, whether or not a scrollbar takes room.
+      for (let i = 0; i < 110; i++) {
         await page.keyboard.down('w')
         last = await sample()
         expect(last.head).toBe(before.head + i + 1)

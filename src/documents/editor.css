@@ -103,7 +103,9 @@
 .conversion-info ul { margin: 5px 0 0; padding-inline-start: 1.4em; }
 
 /* The text pane is the only part of the page that scrolls the chapter. */
-.editor-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 24px; background: var(--surface); }
+.editor-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  /* Room for the scrollbar is always kept, so a growing chapter never relays out every line to fit one in. */
+  scrollbar-gutter: stable; overscroll-behavior: contain; scroll-padding-block: 24px; background: var(--surface); }
 .editor-scroll:focus { outline: none; }
 
 /* Chapter list */
