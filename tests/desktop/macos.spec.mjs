@@ -233,6 +233,7 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
       globalThis.continueMacDownload = gate.resolve
       session.fromPartition('new-world-update').fetch = async (url) => {
         if (url.endsWith('/tags/' + data.release.tag_name)) return Response.json(data.release)
+        if (url === 'https://dl.writenewworld.com/latest.json') return new Response(null, { status: 404 })
         if (globalThis.corruptMacDownload) return new Response('x')
         const stream = process.getBuiltinModule('node:fs').createReadStream(data.dmg)
         const reader = process.getBuiltinModule('node:stream').Readable.toWeb(stream).getReader()
