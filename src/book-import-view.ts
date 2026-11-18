@@ -1,3 +1,4 @@
+import { enqueueProject } from './projects/view'
 import { t } from './i18n'
 import { acceptedExtensions } from './formats'
 import { importBook, storageError } from './library'
@@ -5,12 +6,12 @@ import type { LibraryId } from './library'
 import { button, element } from './ui'
 import { showWorkInformation } from './work-information-view'
 
-export function bookImport(id: LibraryId, label: string, onImport: () => void, workId?: string) {
+export function bookImport(target: LibraryId | (() => Promise<LibraryId | null>), label: string, onImport: () => void, workId?: string) {
   const choose = button(label, 'button button-primary', 'plus')
   const input = element('input')
   input.type = 'file'
   input.multiple = true
-  input.accept = acceptedExtensions
+  input.accept = typeof target === 'function' ? acceptedExtensions + ',.newworld' : acceptedExtensions
   input.hidden = true
   input.setAttribute('aria-label', t('bookImport.chooseBookFiles'))
   choose.addEventListener('click', () => input.click())
@@ -23,10 +24,22 @@ export function bookImport(id: LibraryId, label: string, onImport: () => void, w
   failures.hidden = true
   progress.append(summary, failures, information)
   input.addEventListener('change', async () => {
-    const files = Array.from(input.files ?? [])
+    const picked = Array.from(input.files ?? [])
     input.value = ''
-    if (!files.length || choose.disabled) return
+    if (!picked.length || choose.disabled) return
+    const projects = typeof target === 'function' ? picked.filter((file) => /\.newworld$/i.test(file.name)) : []
+    const files = picked.filter((file) => !projects.includes(file))
+    const importProjects = () => {
+      for (const file of projects) void enqueueProject(async () => file)
+    }
+    if (!files.length) { importProjects(); return }
     choose.disabled = true
+    const id = typeof target === 'function' ? await target() : target
+    if (!id) {
+      choose.disabled = false
+      importProjects()
+      return
+    }
     progress.hidden = false
     failures.hidden = true
     failures.replaceChildren()
@@ -59,6 +72,7 @@ export function bookImport(id: LibraryId, label: string, onImport: () => void, w
     summary.textContent = t('bookImport.importedBookS', [imported, duplicates ? t('bookImport.skippedDuplicateS', [duplicates]) : '', failed ? t('bookImport.fileSFailed', [failed]) : ''])
     failures.hidden = !duplicates && !failed
     choose.disabled = false
+    importProjects()
   })
 
   return { choose, input, progress }

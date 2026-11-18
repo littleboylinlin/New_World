@@ -91,7 +91,7 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   panel.setAttribute('aria-label', t('writing.title'))
 
   const heading = element('div', 'stats-heading')
-  heading.append(element('span', 'eyebrow', t('writing.eyebrow')), element('h2', '', t('writing.title')))
+  heading.append(element('span', 'eyebrow', t('writing.eyebrow')), element('h1', '', t('writing.title')))
 
   const numbers = element('div', 'stats-numbers')
   const streakValue = element('span', 'stat-value', '0')

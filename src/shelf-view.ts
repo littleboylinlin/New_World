@@ -1,84 +1,93 @@
-import { projectImportButton, showProjectExport } from './projects/view'
+import { showProjectExport } from './projects/view'
 import { showWorkInformation, workMetadataFields } from './work-information-view'
-import { t } from './i18n'
+import { locale, t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
 import { createNovel } from './documents/store'
-import { coverOf, deleteBook, libraryChanges, listArchived, listShelf, maxTitleLength, renameBook, setArchived, setCover, storageError } from './library'
+import { coverOf, deleteBook, libraryChanges, listBooks, listShelf, maxTitleLength, renameBook, setArchived, setCover, storageError } from './library'
 import type { Book, LibraryId } from './library'
-import { bookPath, breadcrumbs, button, element, fileDetails, icon, libraries, link, notice } from './ui'
+import { bookPath, button, element, fileDetails, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
 import { renderWritingStats } from './writing-stats'
 import { openMenu } from './menu'
-import { listIdeas } from './ideas'
+import { recentWorks } from './ideas'
+import { writingFilter, writingSort } from './navigation-preferences'
+import { chooseWorkType, workType } from './work-type'
 import type { MenuItem } from './menu'
 
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
 
+function typeBadge(library: LibraryId) {
+  return element('span', 'work-type mode-' + library, workType(library))
+}
+
+function createWork(root: HTMLElement, id: LibraryId) {
+  const metadata = workMetadataFields()
+  formDialog(root, {
+    title: t(id === 'original' ? 'shelf.newNovel' : 'work.newContinuation'),
+    action: t('shelf.createNovel'), fields: [nameField(t('shelf.workTitle')), ...metadata.fields],
+  }, async (data) => {
+    void navigator.storage?.persist?.().catch(() => {})
+    const { book, edition } = await createNovel(id, String(data.get('name')), metadata.read())
+    changes.dispatchEvent(new Event('update'))
+    location.hash = bookPath(id, book.id, id === 'original' ? edition.id : undefined)
+  })
+}
+
+function createButton(root: HTMLElement, signal: AbortSignal) {
+  const create = button(t('writing.create'), 'button button-primary', 'plus')
+  create.onclick = async () => {
+    const library = await chooseWorkType(t('writing.chooseType'), signal)
+    if (library) createWork(root, library)
+  }
+  return create
+}
+
 export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const home = element('section', 'home')
-  const head = element('header', 'home-head')
-  const intro = element('div', 'home-intro')
-  intro.append(element('h1', '', t('shelf.myNovelLibrary')))
-
-  const cards = element('div', 'shelf-grid')
-  const counts = new Map<LibraryId, HTMLElement>()
-  for (const id of libraryIds) {
-    const library = libraries[id]
-    const card = element('a', `shelf-card shelf-${id}`)
-    card.href = bookPath(id)
-    card.setAttribute('aria-label', t('shelf.open', [library.name]))
-    const copy = element('div', 'card-copy')
-    copy.append(element('h2', '', library.name), element('p', 'card-subtitle', library.label))
-    const bottom = element('div', 'card-bottom')
-    const count = element('span', 'card-count', t('shelf.loading'))
-    const enter = element('span', 'card-enter')
-    enter.append(t('shelf.openLibrary'), icon('arrow'))
-    counts.set(id, count)
-    bottom.append(count, enter)
-    card.append(element('span', 'card-index', library.index), copy, bottom)
-    cards.append(card)
-  }
-
-  // Archived works sit outside both libraries, so their entry is on the home page.
-  const archive = link('#/archive', '', 'archive-entry home-entry-archive')
-  archive.setAttribute('aria-label', t('archive.title'))
-  const archiveCount = element('span', 'list-count archive-count')
-  archive.append(icon('archive'), element('span', '', t('archive.title')), archiveCount)
-  const ideas = link('#/ideas', '', 'archive-entry home-entry-ideas')
-  ideas.setAttribute('aria-label', t('ideas.title'))
-  const ideaCount = element('span', 'list-count archive-count')
-  ideas.append(icon('idea'), element('span', '', t('ideas.title')), ideaCount)
-  const entries = element('div', 'home-entries')
-  entries.append(projectImportButton(), link('#/tasks', t('tasks.workspace'), 'archive-entry home-entry-tasks'), ideas, archive)
-  head.append(intro, entries)
-  home.append(head, stagger(cards))
   renderWritingStats(home, signal)
+  const recent = element('section', 'recent-projects')
+  const heading = element('h2', '', t('writing.recent'))
+  const content = element('div')
+  recent.append(heading, content)
+  home.append(recent)
   root.append(home)
 
-  async function refreshCounts() {
-    void listIdeas().then((items) => {
-      const waiting = items.filter((idea) => !idea.usedAt).length
-      if (!signal.aborted) ideaCount.textContent = waiting ? String(waiting) : ''
-    }, () => {})
-    void listArchived().then((books) => {
-      if (!signal.aborted) archiveCount.textContent = books.length ? String(books.length) : ''
-    }, () => {})
-    await Promise.all(libraryIds.map(async (id) => {
-      const count = counts.get(id)!
-      try {
-        const books = await listShelf(id)
-        if (!signal.aborted) count.textContent = t('shelf.workS', [books.length])
-      } catch {
-        if (!signal.aborted) count.textContent = t('shelf.libraryUnavailable')
+  let request = 0
+  async function refresh() {
+    const turn = ++request
+    try {
+      const books = (await Promise.all(libraryIds.map(listBooks))).flat().filter((book) => !book.workId)
+      if (signal.aborted || turn !== request) return
+      const list = element('ul', 'recent-list')
+      for (const ref of recentWorks().slice(0, 8)) {
+        const book = books.find((item) => item.id === ref.bookId && item.library === ref.library)
+        if (!book) continue
+        const entry = link(bookPath(book.library, book.id), '', 'recent-link')
+        entry.append(typeBadge(book.library), element('strong', '', book.title))
+        if (ref.openedAt && Number.isFinite(new Date(ref.openedAt).getTime())) {
+          const date = new Date(ref.openedAt)
+          const time = element('time', '', t('writing.openedAt', [date.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })]))
+          time.dateTime = date.toISOString()
+          entry.append(time)
+        }
+        const row = element('li')
+        row.append(entry)
+        list.append(row)
       }
-    }))
+      if (list.childElementCount) content.replaceChildren(list)
+      else if (books.length) content.replaceChildren(element('p', 'intro-copy', t('writing.noRecent')), link('#/writing', t('navigation.writing'), 'button button-quiet'))
+      else content.replaceChildren(element('p', 'intro-copy', t('writing.empty')), createButton(root, signal))
+    } catch (error) {
+      if (!signal.aborted && turn === request) content.replaceChildren(notice(storageError(error), true))
+    }
   }
-  changes.addEventListener('update', () => void refreshCounts(), { signal })
-  window.addEventListener('focus', () => void refreshCounts(), { signal })
-  void refreshCounts()
+  changes.addEventListener('update', refresh, { signal })
+  window.addEventListener('focus', refresh, { signal })
+  window.addEventListener('storage', refresh, { signal })
+  void refresh()
 }
 
 function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
@@ -180,7 +189,7 @@ function chooseCover(root: HTMLElement, book: Book, report: (message: string) =>
 }
 
 function bookCard(root: HTMLElement, book: Book, covers: string[], report: (message: string) => void) {
-  const row = element('li', 'book-card')
+  const row = element('li', 'book-card mode-' + book.library)
   const open = element('a', 'book-link')
   open.href = bookPath(book.library, book.id)
   open.setAttribute('aria-label', t('shelf.view', [book.title]))
@@ -244,88 +253,109 @@ function bookCard(root: HTMLElement, book: Book, covers: string[], report: (mess
       : { x: event.clientX, y: event.clientY }
     openMenu(actions(), point, menuLabel, more)
   })
-  row.append(open, meta, details)
+  row.append(open, meta, typeBadge(book.library), details)
   return row
 }
 
-export function renderShelf(root: HTMLElement, id: LibraryId, signal: AbortSignal) {
-  const library = libraries[id]
-  const panel = element('section', `shelf-page mode-${id}`)
+export function renderShelf(root: HTMLElement, signal: AbortSignal) {
+  const panel = element('section', 'shelf-page')
   const header = element('div', 'page-heading')
-  const heading = element('div')
-  heading.append(element('p', 'eyebrow', `${library.index} / ${library.label}`), element('h1', '', library.name))
-  const { choose, input, progress } = bookImport(id, id === 'reference' ? t('shelf.importSourceToCreateAProject') : t('shelf.importFiles'), () => changes.dispatchEvent(new Event('update')))
-  const create = button(t(id === 'original' ? 'shelf.newNovel' : 'work.newContinuation'), 'button button-quiet', 'plus')
-  const controls = element('div', 'shelf-actions')
-  create.addEventListener('click', () => {
-    const metadata = workMetadataFields()
-    formDialog(root, { title: t(id === 'original' ? 'shelf.newNovel' : 'work.newContinuation'), action: t('shelf.createNovel'), fields: [nameField(t('shelf.workTitle')), ...metadata.fields] }, async (data) => {
-      void navigator.storage?.persist?.().catch(() => {})
-      const { book, edition } = await createNovel(id, String(data.get('name')), metadata.read())
-      changes.dispatchEvent(new Event('update'))
-      location.hash = bookPath(id, book.id, id === 'original' ? edition.id : undefined)
-    })
-  })
-  controls.append(create)
-  // The tray's "New Novel" opens the library with this dialog.
-  try {
-    if (id === 'original' && sessionStorage.getItem('new-world:new-novel') === '1') {
-      sessionStorage.removeItem('new-world:new-novel')
-      window.setTimeout(() => create.click())
-    }
-  } catch { /* Nothing to open. */ }
-  controls.append(projectImportButton(), choose, input)
-  header.append(heading, controls)
-
+  const actions = element('div', 'shelf-actions')
+  const { choose, input, progress } = bookImport(() => chooseWorkType(t('writing.importType'), signal),
+    t('writing.import'), () => changes.dispatchEvent(new Event('update')))
+  choose.className = 'button button-quiet'
+  actions.append(createButton(root, signal), choose, input)
+  header.append(element('h1', '', t('navigation.writing')), actions)
+  const toolbar = element('div', 'writing-toolbar')
+  const filters = element('div', 'segment-switch')
+  filters.setAttribute('role', 'group')
+  filters.setAttribute('aria-label', t('writing.filter'))
+  for (const id of ['all', ...libraryIds] as const) {
+    const toggle = button(id === 'all' ? t('writing.filterAll') : workType(id), 'segment')
+    toggle.dataset.filter = id
+    toggle.onclick = () => { writingFilter.set(id); paint() }
+    filters.append(toggle)
+  }
+  const search = element('input', 'title-input')
+  search.type = 'search'
+  search.placeholder = t('writing.search')
+  search.setAttribute('aria-label', search.placeholder)
+  search.oninput = () => paint()
+  const sort = element('select', 'editor-select')
+  sort.setAttribute('aria-label', t('writing.sort'))
+  for (const value of ['added', 'opened', 'title'] as const) {
+    const option = element('option', '', t('writing.sort.' + value))
+    option.value = value
+    sort.append(option)
+  }
+  sort.value = writingSort.get()
+  sort.onchange = () => { writingSort.set(sort.value as ReturnType<typeof writingSort.get>); paint() }
+  toolbar.append(filters, search, sort)
   const listHeader = element('div', 'list-heading')
-  const listTitle = element('h2', '', id === 'reference' ? t('shelf.groupedBySourceWork') : t('shelf.allWorks'))
   const count = element('span', 'list-count')
-  const archived = link('#/archive', t('archive.view'), 'archive-view-link')
-  listHeader.append(listTitle, count, archived)
+  listHeader.append(element('h2', '', t('shelf.allWorks')), count)
   const content = element('div', 'shelf-content')
   content.append(notice(t('shelf.loadingLocalLibrary')))
-  panel.append(breadcrumbs(id), header, progress, listHeader, content)
+  panel.append(header, toolbar, progress, listHeader, content)
   root.append(panel)
 
   let requestNumber = 0
   // Only the first render animates in. Later refreshes swap the list quietly.
   let arriving = true
   // Cover images are shown through object URLs, released when the list is redrawn or the page left.
-  let covers: string[] = []
+  const covers: string[] = []
   const releaseCovers = () => { for (const url of covers.splice(0)) URL.revokeObjectURL(url) }
   signal.addEventListener('abort', releaseCovers)
   const report = (message: string) => { content.prepend(notice(message, true)) }
+  let works: Book[] = []
+  function paint() {
+    const filter = writingFilter.get()
+    for (const toggle of filters.querySelectorAll<HTMLElement>('[data-filter]')) {
+      toggle.setAttribute('aria-pressed', String(toggle.dataset.filter === filter))
+    }
+    const query = search.value.trim().toLocaleLowerCase(locale)
+    const books = works.filter((book) => (filter === 'all' || book.library === filter) && book.title.toLocaleLowerCase(locale).includes(query))
+    const ranks = new Map(recentWorks().map((work, index) => [work.library + work.bookId, index]))
+    const rank = (book: Book) => ranks.get(book.library + book.id) ?? Infinity
+    books.sort((a, b) => {
+      if (writingSort.get() === 'title') return a.title.localeCompare(b.title, locale)
+      if (writingSort.get() === 'opened' && rank(a) !== rank(b)) return rank(a) - rank(b)
+      return b.importedAt - a.importedAt || a.title.localeCompare(b.title, locale)
+    })
+    count.textContent = t('shelf.workS308', [books.length])
+    releaseCovers()
+    if (books.length) {
+      const list = element('ul', 'book-list book-grid')
+      list.setAttribute('aria-label', t('shelf.allWorks'))
+      list.append(...books.map((book) => bookCard(root, book, covers, report)))
+      content.replaceChildren(arriving ? stagger(list) : list)
+    } else {
+      const empty = element('div', 'empty-shelf')
+      empty.append(icon('book'), element('h3', '', query ? t('writing.noMatch') : filter === 'all' ? t('writing.empty') : libraries[filter].empty))
+      content.replaceChildren(empty)
+    }
+    arriving = false
+  }
   async function refresh() {
     const current = ++requestNumber
     try {
-      const books = await listShelf(id)
+      const books = await Promise.all(libraryIds.map(listShelf))
       if (signal.aborted || current !== requestNumber) return
-      count.textContent = t('shelf.workS308', [books.length])
-      if (books.length) {
-        const list = element('ul', 'book-list book-grid')
-        list.setAttribute('aria-label', t('shelf.allWorks'))
-        const shown: string[] = []
-        list.append(...books.map((book) => bookCard(root, book, shown, report)))
-        releaseCovers()
-        covers = shown
-        content.replaceChildren(arriving ? stagger(list) : list)
-      } else {
-        const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
-        const emptyIcon = element('div', 'empty-icon')
-        emptyIcon.append(icon('book'))
-        empty.append(emptyIcon, element('h3', '', library.empty))
-        if (id === 'original') empty.append(element('p', '', t('shelf.importNovelsInTxtPdfEpubDocxAnd')))
-        content.replaceChildren(empty)
-      }
+      works = books.flat()
+      paint()
     } catch (error) {
       if (!signal.aborted && current === requestNumber) {
         count.textContent = ''
         content.replaceChildren(notice(storageError(error), true))
       }
     }
-    if (!signal.aborted && current === requestNumber) arriving = false
   }
-
+  try {
+    if (sessionStorage.getItem('new-world:new-novel') === '1') {
+      sessionStorage.removeItem('new-world:new-novel')
+      createWork(root, 'original')
+    }
+  } catch { /* The writing page remains accessible. */ }
   changes.addEventListener('update', () => void refresh(), { signal })
   window.addEventListener('focus', () => void refresh(), { signal })
   void refresh()
