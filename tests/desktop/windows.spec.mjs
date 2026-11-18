@@ -18,6 +18,8 @@ const versionTag = `v${version}`
 const releaseBase = 'https://github.com/littleboylinlin/New_World/releases'
 const releaseList = 'https://api.github.com/repos/littleboylinlin/New_World/releases?per_page=100'
 const releaseTags = 'https://api.github.com/repos/littleboylinlin/New_World/releases/tags/'
+const mirrorLatest = 'https://dl.writenewworld.com/latest.json'
+const withoutMirror = (page) => page.route(mirrorLatest, (route) => route.fulfill({ status: 404, body: '', headers: { 'access-control-allow-origin': '*' } }))
 const installer = process.env.NEW_WORLD_INSTALLER
 const installDir = installer && (process.env.NEW_WORLD_INSTALL_DIR || join(process.env.LOCALAPPDATA, 'Programs', 'New World'))
 const installedApp = installDir && join(installDir, 'New World.exe')
@@ -336,9 +338,11 @@ function stable(tag, fields = {}) {
   }
 }
 
+// The mirror has nothing here: latest.json and the mirrored installer both answer 404, so GitHub serves both.
 async function mockUpdateDownload(app, release, { filePath, body }) {
   const metadata = releaseTags + release.tag_name
   const download = release.assets[0].browser_download_url
+  const mirrored = `https://dl.writenewworld.com/${release.tag_name}/${release.assets[0].name}`
   await app.evaluate(({ session }, fixture) => {
     const { createReadStream } = process.getBuiltinModule('node:fs')
     const { Readable } = process.getBuiltinModule('node:stream')
@@ -367,13 +371,15 @@ async function mockUpdateDownload(app, release, { filePath, body }) {
       }))
     }
   }, { metadata, download, release, filePath, body })
-  return [metadata, download]
+  return [mirrorLatest, metadata, download, mirrored]
 }
 
 test('启动检查 Windows 正式安装包，支持失败重试并保护未保存的稿件', async ({}, testInfo) => {
   const app = await launch(testInfo)
   try {
     const page = await app.firstWindow()
+    let launchChecks = 0
+    page.on('request', (request) => { if (request.url() === releaseList) launchChecks++ })
     await expect(page.getByRole('link', { name: 'New World 书库首页' })).toBeVisible()
     const [major, minor, patch] = version.split('.').map(Number)
     const next = `v${major}.${minor}.${patch + 10}`
@@ -386,6 +392,9 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     let result = [stable(older), stable(next), stable(future, { assets: [] }), stable(`${future}-rc.1`, { prerelease: true }), stable(future, { draft: true }), foreign, noDigest]
     let requests = 0
     let responseStatus = 200
+    // The launch check tries the mirror before GitHub; wait for its GitHub request so only the reloaded page is counted.
+    await expect.poll(() => launchChecks, { timeout: 20_000 }).toBeGreaterThan(0).catch(() => {})
+    await withoutMirror(page)
     await page.route(releaseList, async (route) => {
       requests++
       if (responseStatus === 0) return route.abort('internetdisconnected')
@@ -418,7 +427,7 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     await expect(help.locator('.update-state')).toContainText('无法连接 GitHub')
     responseStatus = 429
     await check.click()
-    await expect(help.locator('.update-state')).toContainText('请求限额')
+    await expect(help.locator('.update-state')).toContainText('更新服务器暂时繁忙，请稍后重试或切换网络。')
     responseStatus = 200
     result = { unexpected: true }
     await check.click()
@@ -443,7 +452,9 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
       shell.openExternal = async (url) => { globalThis.testExternalLinks.push(url) }
     })
     const corrupt = stable(next)
-    const expectedRequests = await mockUpdateDownload(app, corrupt, { body: 'x' })
+    const raced = await mockUpdateDownload(app, corrupt, { body: 'x' })
+    // GitHub wins the race with a corrupt file, so the mirror is asked once more on its own.
+    const expectedRequests = [...raced, raced.at(-1)]
     await page.evaluate(() => { globalThis.desktopTestStorageFull = true })
     await editor(page).fill('这段正文必须留在桌面端。')
     await page.getByRole('link', { name: '设置', exact: true }).click()
@@ -531,6 +542,7 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     const page = await app.firstWindow()
     expect(await app.evaluate(({ app }) => app.getVersion())).toBe(previous)
     const requests = await mockUpdateDownload(app, release, { filePath: installer })
+    await withoutMirror(page)
     await page.route(releaseList, (route) => route.fulfill({
       json: [release], headers: { 'access-control-allow-origin': '*' },
     }))

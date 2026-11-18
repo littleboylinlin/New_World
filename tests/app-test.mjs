@@ -1,11 +1,13 @@
 import { test as base } from '@playwright/test'
 
 export const releaseEndpoint = 'https://api.github.com/repos/littleboylinlin/New_World/releases/latest'
+export const mirrorEndpoint = 'https://dl.writenewworld.com/latest.json'
 
 export async function withoutRelease(context) {
   await context.route(releaseEndpoint, (route) => route.fulfill({
     status: 404, json: { message: 'Not Found' }, headers: { 'access-control-allow-origin': '*' },
   }))
+  await context.route(mirrorEndpoint, (route) => route.fulfill({ status: 404, body: '', headers: { 'access-control-allow-origin': '*' } }))
   return context
 }
 

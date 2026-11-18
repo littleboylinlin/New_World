@@ -2,6 +2,9 @@ const repository = 'littleboylinlin/New_World'
 export const releaseEndpoint = 'https://api.github.com/repos/' + repository + '/releases'
 export const releasePages = 'https://github.com/' + repository + '/releases/'
 export const desktopReleaseList = releaseEndpoint + '?per_page=100'
+// Release files mirrored to R2. Not writenewworld.com, which redirects visitors from some regions.
+export const mirrorBase = 'https://dl.writenewworld.com/'
+export const mirrorLatest = mirrorBase + 'latest.json'
 
 const stableTag = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 const cdnHosts = new Set(['release-assets.githubusercontent.com', 'objects.githubusercontent.com'])
@@ -42,6 +45,29 @@ function readInstaller(tag, assets, platform, arch) {
 }
 
 export const readWindowsInstaller = (tag, assets) => readInstaller(tag, assets, 'win32', 'x64')
+
+export const platformKey = (platform, arch) => platform === 'win32' && arch === 'x64' ? 'windows-x64'
+  : platform === 'darwin' && ['arm64', 'x64'].includes(arch) ? `macos-${arch}` : undefined
+
+/** Reads the mirror's latest.json. Anything malformed is treated as no answer, so callers fall back to GitHub. */
+export function readMirrorRelease(payload) {
+  if (!payload || typeof payload !== 'object' || payload.schema !== 1) return
+  const { tag, publishedAt, notes, assets } = payload
+  if (!isStableTag(tag) || typeof publishedAt !== 'string' || !assets || typeof assets !== 'object') return
+  const installers = {}
+  for (const [key, platform, arch] of [['windows-x64', 'win32', 'x64'], ['macos-arm64', 'darwin', 'arm64'], ['macos-x64', 'darwin', 'x64']]) {
+    const entry = assets[key]
+    if (entry === undefined) continue
+    const name = installerName(tag, platform, arch)
+    if (!entry || entry.name !== name || entry.url !== mirrorBase + tag + '/' + name) return
+    if (!Number.isSafeInteger(entry.size) || entry.size <= 0 || entry.size > maxInstallerBytes) return
+    if (typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256)) return
+    installers[key] = { tag, name, size: entry.size, sha256: entry.sha256, url: releasePages + 'download/' + tag + '/' + name, mirror: entry.url }
+  }
+  return { tag, publishedAt, notes: typeof notes === 'string' ? notes : '', installers }
+}
+
+export const mirrorInstallerUrl = (tag, name) => mirrorBase + tag + '/' + name
 export const readMacInstaller = (tag, assets, arch) => readInstaller(tag, assets, 'darwin', arch)
 
 export function isInstallerUrl(address, platform, arch) {
@@ -56,7 +82,33 @@ export function isInstallerUrl(address, platform, arch) {
     const name = installerName(tag, platform, arch)
     return Boolean(name) && url.href === downloadBase + tag + '/' + name
   }
+  if (url.href === mirrorLatest) return true
+  if (url.href.startsWith(mirrorBase)) {
+    const [tag, name, extra] = url.pathname.slice(1).split('/')
+    return extra === undefined && !url.search && Boolean(name) && installerName(tag, platform, arch) === name
+  }
   return cdnHosts.has(url.hostname) && /^\/github-production-release-asset(?:-[a-z0-9]+)?\//.test(url.pathname)
 }
 
 export const isWindowsUpdateUrl = (address) => isInstallerUrl(address, 'win32', 'x64')
+
+/**
+ * Installer details for one tag: the mirror's latest.json first, the GitHub API only when the mirror
+ * has nothing for this tag. Every installer comes with both download addresses.
+ */
+export async function findInstaller(request, tag, platform, arch) {
+  const key = platformKey(platform, arch)
+  if (!key || !isStableTag(tag)) return
+  try {
+    const response = await request(mirrorLatest, { redirect: 'error', signal: AbortSignal.timeout(8000) })
+    const mirror = response.ok ? readMirrorRelease(await response.json()) : undefined
+    if (mirror?.tag === tag && mirror.installers[key]) return mirror.installers[key]
+  } catch { /* The GitHub API below still knows the release. */ }
+  const response = await request(releaseEndpoint + '/tags/' + tag, {
+    headers: { Accept: 'application/vnd.github+json' }, redirect: 'error', signal: AbortSignal.timeout(8000),
+  })
+  const release = response.ok && await response.json()
+  const installer = release?.tag_name === tag && release.draft === false && release.prerelease === false
+    && readInstaller(tag, release.assets, platform, arch)
+  return installer ? { ...installer, mirror: mirrorInstallerUrl(tag, installer.name) } : undefined
+}

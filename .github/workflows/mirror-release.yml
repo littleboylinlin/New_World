@@ -1,0 +1,106 @@
+name: Mirror release
+
+# Copies a published stable release to the R2 bucket behind dl.writenewworld.com, so the desktop app
+# can check for and download updates without GitHub's per-IP API limit.
+on:
+  release:
+    types: [published]
+  # Checks publishes releases with GITHUB_TOKEN, which does not start release-triggered workflows.
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要镜像的正式版标签，例如 v0.20.1；留空为最新正式版'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency: mirror-release
+
+jobs:
+  mirror:
+    if: github.repository == 'littleboylinlin/New_World'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+      R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      BUCKET: newworld-releases
+      MIRROR: https://dl.writenewworld.com
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Pick the release
+        id: release
+        env:
+          REQUESTED: ${{ inputs.tag }}
+        run: |
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          tag=${REQUESTED:-$latest}
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release.json"
+          jq -e '.draft == false and .prerelease == false' "$RUNNER_TEMP/release.json" > /dev/null || { echo "$tag is not a published stable release."; exit 1; }
+          mirrored=$(curl -fsS --max-time 10 --doh-url https://cloudflare-dns.com/dns-query "$MIRROR/latest.json" 2>/dev/null | jq -r .tag 2>/dev/null || true)
+          echo "Release $tag, latest $latest, mirror ${mirrored:-empty}"
+          if [[ "$GITHUB_EVENT_NAME" != 'workflow_dispatch' && "$mirrored" == "$tag" ]]; then echo 'skip=true' >> "$GITHUB_OUTPUT"; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          # An older tag can be mirrored for its files, but latest.json only ever names the latest release.
+          if [[ "$tag" == "$latest" ]]; then echo 'latest=true' >> "$GITHUB_OUTPUT"; fi
+      - name: Download and verify the release files
+        if: steps.release.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/files"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/files" --pattern 'New-World-*' --pattern 'SHA256SUMS.txt'
+          (cd "$RUNNER_TEMP/files" && sha256sum --check SHA256SUMS.txt)
+          jq -r '.body // ""' "$RUNNER_TEMP/release.json" > "$RUNNER_TEMP/notes.md"
+          node desktop/mirror-manifest.mjs "$TAG" "$RUNNER_TEMP/files" "$(jq -r .published_at "$RUNNER_TEMP/release.json")" "$RUNNER_TEMP/notes.md" > "$RUNNER_TEMP/latest.json"
+          jq '.assets | map_values({ name, size })' "$RUNNER_TEMP/latest.json"
+      - name: Upload to R2
+        if: steps.release.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          LATEST: ${{ steps.release.outputs.latest }}
+        run: |
+          for file in "$RUNNER_TEMP"/files/*; do
+            aws s3 cp "$file" "s3://$BUCKET/$TAG/$(basename "$file")" --endpoint-url "$R2_ENDPOINT" \
+              --cache-control 'public, max-age=31536000, immutable' --only-show-errors
+          done
+          # latest.json goes last, so it never names a file that is not there yet.
+          if [[ "$LATEST" == 'true' ]]; then
+            aws s3 cp "$RUNNER_TEMP/latest.json" "s3://$BUCKET/latest.json" --endpoint-url "$R2_ENDPOINT" \
+              --content-type 'application/json' --cache-control 'no-cache' --only-show-errors
+          fi
+      - name: Check the mirror
+        if: steps.release.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          LATEST: ${{ steps.release.outputs.latest }}
+        run: |
+          fetch() { curl -fsS --max-time 20 --doh-url https://cloudflare-dns.com/dns-query "$@"; }
+          for name in $(jq -r '.assets[].name' "$RUNNER_TEMP/latest.json") SHA256SUMS.txt; do
+            size=$(fetch -I "$MIRROR/$TAG/$name" | tr -d '\r' | awk 'tolower($1) == "content-length:" { print $2 }')
+            expected=$(stat -c %s "$RUNNER_TEMP/files/$name")
+            [[ "$size" == "$expected" ]] || { echo "$name: mirror has ${size:-nothing}, expected $expected"; exit 1; }
+          done
+          if [[ "$LATEST" == 'true' ]]; then
+            for attempt in $(seq 1 12); do
+              live=$(fetch "$MIRROR/latest.json?t=$GITHUB_RUN_ID-$attempt" 2>/dev/null | jq -r .tag 2>/dev/null || true)
+              if [[ "$live" == "$TAG" ]]; then echo "Mirror serves $live"; exit 0; fi
+              sleep 10
+            done
+            echo "Mirror serves ${live:-nothing}, expected $TAG"
+            exit 1
+          fi

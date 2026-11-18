@@ -9,3 +9,11 @@ export function readWindowsInstaller(tag: string, assets: unknown): Installer | 
 export function readMacInstaller(tag: string, assets: unknown, arch: string): Installer | undefined
 export function isInstallerUrl(address: string, platform: string, arch: string): boolean
 export function isWindowsUpdateUrl(address: string): boolean
+export const mirrorBase: string
+export const mirrorLatest: string
+export interface MirrorInstaller extends Installer { mirror: string }
+export interface MirrorRelease { tag: string; publishedAt: string; notes: string; installers: Partial<Record<'windows-x64' | 'macos-arm64' | 'macos-x64', MirrorInstaller>> }
+export function platformKey(platform: string, arch: string): 'windows-x64' | 'macos-arm64' | 'macos-x64' | undefined
+export function readMirrorRelease(payload: unknown): MirrorRelease | undefined
+export function mirrorInstallerUrl(tag: string, name: string): string
+export function findInstaller(request: (url: string, options?: RequestInit) => Promise<Response>, tag: string, platform: string, arch: string): Promise<MirrorInstaller | undefined>

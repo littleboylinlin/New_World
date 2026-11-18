@@ -1,6 +1,6 @@
 import { t } from './i18n'
 import { version } from '../package.json'
-import { readMacInstaller, readWindowsInstaller, releasePages, desktopReleaseList } from '../desktop/release.mjs'
+import { mirrorLatest, platformKey, readMacInstaller, readMirrorRelease, readWindowsInstaller, releasePages, desktopReleaseList } from '../desktop/release.mjs'
 
 const timeoutMs = 8000
 const notesLimit = 12000
@@ -85,12 +85,33 @@ function desktopReleaseResult(payload: unknown, current: Version): UpdateResult 
   return best ? describeRelease(best, current, platform) : { kind: 'unpublished' }
 }
 
+// The R2 mirror answers without GitHub's per-IP limit, which people sharing a proxy exit hit quickly.
+async function mirrorResult(current: Version): Promise<UpdateResult | undefined> {
+  const platform = window.newWorldDesktop?.platform ?? 'win32'
+  const key = platformKey(platform, window.newWorldDesktop?.arch ?? 'x64')
+  if (!key) return
+  try {
+    const response = await fetch(mirrorLatest, {
+      credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) return
+    const mirror = readMirrorRelease(await response.json())
+    const version = mirror && parseVersion(mirror.tag)
+    if (!mirror || !version || !mirror.installers[key]) return
+    return describeRelease({ tag: mirror.tag, version, stable: true, body: mirror.notes, assets: [] }, current, platform)
+  } catch {
+    return
+  }
+}
+
 /** Desktop only. The web app learns about new deploys from its own version.json (see web-version.ts). */
 export async function checkForUpdate(): Promise<UpdateResult> {
   const current = parseVersion(version)
   if (!current) return failed(t('updates.theRunningVersionCouldNotBeIdentified'))
   if (!navigator.onLine) return failed(t('updates.youAreOfflineConnectToTheInternetAnd'))
 
+  const fromMirror = await mirrorResult(current)
+  if (fromMirror) return fromMirror
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {

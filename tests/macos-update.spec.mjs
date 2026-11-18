@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test } from '@playwright/test'
-import { releaseEndpoint, releasePages } from '../desktop/release.mjs'
+import { mirrorLatest, releaseEndpoint, releasePages } from '../desktop/release.mjs'
 
 const { createMacUpdater } = createRequire(import.meta.url)('../desktop/macos-update.cjs')
 const tag = 'v1.0.0'
@@ -57,7 +57,7 @@ test('Mac 拒绝损坏与其他平台的安装包，失败后没有下载残留'
     expect(await readdir(root)).toEqual(['unrelated'])
     const wrong = await fixture(root, { wrongPlatform: true })
     await expect(wrong.updater.download(tag, () => {})).rejects.toThrow('unavailable')
-    expect(wrong.requests).toHaveLength(1)
+    expect(wrong.requests).toEqual([mirrorLatest, releaseEndpoint + '/tags/' + tag])
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
