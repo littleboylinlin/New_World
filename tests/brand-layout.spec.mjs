@@ -74,18 +74,13 @@ for (const platform of ['win32', 'darwin']) {
     expect(toggle.width).toBeCloseTo(32, 0)
     expect(toggle.right).toBeCloseTo(sidebar.right - 3 - 12, 0)
 
-    // Collapsing narrows the name to nothing over the rail's transition, then hides it.
-    const widths = await page.evaluate(async () => {
+    // Collapsing narrows the name to nothing over the rail's 180ms transition, then hides it.
+    const transitions = await page.evaluate(() => {
       const node = document.querySelector('.sidebar-top .brand-name')
-      const samples = []
       document.querySelector('#sidebar-toggle').click()
-      for (let i = 0; i < 20; i++) {
-        await new Promise(requestAnimationFrame)
-        samples.push(node.getBoundingClientRect().width)
-      }
-      return samples
+      return node.getAnimations().map((animation) => ({ property: animation.transitionProperty, duration: animation.effect.getTiming().duration }))
     })
-    expect(widths.some((width) => width > 5 && width < name.width - 5)).toBe(true)
+    expect(transitions).toEqual(expect.arrayContaining([{ property: 'max-width', duration: 180 }, { property: 'opacity', duration: 140 }]))
     await settle(page)
     const collapsed = await rect(page, '#app-sidebar')
     const hidden = await rect(page, '.sidebar-top .brand-name')
