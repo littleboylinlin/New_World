@@ -390,8 +390,8 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     let result = [stable(older), stable(next), stable(future, { assets: [] }), stable(`${future}-rc.1`, { prerelease: true }), stable(future, { draft: true }), foreign, noDigest]
     let requests = 0
     let responseStatus = 200
-    // The launch check tries the mirror before GitHub, so let it finish before counting this page's requests.
-    await expect.poll(() => page.locator('.update-state').textContent()).not.toMatch(/^$|正在检查/)
+    // The launch check tries the mirror (5 s limit) before GitHub (8 s), so let it finish before counting this page's requests.
+    await expect.poll(() => page.locator('.update-state').textContent(), { timeout: 20_000 }).not.toMatch(/^$|正在检查/)
     await withoutMirror(page)
     await page.route(releaseList, async (route) => {
       requests++
