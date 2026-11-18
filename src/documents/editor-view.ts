@@ -5,13 +5,17 @@ import { libraryChanges, readBook, storageError } from '../library'
 import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
-import { offerUndo } from '../undo'
-import { appearanceMenu, readingLayoutButton } from '../appearance-view'
+import { offerUndo, showNotice } from '../undo'
+import { appearanceMenu } from '../appearance-view'
 import { appearance, onAppearanceChange } from '../appearance'
 import { listIdeas, setIdeaUsed } from '../ideas'
 import type { Idea } from '../ideas'
 import { openCaptureDialog } from '../idea-capture'
-import { openMenu } from '../menu'
+import { fixedPage } from '../shell/fixed-page'
+import { closeAllPopovers, menuButton } from '../shell/popover'
+import type { ShellMenuItem } from '../shell/popover'
+import { priorityToolbar } from '../shell/toolbar'
+import { createTabs, createWorkbench } from '../shell/workbench'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
 import { countText, wordCount } from './model'
@@ -21,16 +25,25 @@ import { countChapterRevisions } from './revisions'
 import { showRevisionsDialog } from './revisions-view'
 import { SearchHighlight } from './search'
 import { mountFindPanel } from './find-panel'
+import { chapterDirectory } from './chapter-directory'
+import { selectionToolbar } from './selection-toolbar'
+import { lastChapter, readChapterPlace, readEditorPreferences, saveChapterPlace, updateEditorPreferences } from './editor-prefs'
 import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
 import { AnnotationDecorations, documentSurface } from '../annotations/surface'
 import { readingAnnotations } from '../annotations/view'
+import type { ReadingAnnotations } from '../annotations/view'
 import './editor.css'
 import { createLinkedTask, takeTaskJump } from '../tasks/links'
 import { hashDocumentContent } from '../confirm-state'
-import { showNotice } from '../undo'
 import { writingMotion } from './writing-motion'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
+
+/** The work around the version being edited: its name, and what its menu offers. */
+export interface WorkContext {
+  title: string
+  menu: () => ShellMenuItem[]
+}
 
 interface ActiveEditionSession {
   library: string
@@ -63,15 +76,21 @@ export async function syncOpenEditionFromExternal(library: string, bookId: strin
   }
 }
 
+const textTools = ['heading', 'bold', 'italic', 'underline', 'lists', 'quote', 'more-format'] as const
+const insertTools = ['image', 'rule'] as const
+const noteTools = ['note-add', 'note-list', 'note-display'] as const
+
 export async function renderEdition(
   host: HTMLElement, root: HTMLElement, book: Book, initial: Edition, signal: AbortSignal, registerLeave: RegisterLeave,
+  work: WorkContext = { title: book.title, menu: () => [] },
 ) {
   let edition = initial
-  let chapter = await readChapter(edition, edition.chapters[0].id)
+  const remembered = lastChapter(edition)
+  let chapter = await readChapter(edition, edition.chapters.some(({ id }) => id === remembered) ? remembered : edition.chapters[0].id)
   signal.throwIfAborted()
   let editor!: Editor
   let caret: ReturnType<typeof writingMotion> | undefined
-  let destroyAnnotations: (() => void) | undefined
+  let annotations: ReadingAnnotations | undefined
   let editing = true
   let change = 0
   let saved = 0
@@ -80,131 +99,153 @@ export async function renderEdition(
   let selectionRequest = 0
   let contentsTimer: number | undefined
   let formatFrame = 0
+  let placeTimer = 0
   let currentWords = 0
   let countedChange = 0
+  let historyTotal = 0
   // Word counts of the other chapters are read once. The open chapter is counted as it changes.
   let words: Map<string, number> | undefined
-  const wordLabels = new Map<string, HTMLElement>()
+  let wordLabels = new Map<string, HTMLElement>()
   const number = (value: number) => value.toLocaleString('zh-CN')
+  const preferences = readEditorPreferences()
+  const coarse = matchMedia('(hover: none) and (pointer: coarse)')
 
-  const workspace = element('section', 'edition-workspace')
-  const top = element('header', 'edition-header')
-  const about = element('div', 'edition-about')
-  about.append(element('h2', '', edition.name))
-  const commands = element('div', 'edition-commands')
-  const status = element('span', 'save-status', t('editor.saved'))
-  status.setAttribute('role', 'status')
-  const save = button(t('editor.saveNow'), 'button button-primary button-small', 'check')
-  save.title = 'Ctrl / ⌘ + S'
-  const mode = button('', 'button button-quiet button-small', 'book')
-  const modeLabel = element('span', '', t('editor.readingMode'))
-  mode.append(modeLabel)
-  const saveCopy = button(t('editor.saveAsASeparateVersion'), 'button button-quiet button-small', 'copy')
-  const exportButton = button(t('editor.export'), 'button button-quiet button-small', 'download')
-  const removeVersion = button(t('editor.deleteVersion'), 'button button-quiet button-small remove-button', 'trash')
-  commands.append(status, save, mode, saveCopy, exportButton, removeVersion)
-  const taskButton=button(t('tasks.addChapterTask'),'button button-quiet button-small')
-  taskButton.addEventListener('click',()=>{const {from,to}=editor.state.selection,content=editor.getJSON() as DocumentContent;void createLinkedTask({library:edition.library,bookId:edition.bookId,title:book.title,editionId:edition.id,chapterId:chapter.id,position:{from,to,quote:editor.state.doc.textBetween(from,to,'\n').slice(0,2000),contentHash:hashDocumentContent(content)}}).catch(e=>showNotice(storageError(e)))})
-  commands.append(taskButton)
-  top.append(about, commands)
+  fixedPage(root, signal)
 
-  const error = element('p', 'notice notice-error')
-  error.setAttribute('role', 'alert')
-  error.hidden = true
-  const recover = button(t('editor.discardUnsavedChangesInThisChapter'), 'button button-quiet button-small')
-  recover.hidden = true
-  const information = element('details', 'conversion-info')
-  information.append(element('summary', '', t('editor.viewConversionNotes')))
-  const details = element('ul')
-  for (const note of edition.notes) details.append(element('li', '', note))
-  information.append(details)
-  information.hidden = !edition.notes.length
+  // ——— Toolbar ———
+  const workspace = element('section', 'edition-workspace editor-shell')
+  const top = element('header', 'editor-toolbar')
+  const row = element('div', 'toolbar-row')
+  row.setAttribute('role', 'toolbar')
+  row.setAttribute('aria-label', t('editor.toolbar'))
+  const findHost = element('section', 'toolbar-find')
+  const strip = element('div')
+  top.append(row, findHost, strip)
+  const bar = priorityToolbar(row)
 
-  const layout = element('div', 'edition-layout')
-  const navigation = element('details', 'chapter-navigation')
-  navigation.open = matchMedia('(min-width: 780px)').matches
-  const navLabel = element('summary', '', t('editor.chapterList'))
-  const chapterList = element('ol', 'chapter-list')
-  chapterList.setAttribute('aria-label', t('content.chapters'))
-  const chapterActions = element('div', 'chapter-actions')
-  const add = button(t('editor.newChapter'), 'button button-quiet button-small', 'plus')
-  const rename = button(t('editor.renameChapter'), 'button button-quiet button-small', 'edit')
-  const up = button(t('editor.moveUp'), 'button button-quiet button-small', 'up')
-  const down = button(t('editor.moveDown'), 'button button-quiet button-small', 'down')
-  const remove = button(t('editor.deleteChapter'), 'button button-quiet button-small remove-button', 'trash')
-  chapterActions.append(add, rename, up, down, remove)
-  const outline = element('nav', 'chapter-outline')
-  outline.setAttribute('aria-label', t('editor.sectionsInThisChapter'))
-  navigation.append(navLabel, chapterList, chapterActions, outline)
-
-  const writing = element('section', 'writing-panel')
-  const chapterHeader = element('header', 'writing-header')
-  const chapterTitle = element('h3')
-  const count = element('span', 'word-count')
-  const total = element('span', 'word-total')
-  total.hidden = true
-  const counts = element('div', 'word-counts')
-  counts.append(count, total)
-  counts.title = t('editor.countRule')
-  const historyButton = button('', 'button button-quiet button-small history-toggle', 'history')
-  const historyCount = element('span', 'trash-count history-count')
-  historyButton.append(element('span', '', t('revisions.button')), historyCount)
-  historyButton.title = t('revisions.buttonTitle')
-  const headerMeta = element('div', 'writing-header-meta')
-  headerMeta.append(counts, readingLayoutButton(writing), historyButton)
-  chapterHeader.append(chapterTitle, headerMeta)
-  const toolbar = element('div', 'format-toolbar')
-  toolbar.setAttribute('role', 'group')
-  toolbar.setAttribute('aria-label', t('editor.textFormatting'))
-  const heading = element('select', 'editor-select')
-  heading.setAttribute('aria-label', t('editor.paragraphStyle'))
-  for (const [value, label] of [t('editor.paragraph'), t('editor.heading1'), t('editor.heading2'), t('editor.heading3'), t('editor.heading4'), t('editor.heading5'), t('editor.heading6')].entries()) {
-    const option = element('option', '', label)
-    option.value = String(value)
-    heading.append(option)
-  }
-  heading.addEventListener('change', () => {
-    const command = editor.chain().focus()
-    if (heading.value === '0') command.setParagraph().run()
-    else command.setHeading({ level: Number(heading.value) as 1 | 2 | 3 | 4 | 5 | 6 }).run()
-  })
-  toolbar.append(heading)
-
-  const markControls: { node: HTMLButtonElement; active: string }[] = []
-  // Toolbar buttons show a glyph or an icon. The label stays as the accessible name and tooltip.
-  function tool(label: string, symbol: IconName | { glyph: string }, invoke: () => void, active?: string, shortcut?: string) {
-    const node = button('', 'format-button')
+  function tool(label: string, symbol: IconName | { glyph: string; className: string }, invoke: () => void, shortcut?: string, className = '') {
+    const node = button('', `format-button ${className}`.trim())
     if (typeof symbol === 'string') node.append(icon(symbol))
-    else node.append(element('span', `format-glyph format-${active}`, symbol.glyph))
+    else node.append(element('span', `format-glyph ${symbol.className}`, symbol.glyph))
     node.setAttribute('aria-label', label)
     node.title = shortcut ? `${label}（${shortcut}）` : label
     node.addEventListener('mousedown', (event) => event.preventDefault())
     node.addEventListener('click', invoke)
-    if (active) markControls.push({ node, active })
-    toolbar.append(node)
     return node
   }
-  const divider = () => toolbar.append(element('span', 'format-divider'))
-  divider()
-  tool(t('editor.bold'), { glyph: 'B' }, () => editor.chain().focus().toggleBold().run(), 'bold', 'Ctrl / ⌘ + B')
-  tool(t('editor.italic'), { glyph: 'I' }, () => editor.chain().focus().toggleItalic().run(), 'italic', 'Ctrl / ⌘ + I')
-  tool(t('editor.underline'), { glyph: 'U' }, () => editor.chain().focus().toggleUnderline().run(), 'underline', 'Ctrl / ⌘ + U')
-  divider()
-  tool(t('editor.bulletedList'), 'list', () => editor.chain().focus().toggleBulletList().run(), 'bulletList')
-  tool(t('editor.numberedList'), 'ordered', () => editor.chain().focus().toggleOrderedList().run(), 'orderedList')
-  tool(t('editor.blockQuote'), 'quote', () => editor.chain().focus().toggleBlockquote().run(), 'blockquote')
-  tool(t('editor.horizontalRule'), 'rule', () => editor.chain().focus().setHorizontalRule().run())
-  divider()
-  const undo = tool(t('editor.undo'), 'undo', () => editor.chain().focus().undo().run(), undefined, 'Ctrl / ⌘ + Z')
-  const redo = tool(t('editor.redo'), 'redo', () => editor.chain().focus().redo().run(), undefined, 'Ctrl / ⌘ + Shift + Z')
-  divider()
+  function dropdown(label: string, symbol: IconName, className: string) {
+    const node = button('', `format-button format-dropdown ${className}`)
+    node.append(icon(symbol), element('span', 'dropdown-caret', '▾'))
+    node.setAttribute('aria-label', label)
+    node.title = label
+    return node
+  }
+  const divider = (group: string) => bar.divider(group, element('span', 'format-divider'))
+
+  const navToggle = tool(t('editor.chapterList'), 'sidebar', () => wb.start!.toggle(), undefined, 'nav-toggle')
+  navToggle.setAttribute('aria-controls', `chapter-panel-${edition.id}`)
+
+  const title = element('div', 'toolbar-title')
+  const names = element('div', 'toolbar-names')
+  const workName = button('', 'toolbar-name work-name')
+  workName.append(element('span', 'toolbar-name-text', work.title))
+  workName.title = t('editor.workMenu', [work.title])
+  workName.setAttribute('aria-label', t('editor.workMenu', [work.title]))
+  const nameSeparator = element('span', 'toolbar-name-separator', '/')
+  nameSeparator.setAttribute('aria-hidden', 'true')
+  const chapterName = button('', 'toolbar-name chapter-name')
+  const chapterTitle = element('span', 'toolbar-name-text')
+  chapterName.append(chapterTitle, element('span', 'dropdown-caret', '▾'))
+  names.append(workName, nameSeparator, chapterName)
+  const statusLine = element('div', 'toolbar-status')
+  const status = element('span', 'save-status', t('editor.saved'))
+  status.setAttribute('role', 'status')
+  status.title = 'Ctrl / ⌘ + S'
+  const count = element('span', 'word-count')
+  count.title = t('editor.countRule')
+  statusLine.append(status, count)
+  title.append(names, statusLine)
+  menuButton(workName, work.title, () => [
+    ...work.menu(),
+  ])
+  menuButton(chapterName, t('editor.chapterList'), () => edition.chapters.map(({ id, title: name }, index) => ({
+    label: `${String(index + 1).padStart(2, '0')}  ${name}`, checked: id === chapter.id, radio: true,
+    action: () => { void switchChapter(id) },
+  })), 'chapter-menu')
+
+  const history = element('div', 'toolbar-group')
+  const undo = tool(t('editor.undo'), 'undo', () => editor.chain().focus().undo().run(), 'Ctrl / ⌘ + Z')
+  const redo = tool(t('editor.redo'), 'redo', () => editor.chain().focus().redo().run(), 'Ctrl / ⌘ + Shift + Z')
+  history.append(bar.add({ id: 'undo', node: undo, priority: 95, group: 'history', menu: () => [{ label: t('editor.undo'), icon: 'undo', disabled: undo.disabled, action: () => undo.click() }] }),
+    bar.add({ id: 'redo', node: redo, priority: 94, group: 'history', menu: () => [{ label: t('editor.redo'), icon: 'redo', disabled: redo.disabled, action: () => redo.click() }] }))
+
+  const heading = element('select', 'editor-select')
+  heading.setAttribute('aria-label', t('editor.paragraphStyle'))
+  const headingLabels = [t('editor.paragraph'), t('editor.heading1'), t('editor.heading2'), t('editor.heading3'), t('editor.heading4'), t('editor.heading5'), t('editor.heading6')]
+  for (const [value, label] of headingLabels.entries()) {
+    const option = element('option', '', label)
+    option.value = String(value)
+    heading.append(option)
+  }
+  const setHeading = (level: number) => {
+    const command = editor.chain().focus()
+    if (!level) command.setParagraph().run()
+    else command.setHeading({ level: level as 1 | 2 | 3 | 4 | 5 | 6 }).run()
+  }
+  heading.addEventListener('change', () => setHeading(Number(heading.value)))
+
+  const markControls: { node: HTMLButtonElement; active: string | (() => boolean) }[] = []
+  const pressed = (node: HTMLButtonElement, active: string | (() => boolean)) => { markControls.push({ node, active }); return node }
+  const bold = pressed(tool(t('editor.bold'), { glyph: 'B', className: 'format-bold' }, () => editor.chain().focus().toggleBold().run(), 'Ctrl / ⌘ + B'), 'bold')
+  const italic = pressed(tool(t('editor.italic'), { glyph: 'I', className: 'format-italic' }, () => editor.chain().focus().toggleItalic().run(), 'Ctrl / ⌘ + I'), 'italic')
+  const underline = pressed(tool(t('editor.underline'), { glyph: 'U', className: 'format-underline' }, () => editor.chain().focus().toggleUnderline().run(), 'Ctrl / ⌘ + U'), 'underline')
+  const listItems = (): ShellMenuItem[] => [
+    { label: t('editor.bulletedList'), icon: 'list', hint: 'Ctrl/⌘ ⇧ 8', checked: editor.isActive('bulletList'), action: () => editor.chain().focus().toggleBulletList().run() },
+    { label: t('editor.numberedList'), icon: 'ordered', hint: 'Ctrl/⌘ ⇧ 7', checked: editor.isActive('orderedList'), action: () => editor.chain().focus().toggleOrderedList().run() },
+  ]
+  const lists = pressed(dropdown(t('editor.lists'), 'list', 'list-menu'), () => editor.isActive('bulletList') || editor.isActive('orderedList'))
+  menuButton(lists, t('editor.lists'), listItems)
+  const quote = pressed(tool(t('editor.blockQuote'), 'quote', () => editor.chain().focus().toggleBlockquote().run(), 'Ctrl / ⌘ + Shift + B'), 'blockquote')
+  const moreFormatItems = (): ShellMenuItem[] => [
+    { label: t('editor.strikethrough'), icon: 'strike', hint: 'Ctrl/⌘ ⇧ S', checked: editor.isActive('strike'), action: () => editor.chain().focus().toggleStrike().run() },
+    { label: t('editor.inlineCode'), icon: 'code', hint: 'Ctrl/⌘ E', checked: editor.isActive('code'), action: () => editor.chain().focus().toggleCode().run() },
+    { label: t('editor.codeBlock'), icon: 'codeBlock', hint: 'Ctrl/⌘ ⌥ C', checked: editor.isActive('codeBlock'), action: () => editor.chain().focus().toggleCodeBlock().run() },
+  ]
+  const moreFormat = pressed(dropdown(t('editor.moreFormatting'), 'format', 'more-format'), () => editor.isActive('strike') || editor.isActive('code') || editor.isActive('codeBlock'))
+  menuButton(moreFormat, t('editor.moreFormatting'), moreFormatItems)
+
+  const textGroup = element('div', 'toolbar-group toolbar-text')
+  textGroup.setAttribute('role', 'group')
+  textGroup.setAttribute('aria-label', t('editor.textFormatting'))
+  const check = (label: string, iconName: IconName | undefined, active: () => boolean, invoke: () => void): ShellMenuItem => ({ label, icon: iconName, checked: active(), action: invoke })
+  textGroup.append(
+    divider('text'),
+    bar.add({ id: 'heading', node: heading, priority: 70, group: 'text', menu: () => [{ label: t('editor.paragraphStyle'), icon: 'format', children: () => headingLabels.map((label, level) => ({ label, radio: true, checked: heading.value === String(level), action: () => setHeading(level) })) }] }),
+    bar.add({ id: 'bold', node: bold, priority: 80, group: 'text', menu: () => [check(t('editor.bold'), undefined, () => editor.isActive('bold'), () => bold.click())] }),
+    bar.add({ id: 'italic', node: italic, priority: 79, group: 'text', menu: () => [check(t('editor.italic'), undefined, () => editor.isActive('italic'), () => italic.click())] }),
+    bar.add({ id: 'underline', node: underline, priority: 60, group: 'text', menu: () => [check(t('editor.underline'), undefined, () => editor.isActive('underline'), () => underline.click())] }),
+    bar.add({ id: 'lists', node: lists, priority: 62, group: 'text', menu: () => [{ label: t('editor.lists'), icon: 'list', children: listItems }] }),
+    bar.add({ id: 'quote', node: quote, priority: 55, group: 'text', menu: () => [check(t('editor.blockQuote'), 'quote', () => editor.isActive('blockquote'), () => quote.click())] }),
+    bar.add({ id: 'more-format', node: moreFormat, priority: 52, group: 'text', menu: () => [{ label: t('editor.moreFormatting'), icon: 'format', children: moreFormatItems }] }),
+  )
+
   const imageInput = element('input')
   imageInput.type = 'file'
   imageInput.accept = 'image/png,image/jpeg,image/gif,image/webp'
   imageInput.hidden = true
   imageInput.setAttribute('aria-label', t('editor.chooseAnImage'))
   let imageTarget: Editor | undefined
-  tool(t('docxExport.illustration'), 'image', () => { imageTarget = editor; imageInput.click() })
+  const image = tool(t('docxExport.illustration'), 'image', () => { imageTarget = editor; imageInput.click() })
+  const rule = tool(t('editor.horizontalRule'), 'rule', () => editor.chain().focus().setHorizontalRule().run())
+  const insertGroup = element('div', 'toolbar-group toolbar-insert')
+  insertGroup.setAttribute('role', 'group')
+  insertGroup.setAttribute('aria-label', t('editor.insert'))
+  insertGroup.append(
+    divider('insert'),
+    bar.add({ id: 'image', node: image, priority: 50, group: 'insert', menu: () => [{ label: t('docxExport.illustration'), icon: 'image', action: () => image.click() }] }),
+    bar.add({ id: 'rule', node: rule, priority: 45, group: 'insert', menu: () => [{ label: t('editor.horizontalRule'), icon: 'rule', action: () => rule.click() }] }),
+    imageInput,
+  )
   imageInput.addEventListener('change', async () => {
     const target = imageTarget
     imageTarget = undefined
@@ -218,50 +259,173 @@ export async function renderEdition(
     } catch (cause) { report(cause) }
   })
 
-  const findButton = button(t('editor.findReplace'), 'format-button find-toggle', 'search')
-  findButton.title = 'Ctrl / ⌘ + F'
-  const toolsRow = element('div', 'editor-tools-row')
-  const focusButton = button('', 'format-button focus-toggle', 'focus')
-  const focusLabel = element('span', '', t('editor.focusMode'))
-  focusButton.append(focusLabel)
-  focusButton.title = t('editor.focusHint')
-  focusButton.setAttribute('aria-pressed', 'false')
-  const ideasButton = button('', 'format-button ideas-toggle', 'idea')
-  const ideasLabel = element('span', '', t('ideas.title'))
-  const ideasCount = element('span', 'trash-count ideas-count')
-  ideasButton.append(ideasLabel, ideasCount)
-  ideasButton.setAttribute('aria-expanded', 'false')
-  ideasButton.setAttribute('aria-controls', `ideas-card-${edition.id}`)
-  ideasButton.addEventListener('mousedown', (event) => event.preventDefault())
-  const sideTools = element('div', 'editor-side-tools')
-  sideTools.append(ideasButton, focusButton, appearanceMenu(), findButton)
-  toolsRow.append(toolbar, sideTools, imageInput)
+  // In reading mode the text and insert tools give way to the reading notes.
+  const addNote = () => { if (!annotations?.addFromSelection()) showNotice(t('editor.selectTextToNote')) }
+  const noteAdd = tool(t('editor.newNote'), 'note', addNote)
+  noteAdd.classList.add('format-labelled')
+  noteAdd.append(element('span', 'format-label', t('editor.newNote')))
+  const noteList = tool(t('editor.noteList'), 'panel', () => openSide('notes'))
+  const noteDisplayItems = (): ShellMenuItem[] => [
+    { label: t('annotations.allinline'), action: () => annotations?.setAllDisplay('inline') },
+    { label: t('annotations.allmark'), action: () => annotations?.setAllDisplay('mark') },
+  ]
+  const noteDisplay = dropdown(t('editor.noteDisplay'), 'note', 'note-display')
+  menuButton(noteDisplay, t('editor.noteDisplay'), noteDisplayItems)
+  const noteGroup = element('div', 'toolbar-group toolbar-notes')
+  noteGroup.setAttribute('role', 'group')
+  noteGroup.setAttribute('aria-label', t('annotations.title'))
+  noteGroup.append(
+    divider('notes'),
+    bar.add({ id: 'note-add', node: noteAdd, priority: 78, group: 'notes', menu: () => [{ label: t('editor.newNote'), icon: 'note', action: addNote }] }),
+    bar.add({ id: 'note-list', node: noteList, priority: 60, group: 'notes', menu: () => [{ label: t('editor.noteList'), icon: 'panel', action: () => openSide('notes') }] }),
+    bar.add({ id: 'note-display', node: noteDisplay, priority: 50, group: 'notes', menu: () => [{ label: t('editor.noteDisplay'), icon: 'note', children: noteDisplayItems }] }),
+  )
 
-  const annotationTools = element('div')
+  const findButton = tool(t('editor.findReplace'), 'search', () => {}, 'Ctrl / ⌘ + F', 'find-toggle')
+  const aa = appearanceMenu()
+  const aaToggle = aa.querySelector<HTMLButtonElement>('.appearance-toggle')!
+  const focusButton = tool(t('editor.focusMode'), 'focus', () => setFocus(!focused), 'Esc', 'focus-toggle')
+  focusButton.setAttribute('aria-pressed', 'false')
+  const sideButton = tool(t('editor.sidePanel'), 'panel', () => wb.end!.toggle(), undefined, 'side-toggle')
+  sideButton.setAttribute('aria-controls', `side-panel-${edition.id}`)
+  const ideasCount = element('span', 'trash-count side-count ideas-count')
+  sideButton.append(ideasCount)
+  const moreButton = tool(t('editor.moreActions'), 'more', () => {}, undefined, 'more-toggle')
+  const right = element('div', 'toolbar-group toolbar-end')
+  right.append(
+    bar.add({ id: 'find', node: findButton, priority: 88, menu: () => [{ label: t('editor.findReplace'), icon: 'search', hint: 'Ctrl/⌘ F', action: () => find.open() }] }),
+    bar.add({ id: 'appearance', node: aa, priority: 66, menu: () => [{ label: t('appearance.title'), icon: 'appearance', action: () => aa.openPanel(moreButton) }] }),
+    bar.add({ id: 'focus', node: focusButton, priority: 40, menu: () => [{ label: t('editor.focusMode'), icon: 'focus', checked: focused, action: () => setFocus(!focused) }] }),
+    bar.add({ id: 'side', node: sideButton, priority: 72, menu: () => [{ label: t('editor.sidePanel'), icon: 'panel', checked: wb.end!.isOpen(), action: () => wb.end!.toggle() }] }),
+    moreButton,
+  )
+  row.append(navToggle, title, history, textGroup, insertGroup, noteGroup, right)
+
+  // ——— Messages under the toolbar ———
+  const notices = element('div', 'editor-notices')
+  const error = element('p', 'notice notice-error')
+  error.setAttribute('role', 'alert')
+  error.hidden = true
+  const recover = button(t('editor.discardUnsavedChangesInThisChapter'), 'button button-quiet button-small')
+  recover.hidden = true
+  const information = element('details', 'conversion-info')
+  information.append(element('summary', '', t('editor.viewConversionNotes')))
+  const details = element('ul')
+  for (const note of edition.notes) details.append(element('li', '', note))
+  information.append(details)
+  information.hidden = true
+  notices.append(error, recover, information)
+
+  // ——— Body: chapter list, text, side panel ———
+  const wb = createWorkbench({
+    signal,
+    start: {
+      label: t('editor.chapterList'), width: 264, minWidth: 220, maxWidth: 320, inlineFrom: 720,
+      openWhenInline: () => readEditorPreferences().navOpen !== false,
+      onToggle: (open, byUser) => {
+        navToggle.setAttribute('aria-expanded', String(open))
+        navToggle.setAttribute('aria-pressed', String(open))
+        if (byUser) updateEditorPreferences({ navOpen: open })
+      },
+    },
+    end: {
+      label: t('editor.sidePanel'), width: preferences.sideWidth, minWidth: 260, maxWidth: 560, inlineFrom: 1000, resizable: true,
+      openWhenInline: () => readEditorPreferences().sideOpen !== false,
+      onToggle: (open, byUser) => {
+        sideButton.setAttribute('aria-expanded', String(open))
+        sideButton.setAttribute('aria-pressed', String(open))
+        if (byUser) updateEditorPreferences({ sideOpen: open })
+        if (open) tabs.refresh()
+      },
+      onResize: (width) => updateEditorPreferences({ sideWidth: width }),
+    },
+  })
+  wb.start!.element.id = `chapter-panel-${edition.id}`
+  wb.end!.element.id = `side-panel-${edition.id}`
+
+  const navigation = element('div', 'chapter-navigation')
+  const navHead = element('div', 'chapter-nav-head')
+  const navLabel = element('h2', 'chapter-nav-title', t('editor.chapterList'))
+  const total = element('span', 'word-total')
+  total.hidden = true
+  navHead.append(navLabel, total)
+  const chapterList = element('ol', 'chapter-list')
+  chapterList.setAttribute('aria-label', t('content.chapters'))
+  const live = element('p', 'visually-hidden')
+  live.setAttribute('aria-live', 'polite')
+  const add = button(t('editor.newChapter'), 'chapter-add', 'plus')
+  const outline = element('nav', 'chapter-outline')
+  outline.setAttribute('aria-label', t('editor.sectionsInThisChapter'))
+  navigation.append(navHead, chapterList, add, outline, live)
+  wb.start!.body.append(navigation)
+
+  const scroller = element('div', 'editor-scroll')
   const paper = element('div', 'editor-paper')
   // The text inherits spell checking from here; the rest of the page never checks spelling.
   paper.spellcheck = appearance().spellcheck
-  // Ideas noted for this work sit under the chapter list, which stays beside the text while it
-  // scrolls, so a note can go in wherever the cursor is.
-  const ideasCard = element('details', 'ideas-card')
-  ideasCard.id = `ideas-card-${edition.id}`
-  ideasCard.open = readIdeasOpen()
-  const ideasSummary = element('summary')
-  const ideasSummaryCount = element('span', 'trash-count')
-  ideasSummary.append(element('span', '', t('ideas.forWork')), ideasSummaryCount)
+  scroller.append(paper)
+  wb.main.append(scroller)
+
+  const tabs = createTabs(t('editor.sidePanel'), (id) => updateEditorPreferences({ sideTab: id }))
   const ideasPanel = element('section', 'ideas-panel')
   ideasPanel.setAttribute('aria-label', t('ideas.forWork'))
-  ideasCard.append(ideasSummary, ideasPanel)
-  const side = element('div', 'edition-side')
-  side.append(navigation, ideasCard)
-  writing.append(chapterHeader, toolsRow, annotationTools, paper)
-  layout.append(side, writing)
-  workspace.append(top, error, recover, information, layout)
+  const notesPanel = element('section', 'notes-panel')
+  const notesHint = element('p', 'dialog-help notes-hint', t('editor.notesInReadingMode'))
+  const annotationTools = element('div', 'notes-host')
+  notesPanel.append(notesHint, annotationTools)
+  tabs.add({ id: 'ideas', label: t('ideas.title'), panel: ideasPanel })
+  tabs.add({ id: 'notes', label: t('editor.notesTab'), panel: notesPanel })
+  wb.end!.body.append(tabs.element)
+
+  // The page keeps one top-level heading for assistive technology; the toolbar shows the name.
+  const pageHeading = element('h1', 'visually-hidden', work.title)
+  workspace.append(pageHeading, top, notices, wb.element)
   host.replaceChildren(workspace)
+  wb.relayout()
+  wb.start!.setOpen((preferences.navOpen ?? true) && wb.start!.mode() === 'inline', false, true)
+  wb.end!.setOpen((preferences.sideOpen ?? true) && wb.end!.mode() === 'inline', false, true)
+  navToggle.setAttribute('aria-expanded', String(wb.start!.isOpen()))
+  sideButton.setAttribute('aria-expanded', String(wb.end!.isOpen()))
+  tabs.select(preferences.sideTab)
+
+  function openSide(tab: string) {
+    tabs.select(tab)
+    wb.end!.setOpen(true, true)
+  }
+
   const find = mountFindPanel({
-    writing, toolbar: toolsRow, trigger: findButton, getEditor: () => editor,
+    host: findHost, scroller, trigger: findButton, getEditor: () => editor,
     getEdition: () => edition, getChapterId: () => chapter.id, switchChapter, signal,
   })
+
+  const directory = chapterDirectory({
+    list: chapterList, live, signal,
+    chapters: () => edition.chapters, current: () => chapter.id, canEdit: () => editing,
+    open: (id) => { void switchChapter(id) },
+    reorder: async (order) => { await alter({ type: 'reorder', order }).catch((cause) => { report(cause); throw cause }) },
+    rename: (id) => renameChapter(id),
+    remove: (id) => removeChapter(id),
+  })
+
+  const selection = selectionToolbar({
+    getEditor: () => editor, isEditing: () => editing, scroller, strip, signal,
+    actions: {
+      bold: () => editor.chain().focus().toggleBold().run(),
+      italic: () => editor.chain().focus().toggleItalic().run(),
+      idea: (text) => openCaptureDialog({ library: edition.library, bookId: edition.bookId }, text),
+      task: () => chapterTask(),
+      annotate: () => addNote(),
+    },
+  })
+
+  function chapterTask() {
+    const { from, to } = editor.state.selection
+    const content = editor.getJSON() as DocumentContent
+    void createLinkedTask({
+      library: edition.library, bookId: edition.bookId, title: book.title, editionId: edition.id, chapterId: chapter.id,
+      position: { from, to, quote: editor.state.doc.textBetween(from, to, '\n').slice(0, 2000), contentHash: hashDocumentContent(content) },
+    }).catch((cause) => showNotice(storageError(cause)))
+  }
 
   function report(cause: unknown, saving = false) {
     error.textContent = t('common.concatenate', [saving ? t('editor.saveFailed') : '', storageError(cause)])
@@ -326,8 +490,8 @@ export async function renderEdition(
     return true
   }
 
-  function chapterInfo() {
-    return edition.chapters.find((entry) => entry.id === chapter.id) ?? { id: chapter.id, title: chapterTitle.textContent || t('editor.chapterRemoved') }
+  function chapterInfo(id = chapter.id) {
+    return edition.chapters.find((entry) => entry.id === id) ?? { id, title: chapterTitle.textContent || t('editor.chapterRemoved') }
   }
 
   const liveCount = () => countText(editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n', '\n'))
@@ -357,7 +521,10 @@ export async function renderEdition(
       if (node.type.name === 'heading' && node.textContent.trim()) {
         const item = element('li')
         const jump = button(node.textContent.slice(0, 100), 'outline-jump')
-        jump.addEventListener('click', () => (editor.view.nodeDOM(position) as Element | null)?.scrollIntoView({ block: 'start' }))
+        jump.addEventListener('click', () => {
+          (editor.view.nodeDOM(position) as Element | null)?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
+          if (wb.start!.mode() === 'overlay') wb.start!.setOpen(false)
+        })
         item.append(jump)
         links.append(item)
       }
@@ -367,55 +534,84 @@ export async function renderEdition(
   }
 
   function refreshFormat() {
-    for (const { node, active } of markControls) node.setAttribute('aria-pressed', String(editor.isActive(active)))
+    for (const { node, active } of markControls) node.setAttribute('aria-pressed', String(typeof active === 'string' ? editor.isActive(active) : active()))
     heading.value = editor.isActive('heading') ? String(editor.getAttributes('heading').level) : '0'
-    undo.disabled = !editor.can().undo()
-    redo.disabled = !editor.can().redo()
+    undo.disabled = !editing || !editor.can().undo()
+    redo.disabled = !editing || !editor.can().redo()
+    selection.refresh()
   }
 
   function refreshChapters() {
     chapterTitle.textContent = chapterInfo().title
+    chapterName.title = t('editor.switchChapter')
+    chapterName.setAttribute('aria-label', t('editor.switchChapterNamed', [chapterInfo().title]))
     navLabel.textContent = t('editor.chapterList105', [edition.chapters.length])
-    wordLabels.clear()
-    chapterList.replaceChildren(...edition.chapters.map(({ id, title }) => {
-      const item = element('li')
-      const jump = button(title, 'chapter-jump')
-      if (id === chapter.id) jump.setAttribute('aria-current', 'true')
-      jump.addEventListener('click', () => { void switchChapter(id) })
-      const label = element('span', 'chapter-words')
-      label.title = t('editor.chapterCharacterCount')
-      wordLabels.set(id, label)
-      item.append(jump, label)
-      return item
-    }))
+    wordLabels = directory.render()
     refreshWords()
-    const index = edition.chapters.findIndex((entry) => entry.id === chapter.id)
-    up.disabled = index === 0
-    down.disabled = index === edition.chapters.length - 1
   }
 
   function applyMode() {
-    destroyAnnotations?.()
-    destroyAnnotations = undefined
+    annotations?.()
+    annotations = undefined
     editor.setEditable(editing, false)
     editor.view.dom.setAttribute('role', editing ? 'textbox' : 'document')
-    modeLabel.textContent = editing ? t('editor.readingMode') : t('editor.editText')
-    mode.setAttribute('aria-pressed', String(!editing))
-    toolbar.hidden = chapterActions.hidden = save.hidden = !editing
     workspace.classList.toggle('edition-reading', !editing)
+    for (const id of [...textTools, ...insertTools]) bar.setAvailable(id, editing)
+    for (const id of noteTools) bar.setAvailable(id, !editing)
+    add.hidden = !editing
+    notesHint.hidden = !editing
+    tabs.setDisabled('notes', false)
     caret?.refresh()
-    if (!editing) destroyAnnotations = readingAnnotations(documentSurface(editor), annotationTools, {
-      kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id,
-      chapterId: chapter.id, sourceRevision: chapter.revision,
-    }, signal)
+    if (!editing) {
+      annotations = readingAnnotations(documentSurface(editor), annotationTools, {
+        kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id,
+        chapterId: chapter.id, sourceRevision: chapter.revision,
+      }, signal, { embedded: true, onChange: (amount) => tabs.setCount('notes', amount ? String(amount) : '') })
+    } else tabs.setCount('notes', '')
     find.modeChanged()
+    refreshFormat()
+    selection.hide(true)
   }
 
-  function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous') {
+  // ——— Where each chapter was left ———
+  function capturePlace() {
+    if (!editor || editor.isDestroyed) return
+    const view = scroller.getBoundingClientRect()
+    const text = editor.view.dom.getBoundingClientRect()
+    const hit = editor.view.posAtCoords({ left: text.left + Math.min(40, text.width / 2), top: Math.max(view.top + 2, text.top + 2) })
+    const position = hit?.pos ?? 0
+    let offset = 0
+    try { offset = editor.view.coordsAtPos(position).top - view.top } catch { /* Positions outside the text fall back to the raw scroll. */ }
+    const { from, to } = editor.state.selection
+    saveChapterPlace(edition, chapter.id, { top: position, offset, scroll: scroller.scrollTop, height: scroller.scrollHeight, from, to })
+  }
+  function restorePlace() {
+    const place = readChapterPlace(edition, chapter.id)
+    const size = editor.state.doc.content.size
+    if (!place) { scroller.scrollTop = 0; return }
+    if (place.to <= size && place.from <= size) {
+      try { editor.commands.setTextSelection({ from: place.from, to: place.to }) } catch { /* A stale place is skipped. */ }
+    }
+    scroller.scrollTop = place.scroll
+    // The same layout scrolls back exactly; a changed one (another size or width) follows the text.
+    if (place.height !== undefined && Math.abs(place.height - scroller.scrollHeight) < 2) return
+    if (place.top <= size) {
+      try {
+        const view = scroller.getBoundingClientRect()
+        scroller.scrollTop += editor.view.coordsAtPos(place.top).top - view.top - place.offset
+      } catch { /* Keeps the raw scroll. */ }
+    }
+  }
+  scroller.addEventListener('scroll', () => {
+    window.clearTimeout(placeTimer)
+    placeTimer = window.setTimeout(capturePlace, 250)
+  }, { passive: true, signal })
+
+  function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous', restore = true) {
     checkDocument(next.content)
-    if (editor) find.beforeChapterChange()
-    destroyAnnotations?.()
-    destroyAnnotations = undefined
+    if (editor) { find.beforeChapterChange(); window.clearTimeout(placeTimer); capturePlace() }
+    annotations?.()
+    annotations = undefined
     caret?.destroy()
     caret = undefined
     window.clearTimeout(contentsTimer)
@@ -453,6 +649,10 @@ export async function renderEdition(
       },
     })
     editor.on('transaction', scheduleFormat)
+    editor.on('selectionUpdate', () => {
+      window.clearTimeout(placeTimer)
+      placeTimer = window.setTimeout(capturePlace, 400)
+    })
     editor.view.dom.addEventListener('compositionstart', () => {
       window.clearTimeout(timer)
       window.clearTimeout(contentsTimer)
@@ -461,10 +661,12 @@ export async function renderEdition(
       if (change !== saved) { scheduleSave(); scheduleContents() }
     })
     caret = writingMotion(editor, paper)
+    selection.hide(true)
     applyMode()
     refreshChapters()
     refreshContents()
     refreshFormat()
+    if (restore) restorePlace()
     find.chapterMounted()
     void refreshHistoryCount()
   }
@@ -474,7 +676,7 @@ export async function renderEdition(
     try {
       const totalRevisions = await countChapterRevisions(edition, targetChapterId)
       if (signal.aborted || chapter.id !== targetChapterId) return
-      historyCount.textContent = totalRevisions > 0 ? String(totalRevisions) : ''
+      historyTotal = totalRevisions
     } catch {
       // Ignore transient count failure when leaving editor
     }
@@ -490,7 +692,7 @@ export async function renderEdition(
       if (!await flush() || !current()) return false
       const order = (target: string) => edition.chapters.findIndex((entry) => entry.id === target)
       mountChapter(next, order(id) < order(chapter.id) ? 'previous' : 'next')
-      if (matchMedia('(max-width: 779px)').matches) navigation.open = false
+      if (wb.start!.mode() === 'overlay') wb.start!.setOpen(false)
       return true
     } catch (cause) {
       report(cause)
@@ -502,7 +704,9 @@ export async function renderEdition(
     if (!await flush()) throw new Error(t('editor.resolveUnsavedChangesFirst'))
     const result = await changeChapters(edition, changeRequest)
     edition = result.edition
-    if (result.selected !== chapter.id) await switchChapter(result.selected)
+    const stillThere = edition.chapters.some((entry) => entry.id === chapter.id)
+    // Only a new chapter, or losing the open one, moves the text; other changes stay where they are.
+    if (changeRequest.type === 'add' || !stillThere) await switchChapter(result.selected)
     else refreshChapters()
     find.chaptersChanged()
     if (result.trashed) offerUndo(result.trashed, (restored) => {
@@ -535,18 +739,19 @@ export async function renderEdition(
     focused = on
     document.documentElement.classList.toggle('focus-writing', on)
     focusButton.setAttribute('aria-pressed', String(on))
-    focusLabel.textContent = on ? t('editor.exitFocus') : t('editor.focusMode')
+    const label = on ? t('editor.exitFocus') : t('editor.focusMode')
+    focusButton.setAttribute('aria-label', label)
+    focusButton.title = `${label}（Esc）`
   }
-  focusButton.addEventListener('mousedown', (event) => event.preventDefault())
-  focusButton.addEventListener('click', () => setFocus(!focused))
   window.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !focused || event.isComposing || document.querySelector('dialog[open]')) return
-    // Escape first closes the find bar or the appearance panel.
-    if (event.target instanceof Element && event.target.closest('.search-panel, .appearance-menu')) return
+    // Escape first closes the find bar, an open menu or panel, or the selection tools.
+    if (event.target instanceof Element && event.target.closest('.search-panel, .shell-layer, .workbench-panel[data-mode="overlay"]')) return
     event.preventDefault()
     setFocus(false)
   }, { signal })
 
+  // ——— Ideas for this work ———
   let ideas: Idea[] = []
   let ideasRequest = 0
   let ideasBody: HTMLElement | undefined
@@ -563,7 +768,8 @@ export async function renderEdition(
   }
   function paintIdeas() {
     const waiting = ideas.filter((idea) => !idea.usedAt)
-    ideasCount.textContent = ideasSummaryCount.textContent = waiting.length ? String(waiting.length) : ''
+    ideasCount.textContent = waiting.length ? String(waiting.length) : ''
+    tabs.setCount('ideas', waiting.length ? String(waiting.length) : '')
     let nextBody: HTMLElement
     if (ideas.length) {
       const list = element('ul', 'ideas-panel-list')
@@ -597,74 +803,40 @@ export async function renderEdition(
       paintIdeas()
     } catch { /* The panel keeps what it showed. */ }
   }
-  ideasButton.addEventListener('click', () => {
-    ideasCard.open = !ideasCard.open
-    // On a phone the list sits above the text, so bring it into view.
-    if (ideasCard.open && !matchMedia('(min-width: 780px)').matches) ideasCard.scrollIntoView({ block: 'nearest' })
-  })
-  ideasCard.addEventListener('toggle', () => {
-    ideasButton.setAttribute('aria-expanded', String(ideasCard.open))
-    try { localStorage.setItem(ideasOpenKey, ideasCard.open ? '1' : '0') } catch { /* Only a convenience. */ }
-  })
-  ideasButton.setAttribute('aria-expanded', String(ideasCard.open))
   libraryChanges.addEventListener('update', () => { void refreshIdeas() }, { signal })
   void refreshIdeas()
 
-  // A right click on a chapter selects it and offers the chapter actions.
-  chapterList.addEventListener('contextmenu', async (event) => {
-    const jump = (event.target as Element).closest<HTMLButtonElement>('.chapter-jump')
-    if (!jump || !editing) return
-    event.preventDefault()
-    const index = [...chapterList.querySelectorAll('.chapter-jump')].indexOf(jump)
-    const target = edition.chapters[index]
-    if (!target) return
-    await switchChapter(target.id)
-    if (chapter.id !== target.id || signal.aborted) return
-    const items = [
-      { label: t('editor.newChapter'), icon: 'plus' as const, action: () => add.click() },
-      { label: t('editor.renameChapter'), icon: 'edit' as const, action: () => rename.click() },
-      ...(up.disabled ? [] : [{ label: t('editor.moveUp'), icon: 'up' as const, action: () => up.click() }]),
-      ...(down.disabled ? [] : [{ label: t('editor.moveDown'), icon: 'down' as const, action: () => down.click() }]),
-      { label: t('editor.deleteChapter'), icon: 'trash' as const, danger: true, action: () => remove.click() },
-    ]
-    const current = chapterList.querySelector<HTMLElement>('[aria-current="true"]') ?? undefined
-    openMenu(items, { x: event.clientX, y: event.clientY }, chapterInfo().title, current)
-  })
-
-  save.addEventListener('click', () => { void flush() })
-  mode.addEventListener('click', async () => { if (await flush()) { editing = !editing; applyMode() } })
+  // ——— Chapter actions ———
+  function renameChapter(id: string) {
+    formDialog(root, { title: t('editor.renameChapter'), action: t('editor.saveChapterTitle'), fields: [nameField(t('editor.chapterTitle'), chapterInfo(id).title)] },
+      async (data) => alter({ type: 'rename', id, title: String(data.get('name')) }))
+  }
+  function removeChapter(id: string) {
+    formDialog(root, { title: t('editor.deleteThisChapter'), action: t('editor.confirmChapterDeletion'), danger: true, description: t('editor.andItsTextWillBeMovedToThe', [chapterInfo(id).title]) },
+      async () => alter({ type: 'delete', id }))
+  }
   add.addEventListener('click', () => formDialog(root, { title: t('editor.newChapter'), action: t('editor.createChapter'), fields: [nameField(t('editor.chapterTitle'))] },
     async (data) => alter({ type: 'add', title: String(data.get('name')) })))
-  rename.addEventListener('click', () => formDialog(root, { title: t('editor.renameChapter'), action: t('editor.saveChapterTitle'), fields: [nameField(t('editor.chapterTitle'), chapterInfo().title)] },
-    async (data) => alter({ type: 'rename', id: chapter.id, title: String(data.get('name')) })))
-  up.addEventListener('click', () => { void alter({ type: 'move', id: chapter.id, offset: -1 }).catch(report) })
-  down.addEventListener('click', () => { void alter({ type: 'move', id: chapter.id, offset: 1 }).catch(report) })
-  remove.addEventListener('click', () => formDialog(root, { title: t('editor.deleteThisChapter'), action: t('editor.confirmChapterDeletion'), danger: true, description: t('editor.andItsTextWillBeMovedToThe', [chapterInfo().title]) },
-    async () => alter({ type: 'delete', id: chapter.id })))
-  removeVersion.addEventListener('click', () => formDialog(root, { title: t('editor.deleteThisEditableVersion'), action: t('editor.confirmVersionDeletion'), danger: true, description: t('editor.andAllItsChaptersWillBeMovedTo', [edition.name]) }, async () => {
-    if (!await flush()) throw new Error(t('editor.saveTheCurrentChangesOrSaveASeparate'))
-    const entry = await deleteEdition(edition)
-    location.hash = bookPath(book.library, book.id)
-    offerUndo(entry, (restored) => {
-      if (restored.edition) location.hash = bookPath(book.library, book.id, restored.edition.id)
+
+  // ——— "⋯": everything that does not need to be one click away ———
+  async function toggleMode() {
+    if (!await flush()) return
+    closeAllPopovers()
+    editing = !editing
+    applyMode()
+    refreshChapters()
+  }
+  function saveCopy() {
+    formDialog(root, { title: t('editor.saveAsASeparateVersion'), action: t('editor.saveSeparateVersion'), fields: [nameField(t('editor.versionName'), t('editor.copy', [edition.name]))] }, async (data) => {
+      await flush()
+      const copy = await createEdition(book, await currentChapters(), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
+      window.clearTimeout(timer)
+      saved = change
+      window.removeEventListener('beforeunload', unsaved)
+      location.hash = bookPath(book.library, book.id, copy.id)
     })
-  }))
-  recover.addEventListener('click', () => formDialog(root, { title: t('editor.discardUnsavedChanges'), action: t('editor.discardAndReturnToLibrary'), danger: true, description: t('editor.theCurrentUnsavedTextWillBeDiscardedPreviously') }, async () => {
-    window.clearTimeout(timer)
-    if (pending) await pending
-    saved = change
-    window.removeEventListener('beforeunload', unsaved)
-    location.hash = bookPath(book.library)
-  }))
-  saveCopy.addEventListener('click', () => formDialog(root, { title: t('editor.saveAsASeparateVersion'), action: t('editor.saveSeparateVersion'), fields: [nameField(t('editor.versionName'), t('editor.copy', [edition.name]))] }, async (data) => {
-    await flush()
-    const copy = await createEdition(book, await currentChapters(), { source: 'copy', copiedFrom: edition.id, notes: edition.notes, originalId: edition.originalId }, String(data.get('name')))
-    window.clearTimeout(timer)
-    saved = change
-    window.removeEventListener('beforeunload', unsaved)
-    location.hash = bookPath(book.library, book.id, copy.id)
-  }))
-  exportButton.addEventListener('click', () => {
+  }
+  function exportVersion() {
     const readWork = async () => {
       const stored = await readBook(book.library, book.id)
       if (!stored) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
@@ -678,9 +850,9 @@ export async function renderEdition(
           : (await readChapter(edition, info.id)).content
         return { title: info.title, content }
       }, currentChapters, readWork)
-    }, (error) => report(error))
-  })
-  historyButton.addEventListener('click', () => {
+    }, (cause) => report(cause))
+  }
+  function showHistory() {
     void showRevisionsDialog({
       root,
       edition,
@@ -696,16 +868,61 @@ export async function renderEdition(
         mountChapter(restoredChapter)
       },
     })
-  })
+  }
+  function removeVersion() {
+    formDialog(root, { title: t('editor.deleteThisEditableVersion'), action: t('editor.confirmVersionDeletion'), danger: true, description: t('editor.andAllItsChaptersWillBeMovedTo', [edition.name]) }, async () => {
+      if (!await flush()) throw new Error(t('editor.saveTheCurrentChangesOrSaveASeparate'))
+      const entry = await deleteEdition(edition)
+      location.hash = bookPath(book.library, book.id)
+      offerUndo(entry, (restored) => {
+        if (restored.edition) location.hash = bookPath(book.library, book.id, restored.edition.id)
+      })
+    })
+  }
+  const formatIds = [...textTools, ...insertTools, ...noteTools]
+  let formatCollapsed = preferences.formatCollapsed
+  bar.setCollapsed(formatIds, formatCollapsed)
+  menuButton(moreButton, t('editor.moreActions'), () => {
+    const overflow = bar.overflowMenu()
+    // On a phone the work's name gives way to the chapter's; its menu then lives here.
+    const workHidden = !workName.offsetParent
+    return [
+      ...(workHidden ? [{ label: t('editor.workMenu', [work.title]), icon: 'book' as const, children: work.menu }] : []),
+      ...overflow,
+      ...(overflow.length ? [{ separator: true, label: '' }] : []),
+      { label: editing ? t('editor.readingMode') : t('editor.editText'), icon: editing ? 'book' : 'edit', action: () => { void toggleMode() } },
+      { label: t('editor.saveAsASeparateVersion'), icon: 'copy', action: saveCopy },
+      { label: t('editor.export'), icon: 'download', action: exportVersion },
+      { label: t('revisions.button'), icon: 'history', hint: historyTotal ? String(historyTotal) : undefined, action: showHistory },
+      { label: t('tasks.addChapterTask'), icon: 'check', action: chapterTask },
+      ...(edition.notes.length ? [{ label: t('editor.viewConversionNotes'), icon: 'file' as const, action: () => { information.hidden = false; information.open = true } }] : []),
+      { label: formatCollapsed ? t('editor.showFormatting') : t('editor.hideFormatting'), icon: 'format', action: () => {
+        formatCollapsed = !formatCollapsed
+        updateEditorPreferences({ formatCollapsed })
+        bar.setCollapsed(formatIds, formatCollapsed)
+      } },
+      { separator: true, label: '' },
+      { label: t('editor.deleteVersion'), icon: 'trash', danger: true, action: removeVersion },
+    ]
+  }, 'more-menu')
+
+  recover.addEventListener('click', () => formDialog(root, { title: t('editor.discardUnsavedChanges'), action: t('editor.discardAndReturnToLibrary'), danger: true, description: t('editor.theCurrentUnsavedTextWillBeDiscardedPreviously') }, async () => {
+    window.clearTimeout(timer)
+    if (pending) await pending
+    saved = change
+    window.removeEventListener('beforeunload', unsaved)
+    location.hash = bookPath(book.library)
+  }))
   libraryChanges.addEventListener('update', () => { void refreshHistoryCount() }, { signal })
 
   window.addEventListener('keydown', (event) => {
     if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.isComposing || document.querySelector('dialog[open]')) return
     if (event.key.toLowerCase() === 's') { event.preventDefault(); void flush() }
   }, { signal })
-  document.addEventListener('visibilitychange', () => { if (document.hidden) void flush() }, { signal })
-  window.addEventListener('pagehide', () => { void flush() }, { signal })
-  const stopFollowing = onAppearanceChange((value) => { paper.spellcheck = value.spellcheck })
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { capturePlace(); void flush() } }, { signal })
+  window.addEventListener('pagehide', () => { capturePlace(); void flush() }, { signal })
+  coarse.addEventListener('change', () => bar.layout(), { signal })
+  const stopFollowing = onAppearanceChange((value) => { paper.spellcheck = value.spellcheck; bar.layout() })
   const session: ActiveEditionSession = {
     library: edition.library,
     bookId: edition.bookId,
@@ -729,34 +946,34 @@ export async function renderEdition(
   activeSessions.add(session)
   signal.addEventListener('abort', () => {
     activeSessions.delete(session)
+    capturePlace()
     stopFollowing()
     setFocus(false)
+    closeAllPopovers()
+    bar.destroy()
     window.clearTimeout(timer)
     window.clearTimeout(contentsTimer)
+    window.clearTimeout(placeTimer)
     window.cancelAnimationFrame(formatFrame)
     window.removeEventListener('beforeunload', unsaved)
-    destroyAnnotations?.()
+    annotations?.()
     caret?.destroy()
     editor?.destroy()
   }, { once: true })
   mountChapter(chapter)
   registerLeave(flush)
-  const jump=takeTaskJump(edition)
-  if(jump?.chapterId){await switchChapter(jump.chapterId);if(!signal.aborted&&chapter.id===jump.chapterId&&jump.position){if(hashDocumentContent(chapter.content)===jump.position.contentHash&&jump.position.to<=editor.state.doc.content.size)editor.commands.setTextSelection({from:jump.position.from,to:jump.position.to});else showNotice(t('tasks.stalePosition'))}}
+  const jump = takeTaskJump(edition)
+  if (jump?.chapterId) {
+    await switchChapter(jump.chapterId)
+    if (!signal.aborted && chapter.id === jump.chapterId && jump.position) {
+      if (hashDocumentContent(chapter.content) === jump.position.contentHash && jump.position.to <= editor.state.doc.content.size) editor.commands.setTextSelection({ from: jump.position.from, to: jump.position.to })
+      else showNotice(t('tasks.stalePosition'))
+    }
+  }
   void chapterWordCounts(edition).then((stored) => {
     if (signal.aborted) return
     stored.set(chapter.id, currentWords)
     words = stored
     refreshWords()
   }, () => {})
-}
-
-const ideasOpenKey = 'new-world:ideas-open'
-/** Whether the ideas beside the editor were left open; open by default where there is room. */
-function readIdeasOpen() {
-  try {
-    const stored = localStorage.getItem(ideasOpenKey)
-    if (stored) return stored === '1'
-  } catch { /* Falls back to the default. */ }
-  return matchMedia('(min-width: 780px)').matches
 }

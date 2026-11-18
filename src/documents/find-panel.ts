@@ -1,18 +1,22 @@
 import type { Editor } from '@tiptap/core'
 import { locale, t } from '../i18n'
 import { reducedMotion } from '../motion'
+import { setExpanded } from '../shell/collapse'
 import { button, element } from '../ui'
 import type { IconName } from '../ui'
-import { findPosition } from './find-position'
+import { readEditorPreferences, updateEditorPreferences } from './editor-prefs'
 import type { Edition } from './model'
 import { countMatches, leaveAtMatch, replaceMatches, searchState, selectMatch, setSearch } from './search'
 import type { SearchQuery } from './search'
 import { readChapter } from './store'
 
 interface FindPanelOptions {
-  writing: HTMLElement
-  toolbar: HTMLElement
+  /** The block inside the toolbar that the find controls expand into. */
+  host: HTMLElement
+  /** The pane that scrolls the chapter text. */
+  scroller: HTMLElement
   trigger: HTMLButtonElement
+  onOpenChange?: (open: boolean) => void
   getEditor: () => Editor
   getEdition: () => Edition
   getChapterId: () => string
@@ -41,8 +45,9 @@ function selectedText(editor: Editor) {
   return /[\r\n]/.test(text) ? '' : text
 }
 
-export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEdition, getChapterId, switchChapter, signal }: FindPanelOptions) {
-  const panel = element('section', 'search-panel')
+export function mountFindPanel({ host, scroller, trigger, onOpenChange, getEditor, getEdition, getChapterId, switchChapter, signal }: FindPanelOptions) {
+  const panel = host
+  panel.classList.add('search-panel')
   panel.id = `find-${getEdition().id}`
   panel.hidden = true
   panel.inert = true
@@ -97,6 +102,12 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
   const replaceAll = button(t('editor.replaceAll'), 'find-button')
   replace.title = replaceAll.title = t('editor.replaceInChapter')
   replaceRow.append(replacement, replace, replaceAll)
+  const replaceToggle = button('', 'find-button find-option find-replace-toggle', 'chevron')
+  replaceToggle.setAttribute('aria-label', t('editor.showReplace'))
+  replaceToggle.title = t('editor.showReplace')
+  replaceToggle.setAttribute('aria-controls', `${panel.id}-replace`)
+  replaceRow.id = `${panel.id}-replace`
+  scopeRow.append(replaceToggle)
 
   const results = element('section', 'find-book')
   results.setAttribute('aria-label', t('editor.findScopeBook'))
@@ -106,13 +117,23 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
   summary.append(total, scanStatus)
   const list = element('ul', 'find-chapters')
   results.append(summary, list)
-  panel.append(inputRow, scopeRow, replaceRow, results)
-  document.body.append(panel)
+  replaceRow.hidden = results.hidden = true
+  /** Expands or collapses a part of the find block only when its wanted state changes. */
+  function want(node: HTMLElement, open: boolean) {
+    const current = node.dataset.expand ?? (node.hidden ? 'closed' : 'open')
+    if (current !== (open ? 'open' : 'closed')) setExpanded(node, open)
+  }
+  const bar = element('div', 'find-bar')
+  bar.append(inputRow, scopeRow)
+  panel.append(bar, replaceRow, results)
 
+  const saved = readEditorPreferences().find
   let opened = false
-  let scope: Scope = 'chapter'
-  let caseSensitive = false
-  let wordsOnly = false
+  let scope: Scope = saved.scope
+  let caseSensitive = saved.matchCase
+  let wordsOnly = saved.wholeWord
+  let replaceOpen = saved.replaceOpen
+  const remember = () => updateEditorPreferences({ find: { scope, matchCase: caseSensitive, wholeWord: wordsOnly, replaceOpen } })
   let criteria: SearchQuery | undefined
   let composing: HTMLInputElement | undefined
   let queryTimer = 0
@@ -120,21 +141,33 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
   let pending = false
   let navigation = 0
   let navigating = false
-  let transition: Animation | undefined
   let counts = new Map<string, number>()
   let scannedEdition: Edition | undefined
   let scan: { controller: AbortController; done: Promise<void> } | undefined
   let readFailed = false
   const rows = new Map<string, { item: HTMLLIElement; jump: HTMLButtonElement; title: HTMLSpanElement; count: HTMLSpanElement }>()
   const format = new Intl.NumberFormat(locale)
-  const position = findPosition(panel, writing, toolbar, () => {
-    const mark = getEditor().view.dom.querySelector('.found-text-current')
-    return mark?.getClientRects()[0]
-  }, signal)
+  let revealFrame = 0
+  // The find controls sit in the toolbar above the text, so the match only needs to be scrolled
+  // into the middle of the text pane.
+  const position = {
+    schedule() {},
+    reveal() {
+      cancelAnimationFrame(revealFrame)
+      revealFrame = requestAnimationFrame(() => {
+        const mark = getEditor().view.dom.querySelector('.found-text-current')?.getClientRects()[0]
+        if (!mark) return
+        const view = scroller.getBoundingClientRect()
+        const target = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight,
+          scroller.scrollTop + (mark.top + mark.bottom) / 2 - (view.top + view.bottom) / 2))
+        if (Math.abs(target - scroller.scrollTop) > 1) scroller.scrollTo({ top: target, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
+      })
+    },
+  }
 
   function paintBook() {
-    results.hidden = scope !== 'book'
-    if (results.hidden) return
+    want(results, scope === 'book')
+    if (scope !== 'book') return
     results.setAttribute('aria-busy', String(Boolean(scan) || pending))
     scanStatus.textContent = readFailed ? t('editor.findReadFailed') : scan || pending ? t('editor.findSearching') : ''
     const chapterId = getChapterId()
@@ -195,7 +228,9 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
     counter.textContent = pending || dirty || !amount && scan ? '…'
       : amount ? `${format.format(ordinal)}/${format.format(amount)}` : criteria?.text ? t('editor.noMatches') : ''
     previous.disabled = next.disabled = !ready || !amount && !scan
-    replaceRow.hidden = !editor.isEditable
+    replaceToggle.hidden = !editor.isEditable
+    replaceToggle.setAttribute('aria-expanded', String(replaceOpen && editor.isEditable))
+    want(replaceRow, replaceOpen && editor.isEditable)
     replace.disabled = replaceAll.disabled = !ready || !state.matches.length
     chapterOnly.setAttribute('aria-pressed', String(scope === 'chapter'))
     entireBook.setAttribute('aria-pressed', String(scope === 'book'))
@@ -334,24 +369,7 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
   }
 
   function animate(show: boolean) {
-    transition?.cancel()
-    if (reducedMotion.matches) {
-      panel.hidden = !show
-      transition = undefined
-      return
-    }
-    const steps = [{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'translateY(0)' }]
-    const animation = panel.animate(show ? steps : steps.reverse(), {
-      duration: show ? 160 : 130, easing: show ? 'cubic-bezier(.2, .75, .25, 1)' : 'ease-in', fill: 'both',
-    })
-    transition = animation
-    void animation.finished.then(() => {
-      if (transition !== animation) return
-      if (!opened) panel.hidden = true
-      transition = undefined
-      animation.cancel()
-      position.schedule()
-    }, () => {})
+    want(panel, show)
   }
 
   function openFind() {
@@ -360,10 +378,11 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
     if (selection) query.value = selection
     if (!wasOpen) {
       opened = true
-      panel.hidden = panel.inert = false
+      panel.inert = false
       trigger.setAttribute('aria-expanded', 'true')
-      position.place()
+      paint()
       animate(true)
+      onOpenChange?.(true)
     }
     query.focus({ preventScroll: true })
     query.select()
@@ -384,14 +403,24 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
     trigger.setAttribute('aria-expanded', 'false')
     panel.inert = true
     leaveAtMatch(editor, matches[active])
-    if (!editor.isEditable) trigger.focus({ preventScroll: true })
+    if (!editor.isEditable || panel.contains(document.activeElement)) {
+      if (editor.isEditable) editor.commands.focus(undefined, { scrollIntoView: false })
+      else trigger.focus({ preventScroll: true })
+    }
     animate(false)
+    onOpenChange?.(false)
   }
 
-  for (const control of [trigger, previous, next, chapterOnly, entireBook, matchCase, wholeWord, replace, replaceAll]) {
+  for (const control of [trigger, previous, next, chapterOnly, entireBook, matchCase, wholeWord, replace, replaceAll, replaceToggle]) {
     control.addEventListener('mousedown', (event) => event.preventDefault(), { signal })
   }
-  trigger.addEventListener('click', openFind, { signal })
+  trigger.addEventListener('click', () => { if (opened && !panel.contains(document.activeElement)) closeFind(); else openFind() }, { signal })
+  replaceToggle.addEventListener('click', () => {
+    replaceOpen = !replaceOpen
+    remember()
+    paint()
+    if (replaceOpen) replacement.focus({ preventScroll: true })
+  }, { signal })
   close.addEventListener('click', closeFind, { signal })
   previous.addEventListener('click', () => step(-1), { signal })
   next.addEventListener('click', () => step(1), { signal })
@@ -403,11 +432,12 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
     control.addEventListener('click', () => {
       if (scope === value) return
       scope = value
+      remember()
       scheduleSearch()
     }, { signal })
   }
-  matchCase.addEventListener('click', () => { caseSensitive = !caseSensitive; scheduleSearch() }, { signal })
-  wholeWord.addEventListener('click', () => { wordsOnly = !wordsOnly; scheduleSearch() }, { signal })
+  matchCase.addEventListener('click', () => { caseSensitive = !caseSensitive; remember(); scheduleSearch() }, { signal })
+  wholeWord.addEventListener('click', () => { wordsOnly = !wordsOnly; remember(); scheduleSearch() }, { signal })
   query.addEventListener('input', (event) => {
     if (composing !== query && !(event as InputEvent).isComposing) scheduleSearch()
   }, { signal })
@@ -453,26 +483,19 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
       event.preventDefault()
       step(event.shiftKey ? -1 : 1)
     } else if (event.key === 'Escape' && opened
-      && !(event.target instanceof Element && event.target.closest('.appearance-menu'))) {
+      && !(event.target instanceof Element && event.target.closest('.shell-layer, .selection-toolbar'))) {
       event.preventDefault()
       event.stopPropagation()
       closeFind()
     }
   }, { signal, capture: true })
 
-  reducedMotion.addEventListener('change', () => {
-    transition?.cancel()
-    transition = undefined
-    panel.hidden = !opened
-    position.schedule()
-  }, { signal })
   signal.addEventListener('abort', () => {
     navigation++
     window.clearTimeout(queryTimer)
     window.clearTimeout(contentTimer)
+    cancelAnimationFrame(revealFrame)
     cancelScan()
-    transition?.cancel()
-    panel.remove()
   }, { once: true })
 
   function chaptersChanged() {
@@ -484,6 +507,9 @@ export function mountFindPanel({ writing, toolbar, trigger, getEditor, getEditio
   }
 
   return {
+    isOpen: () => opened,
+    open: openFind,
+    close: closeFind,
     beforeChapterChange() {
       if (opened && !pending && scope === 'book' && criteria?.text && contentTimer) {
         counts.set(getChapterId(), countMatches(getEditor().state.doc, criteria))

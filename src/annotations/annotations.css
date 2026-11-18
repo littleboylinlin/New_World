@@ -31,3 +31,5 @@
 .annotation-inline:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
 .annotation-inline-layer[data-selecting] .annotation-inline { pointer-events: none; }
 @media print { .annotation-floating, .annotation-manager, .annotation-inline-layer { display: none !important; } }
+.annotation-manager-embedded { border-bottom: 0; background: transparent; }
+.annotation-manager-embedded > summary { display: none; }
