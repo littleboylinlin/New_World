@@ -263,7 +263,7 @@ test('移动端与窄窗设置布局不横向溢出，专注写作模式隐藏�
   await page.getByRole('textbox', { name: '作品名' }).fill('专注模式设置检查')
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(page.getByRole('textbox', { name: '章节正文' })).toBeVisible()
-  await page.getByRole('button', { name: '专注' }).click()
+  await page.getByRole('button', { name: '专注写作', exact: true }).click()
   await expect(page.locator('#settings')).toBeHidden()
 })
 

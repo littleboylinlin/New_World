@@ -1,5 +1,6 @@
 import { expect, test } from './app-test.mjs'
 import { newWritingNovel } from './writing-motion-helpers.mjs'
+import { workAction } from './editor-helpers.mjs'
 
 test.use({ viewport: { width: 390, height: 664 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, reducedMotion: 'reduce' })
 
@@ -18,7 +19,7 @@ async function expectReachable(control) {
 test('iPhone 作品信息弹窗缩高后仍能通过内部滚动点到保存 @webkit', async ({ page }) => {
   await page.goto('/')
   await newWritingNovel(page, '潮汐')
-  await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  await workAction(page, '编辑作品信息')
   const dialog = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
   await dialog.getByLabel('作者', { exact: true }).fill('海边写作者')
   await page.setViewportSize({ width: 390, height: 430 })
@@ -27,7 +28,9 @@ test('iPhone 作品信息弹窗缩高后仍能通过内部滚动点到保存 @we
   await expectReachable(save)
   await save.tap()
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('region', { name: '作品信息', exact: true })).toContainText('海边写作者')
+  await page.setViewportSize({ width: 390, height: 664 })
+  await workAction(page, '编辑作品信息')
+  await expect(dialog.getByLabel('作者', { exact: true })).toHaveValue('海边写作者')
 })
 
 test('iPhone 速记弹窗缩高后仍能点到保存 @webkit', async ({ page }) => {

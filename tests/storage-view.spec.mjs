@@ -1,5 +1,6 @@
 import { startWork } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
+import { saveNow } from './editor-helpers.mjs'
 
 const desktopState = () => {
   let custom = false
@@ -128,7 +129,7 @@ test('更改路径前检查正文保存，失败不调用目录选择且保留�
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })
   await editor.fill('已保存的正文。')
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
   const draftUrl = page.url()
   await page.evaluate(() => {

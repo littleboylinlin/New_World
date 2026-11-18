@@ -2,6 +2,7 @@ import { chooseImportType } from './navigation-helpers.mjs'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './app-test.mjs'
 import { file } from './fixtures.mjs'
+import { workAction } from './editor-helpers.mjs'
 
 const originalList = (page) => page.getByRole('list', { name: '原文列表' })
 const draftList = (page) => page.getByRole('list', { name: '续写列表' })
@@ -29,13 +30,13 @@ test('按原作进入续写项目，原文与续写分开，移除原文不删�
   await page.getByRole('button', { name: '开始续写' }).click()
   await expect(editor(page)).toHaveText('')
   await editor(page).fill('岸边有人点起一盏灯。')
-  await page.getByRole('link', { name: '返回续写项目' }).click()
+  await workAction(page, '返回续写项目')
   await expect(draftList(page).getByRole('link', { name: '小船靠岸之后' })).toBeVisible()
   await page.getByRole('link', { name: '查看原文 港湾补篇' }).click()
   await expect(page.getByRole('article')).toHaveText('港外有艘小船。')
   await page.getByRole('button', { name: '以原文为底稿续写' }).click()
   await expect(editor(page)).toHaveText('港外有艘小船。')
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: '下载原文件' }).click()])
+  const [download] = await Promise.all([page.waitForEvent('download'), workAction(page, '下载原文件')])
   expect(download.suggestedFilename()).toBe(extra.name)
   expect(await readFile(await download.path())).toEqual(extra.buffer)
 
@@ -76,7 +77,7 @@ test('旧版独立稿件沿用原链接，可添加原文且保留章节', async
   })
   await page.goto(`/#/reference/${id}/${editionId}`)
   await expect(editor(page)).toHaveText('旧稿里的正文。')
-  await page.getByRole('link', { name: '返回续写项目' }).click()
+  await workAction(page, '返回续写项目')
   await expect(page.getByText('当前没有原文。', { exact: false })).toBeVisible()
   await expect(draftList(page).getByRole('link', { name: '旧编辑稿' })).toBeVisible()
   await page.locator('input[type=file]').setInputFiles(file('补上的原文.txt', '后来找到的原作。'))

@@ -1,5 +1,6 @@
 import { startWork, chooseImportType } from './navigation-helpers.mjs'
 import { expect } from '@playwright/test'
+import { editorAction, saveNow } from './editor-helpers.mjs'
 
 export const readingBody = (page) => page.locator('.novel-body')
 export async function annotationNovel(page, text = '重复的句子。中文、English!\n第二段的文字。重复的句子。', library = 'original') {
@@ -17,9 +18,9 @@ export async function annotationNovel(page, text = '重复的句子。中文、E
     await page.getByRole('button', { name: '创建小说' }).click()
   }
   await page.getByRole('textbox', { name: '章节正文' }).fill(text)
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
-  await page.getByRole('button', { name: '阅读模式' }).click()
+  await editorAction(page, '阅读模式')
   await expect(page.locator('.annotation-manager summary')).toContainText('（0）')
 }
 
@@ -39,6 +40,8 @@ export async function selectReading(page, from, to, selector = '.novel-body') {
     if (!start || !end) throw new Error('Selection outside text')
     const range = document.createRange()
     range.setStart(...start); range.setEnd(...end)
+    // Only the text pane scrolls: bring the start of the selection into view, as a reader would.
+    start[0].parentElement.scrollIntoView({ block: 'center' })
     const selection = getSelection()
     selection.removeAllRanges(); selection.addRange(range)
     root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))

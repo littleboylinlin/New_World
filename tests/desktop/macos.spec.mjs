@@ -10,6 +10,7 @@ import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
 import { checkNativeHeader } from '../header-layout.mjs'
+import { editorAction, historyCount } from '../editor-helpers.mjs'
 
 const command = promisify(execFile)
 const { version } = JSON.parse(await readFile('package.json', 'utf8'))
@@ -126,7 +127,7 @@ test('从 DMG 安装后原生打开，标题栏、Command 保存、PDF 导出和
     const url = page.url()
     const pdf = info.outputPath('macos-manuscript.pdf')
     await app.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }) }, pdf)
-    await page.getByRole('button', { name: '导出', exact: true }).click()
+    await editorAction(page, '导出')
     const exportDialog = page.getByRole('dialog', { name: '导出编辑稿' })
     await exportDialog.getByRole('radio', { name: 'PDF', exact: true }).check()
     await exportDialog.getByRole('button', { name: '开始导出' }).click()
@@ -492,15 +493,15 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
 
     await page.evaluate((u) => { location.hash = u }, `#/original/${workId}/${editionId}`)
     await expect(editor(page)).toHaveText(v2)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('2')
-    await page.locator('button.history-toggle').click()
+    await expect.poll(() => historyCount(page)).toBe('2')
+    await editorAction(page, '历史版本')
     const revDialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(revDialog).toBeVisible()
     await revDialog.locator('button.revision-item').nth(1).click()
     await expect(revDialog.locator('.revision-preview-text')).toHaveText(v0)
     await revDialog.getByRole('button', { name: '恢复此版本' }).click()
     await expect(editor(page)).toHaveText(v0)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('3')
+    await expect.poll(() => historyCount(page)).toBe('3')
 
     await page.evaluate(() => { location.hash = '#/trash' })
     const trashList = page.getByRole('list', { name: '回收站内容' })

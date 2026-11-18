@@ -1,6 +1,7 @@
 import { expect, test } from './app-test.mjs'
 import { beginComposition, endComposition, expectReadingBox, readingBoxes, updateComposition } from './typing-helpers.mjs'
 import { chapterText, newWritingNovel } from './writing-motion-helpers.mjs'
+import { chapterHeading } from './editor-helpers.mjs'
 
 const panel = (page) => page.getByRole('search', { name: '查找／替换', exact: true })
 const field = (page) => panel(page).getByRole('searchbox', { name: '查找文字' })
@@ -80,7 +81,9 @@ async function expectMatchClear(page, centered = false) {
     const match = mark.getBoundingClientRect()
     const find = document.querySelector('.search-panel').getBoundingClientRect()
     const header = document.querySelector('.site-header').getBoundingClientRect()
-    const bottom = Math.min(innerHeight, document.querySelector('.site-footer').getBoundingClientRect().top)
+    // The footer gives way to the page on phones; then the window's bottom is the limit.
+    const footer = document.querySelector('.site-footer').getBoundingClientRect()
+    const bottom = Math.min(innerHeight, footer.height ? footer.top : innerHeight)
     const top = Math.max(0, header.bottom)
     const overlap = match.left < find.right && match.right > find.left && match.top < find.bottom && match.bottom > find.top
     const centerError = Math.abs((match.top + match.bottom - find.bottom - bottom) / 2)
@@ -124,8 +127,11 @@ test('快捷键预填选中文字，查找计数和前后导航可绕回 @webkit
   await expect(counter(page)).toHaveText('1/3')
   await expectMatchClear(page)
 
-  await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight / 2, behavior: 'instant' }))
-  expect(await page.evaluate(() => scrollY)).toBeGreaterThan(700)
+  // Only the text pane scrolls; the toolbar with the find controls stays put.
+  const pane = page.locator('.editor-scroll')
+  await pane.evaluate((node) => node.scrollTo({ top: node.scrollHeight / 2, behavior: 'instant' }))
+  expect(await pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(700)
+  expect(await page.evaluate(() => scrollY)).toBe(0)
   await expect.poll(() => viewportBounds(field(page))).toEqual({ fullyInside: true, hit: true })
   await control(page, '下一处').click()
   await expect(counter(page)).toHaveText('2/3')
@@ -147,7 +153,7 @@ test('全书按章计数，点击章节跳到第一处并保存正在编辑的�
     return status
   })
   expect(statusAtClick).toBe('未保存')
-  await expect(page.locator('.writing-header h3')).toHaveText('归航')
+  await expect(chapterHeading(page)).toHaveText('归航')
   await expect(chapters(page).locator('li')).toHaveText(['雾港3', '归航2', '远方1'])
   await expect(counter(page)).toHaveText('4/6')
   await expect(active(page).locator('..')).toHaveText('归来的灯塔。结尾是灯塔。')
@@ -166,19 +172,19 @@ test('全书前后导航越过空章并按章节顺序绕回 @webkit', async ({ 
   await field(page).press('Enter')
   await expect(counter(page)).toHaveText('2/5')
   await field(page).press('Enter')
-  await expect(page.locator('.writing-header h3')).toHaveText('归航')
+  await expect(chapterHeading(page)).toHaveText('归航')
   await expect(counter(page)).toHaveText('3/5')
   await expectMatchClear(page)
   await field(page).press('Shift+Enter')
-  await expect(page.locator('.writing-header h3')).toHaveText('雾港')
+  await expect(chapterHeading(page)).toHaveText('雾港')
   await expect(counter(page)).toHaveText('2/5')
   await field(page).press('Shift+F3')
   await expect(counter(page)).toHaveText('1/5')
   await field(page).press('Shift+F3')
-  await expect(page.locator('.writing-header h3')).toHaveText('远方')
+  await expect(chapterHeading(page)).toHaveText('远方')
   await expect(counter(page)).toHaveText('5/5')
   await field(page).press('F3')
-  await expect(page.locator('.writing-header h3')).toHaveText('雾港')
+  await expect(chapterHeading(page)).toHaveText('雾港')
   await expect(counter(page)).toHaveText('1/5')
 })
 
@@ -294,7 +300,7 @@ test.describe('iPhone 尺寸', () => {
     await field(page).fill('灯塔')
     await expect(counter(page)).toHaveText('1/5')
     await expectMatchClear(page)
-    await page.evaluate(() => window.scrollBy({ top: 480, behavior: 'instant' }))
+    await page.locator('.editor-scroll').evaluate((node) => node.scrollBy({ top: 480, behavior: 'instant' }))
     await expect.poll(() => viewportBounds(panel(page))).toEqual({ fullyInside: true, hit: true })
     await page.setViewportSize({ width: 390, height: 332 })
     await expect.poll(() => viewportBounds(panel(page))).toEqual({ fullyInside: true, hit: true })
