@@ -8,6 +8,7 @@ const { join } = require('node:path')
 const configName = 'NewWorld-capture.json'
 const defaultShortcut = 'Control+Alt+N'
 const modifiers = ['Control', 'Alt', 'Shift', 'Command', 'Super']
+const functionKey = /^F(?:[1-9]|1\d|2[0-4])$/
 const namedKeys = new Set([
   'Space', 'Tab', 'Return', 'Backspace', 'Escape', 'Delete', 'Insert', 'Home', 'End',
   'PageUp', 'PageDown', 'Left', 'Right', 'Up', 'Down', 'Plus', 'PrintScreen',
@@ -22,7 +23,9 @@ function normalizeShortcut(value) {
   if (!keys.length || new Set(keys).size !== keys.length || !keys.every((part) => modifiers.includes(part))) return
   if (keys.includes('Command') && keys.includes('Super')) return
   if (key.length === 1) key = key.toUpperCase()
-  if (!namedKeys.has(key) && !/^(?:[A-Z0-9`\-=\[\]\\;',./]|F(?:[1-9]|1\d|2[0-4])|num[0-9])$/.test(key)) return
+  const isFunctionKey = functionKey.test(key)
+  if (keys.length === 1 && keys[0] === 'Shift' && !isFunctionKey) return
+  if (!isFunctionKey && !namedKeys.has(key) && !/^(?:[A-Z0-9`\-=\[\]\\;',./]|num[0-9])$/.test(key)) return
   return [...modifiers.filter((part) => keys.includes(part)), key].join('+')
 }
 

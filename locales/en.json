@@ -642,7 +642,7 @@
   "ideas.shortcutEditHint": "Click the current shortcut to record a new one. Use it in any app to open Quick Capture.",
   "ideas.shortcutRecord": "Record shortcut",
   "ideas.shortcutRecording": "Press a new shortcut (Esc to cancel)",
-  "ideas.shortcutNeedsModifier": "Include at least one modifier (Ctrl, Alt, Shift, or ⌘).",
+  "ideas.shortcutNeedsModifier": "Include Ctrl, Alt, Command, or Win/Super. With Shift as the only modifier, use F1–F24.",
   "ideas.shortcutInvalid": "This key combination is unsupported. Try another one.",
   "ideas.shortcutTaken": "This shortcut is already in use.",
   "ideas.shortcutReset": "Restore default",

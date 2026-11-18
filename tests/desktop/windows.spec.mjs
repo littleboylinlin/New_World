@@ -896,8 +896,12 @@ test('灵感速记：全局快捷键可在设置里更换，任务栏的速记�
     const shortcut = section.getByRole('button', { name: /^全局快捷键 / })
     await expect(shortcut).toHaveText('Ctrl + Alt + N')
     await shortcut.click()
-    await page.keyboard.press('Space')
-    await expect(section.getByRole('alert')).toContainText('快捷键至少要包含一个修饰键')
+    for (const key of ['Space', 'Shift+A', 'Shift+1']) {
+      await page.keyboard.press(key)
+      await expect(section.getByRole('alert')).toContainText('只用 Shift 时，请搭配 F1–F24。')
+      await expect(shortcut).toHaveAttribute('aria-pressed', 'true')
+    }
+    expect(await registered('Control+Alt+N')).toBe(true)
     await page.keyboard.press('Alt+Shift+N')
     await expect(shortcut).toHaveText('Alt + Shift + N')
     await expect.poll(() => registered('Alt+Shift+N')).toBe(true)

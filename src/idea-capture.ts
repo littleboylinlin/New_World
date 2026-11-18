@@ -266,12 +266,18 @@ export function mountCaptureSettings(section: HTMLElement) {
       event.ctrlKey && 'Control', event.altKey && 'Alt', event.shiftKey && 'Shift',
       event.metaKey && (desktop.platform === 'darwin' ? 'Command' : 'Super'),
     ].filter(Boolean)
-    if (!modifiers.length) {
-      if (event.key === 'Escape') { recording = false; showError(); paint() }
-      else showError('ideas.shortcutNeedsModifier')
+    if (!modifiers.length && event.key === 'Escape') {
+      recording = false
+      showError()
+      paint()
       return
     }
-    void choose([...modifiers, shortcutKey(event)].join('+'))
+    const key = shortcutKey(event)
+    if (!modifiers.length || modifiers.length === 1 && event.shiftKey && !/^F(?:[1-9]|1\d|2[0-4])$/.test(key)) {
+      showError('ideas.shortcutNeedsModifier')
+      return
+    }
+    void choose([...modifiers, key].join('+'))
   })
   reset.addEventListener('click', () => { if (state) void choose(state.defaultShortcut) })
   disable.addEventListener('click', () => void choose('off'))

@@ -642,7 +642,7 @@
   "ideas.shortcutEditHint": "点击当前快捷键可录制新组合。在任何应用中都可以用它打开灵感速记。",
   "ideas.shortcutRecord": "录制快捷键",
   "ideas.shortcutRecording": "按下新组合键（Esc 取消）",
-  "ideas.shortcutNeedsModifier": "快捷键至少要包含一个修饰键（Ctrl、Alt、Shift 或 ⌘）。",
+  "ideas.shortcutNeedsModifier": "请使用 Ctrl、Alt、⌘ 或 Win/Super 中的至少一个修饰键。只用 Shift 时，请搭配 F1–F24。",
   "ideas.shortcutInvalid": "不支持这个组合键，请换一个。",
   "ideas.shortcutTaken": "该组合键已被占用",
   "ideas.shortcutReset": "恢复默认",

@@ -13,17 +13,17 @@ test('灵感快捷键保存在配置文件里，坏文件和未知值回到默�
   const root = await mkdtemp(join(tmpdir(), 'nw-capture-'))
   try {
     expect(capture.readShortcut(root)).toBe('Control+Alt+N')
-    for (const shortcut of ['Alt+Shift+N', 'Control+Shift+Space', 'Control+Shift+F8']) {
+    for (const shortcut of ['Alt+Shift+N', 'Control+Shift+A', 'Control+Shift+Space', 'Shift+F1', 'Shift+F24']) {
       capture.writeShortcut(root, shortcut)
       expect(capture.readShortcut(root)).toBe(shortcut)
       expect(JSON.parse(await readFile(capture.configFile(root), 'utf8'))).toEqual({ shortcut })
     }
     capture.writeShortcut(root, 'off')
     expect(capture.readShortcut(root)).toBe('off')
-    for (const invalid of ['A', '1', 'Tab', 'Space', 'Control', 'Alt+Alt+N', 'CtrlFake+N']) {
+    for (const invalid of ['A', '1', 'Tab', 'Space', 'Control', 'Alt+Alt+N', 'CtrlFake+N', 'Shift+A', 'Shift+1', 'Shift+Space', 'Shift+F0', 'Shift+F25']) {
       expect(() => capture.writeShortcut(root, invalid)).toThrow()
     }
-    await writeFile(capture.configFile(root), '{"shortcut":"Tab"}')
+    await writeFile(capture.configFile(root), '{"shortcut":"Shift+A"}')
     expect(capture.readShortcut(root)).toBe('Control+Alt+N')
     await writeFile(capture.configFile(root), 'not json')
     expect(capture.readShortcut(root)).toBe('Control+Alt+N')
@@ -41,10 +41,11 @@ test('快捷键按平台显示', () => {
   expect(capture.shortcutLabel('off', 'win32')).toBe('')
 })
 
-test('设置录制全局快捷键，拒绝无修饰键，冲突时保留旧设置并可恢复默认', async ({ page }, testInfo) => {
+test('设置录制全局快捷键，单用 Shift 仅允许 F1–F24，冲突时保留旧设置', async ({ page }, testInfo) => {
   const path = testInfo.outputPath('capture-settings')
   const registered = new Set(['Alt+Shift+F9'])
   const attempts = []
+  const changes = []
   const globalShortcut = {
     isRegistered: (shortcut) => registered.has(shortcut),
     register: (shortcut) => {
@@ -57,8 +58,10 @@ test('设置录制全局快捷键，拒绝无修饰键，冲突时保留旧设�
   }
   let binding = capture.createShortcutRegistration(path, globalShortcut, () => {})
   binding.start()
+  for (const invalid of ['Shift+A', 'Shift+1']) expect(binding.change(invalid)).toEqual({ ok: false, error: 'invalid' })
   await page.exposeFunction('getTestCaptureState', () => ({ ...binding.state(), label: capture.shortcutLabel(binding.state().shortcut, 'win32') }))
   await page.exposeFunction('setTestCaptureShortcut', (shortcut) => {
+    changes.push(shortcut)
     const result = binding.change(shortcut)
     if (result.ok) result.state.label = capture.shortcutLabel(result.state.shortcut, 'win32')
     return result
@@ -83,40 +86,42 @@ test('设置录制全局快捷键，拒绝无修饰键，冲突时保留旧设�
   await expect(recorder).toHaveText('Ctrl + Alt + N')
   await recorder.click()
   await expect(recorder).toHaveAttribute('aria-pressed', 'true')
-  for (const key of ['n', '2', 'Tab', 'Space']) {
+  for (const key of ['n', '2', 'Tab', 'Space', 'Shift+A', 'Shift+1', 'Shift+Space']) {
     await page.keyboard.press(key)
-    await expect(alert).toContainText('快捷键至少要包含一个修饰键')
+    await expect(alert).toContainText('只用 Shift 时，请搭配 F1–F24。')
+    await expect(recorder).toHaveAttribute('aria-pressed', 'true')
   }
+  expect(changes).toEqual([])
   expect(attempts).toEqual(['Control+Alt+N'])
   await page.keyboard.press('Escape')
   await expect(recorder).toHaveText('Ctrl + Alt + N')
 
   await recorder.click()
-  await page.keyboard.press('Control+Shift+F8')
-  await expect(recorder).toHaveText('Ctrl + Shift + F8')
+  await page.keyboard.press('Shift+F8')
+  await expect(recorder).toHaveText('Shift + F8')
   await expect(section.getByRole('status')).toHaveText('已保存')
-  expect(capture.readShortcut(path)).toBe('Control+Shift+F8')
+  expect(capture.readShortcut(path)).toBe('Shift+F8')
   expect(registered.has('Control+Alt+N')).toBe(false)
 
   for (const chord of ['Alt+Shift+F9', 'Control+Shift+F9']) {
     await recorder.click()
     await page.keyboard.press(chord)
     await expect(alert).toHaveText('该组合键已被占用')
-    await expect(recorder).toHaveText('Ctrl + Shift + F8')
-    expect(capture.readShortcut(path)).toBe('Control+Shift+F8')
-    expect(registered.has('Control+Shift+F8')).toBe(true)
+    await expect(recorder).toHaveText('Shift + F8')
+    expect(capture.readShortcut(path)).toBe('Shift+F8')
+    expect(registered.has('Shift+F8')).toBe(true)
   }
   expect(registered.has('Alt+Shift+F9')).toBe(true)
-  expect(attempts).toEqual(['Control+Alt+N', 'Control+Shift+F8', 'Control+Shift+F9'])
+  expect(attempts).toEqual(['Control+Alt+N', 'Shift+F8', 'Control+Shift+F9'])
 
-  registered.delete('Control+Shift+F8')
+  registered.delete('Shift+F8')
   binding = capture.createShortcutRegistration(path, globalShortcut, () => {})
   binding.start()
   await page.reload()
-  await expect(recorder).toHaveText('Ctrl + Shift + F8')
+  await expect(recorder).toHaveText('Shift + F8')
   await section.getByRole('button', { name: '关闭快捷键', exact: true }).click()
   await expect(recorder).toHaveText('已关闭')
-  expect(registered.has('Control+Shift+F8')).toBe(false)
+  expect(registered.has('Shift+F8')).toBe(false)
   await section.getByRole('button', { name: '恢复默认', exact: true }).click()
   await expect(recorder).toHaveText('Ctrl + Alt + N')
   expect(capture.readShortcut(path)).toBe('Control+Alt+N')
