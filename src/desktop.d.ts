@@ -62,6 +62,7 @@ interface DesktopUpdateProgress {
   tag: string
   received: number
   total: number
+  bytesPerSecond: number
 }
 
 interface Window {

@@ -171,8 +171,8 @@ async function performUpdate(event, action) {
 }
 
 ipcMain.handle('new-world:download-update', (event, tag) => performUpdate(event, () => (
-  desktopUpdater.download(tag, (received, total) => {
-    if (!event.sender.isDestroyed()) event.sender.send('new-world:update-progress', { tag, received, total })
+  desktopUpdater.download(tag, (received, total, bytesPerSecond) => {
+    if (!event.sender.isDestroyed()) event.sender.send('new-world:update-progress', { tag, received, total, bytesPerSecond })
   })
 )))
 
@@ -890,9 +890,11 @@ if (!app.requestSingleInstanceLock()) {
     local.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (request, done) => {
       done({ cancel: request.method !== 'GET' || (request.url !== windowsReleaseList && request.url !== mirrorLatest) })
     })
+    // Each block worker has its own connection pool, including when the CDN uses HTTP/2.
+    const updateConnection = (slot = 0) => session.fromPartition(slot ? `new-world-update-${slot}` : 'new-world-update')
     if (app.isPackaged && process.platform === 'win32' && process.arch === 'x64') {
       desktopUpdater = createWindowsUpdater({
-        network: session.fromPartition('new-world-update'),
+        network: updateConnection(), connection: updateConnection,
         cache: join(app.getPath('temp'), 'New World Updates'),
         installDir: dirname(app.getPath('exe')),
         version: app.getVersion(),
@@ -909,7 +911,7 @@ if (!app.requestSingleInstanceLock()) {
         },
       })
       desktopUpdater = await createMacUpdater({
-        network: session.fromPartition('new-world-update'), version: app.getVersion(), arch: process.arch,
+        network: updateConnection(), connection: updateConnection, version: app.getVersion(), arch: process.arch,
         cache, legacyDownloads: app.getPath('downloads'), installer: macInstaller,
       })
     }

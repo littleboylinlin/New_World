@@ -356,16 +356,27 @@ async function mockUpdateDownload(app, release, { filePath, body }) {
   await app.evaluate(({ session }, fixture) => {
     const { createReadStream } = process.getBuiltinModule('node:fs')
     const { Readable } = process.getBuiltinModule('node:stream')
-    const network = session.fromPartition('new-world-update')
     globalThis.testUpdateRequests = []
+    globalThis.testUpdateConnections = []
     const gate = Promise.withResolvers()
     globalThis.testContinueUpdate = gate.resolve
-    network.fetch = async (url) => {
-      globalThis.testUpdateRequests.push(url)
+    const fetch = (slot) => async (url, options) => {
+      const range = options?.headers?.Range ?? null
+      globalThis.testUpdateRequests.push({ url, range })
       if (url === fixture.metadata) return Response.json(fixture.release)
       if (url !== fixture.download) return new Response(null, { status: 404 })
       if (!fixture.filePath) return new Response(fixture.body)
-      const reader = Readable.toWeb(createReadStream(fixture.filePath)).getReader()
+      const [, first, last] = /^bytes=(\d+)-(\d+)$/.exec(range) ?? []
+      if (!first || !last) return new Response(null, { status: 400 })
+      const start = Number(first), end = Number(last)
+      const stream = Readable.toWeb(createReadStream(fixture.filePath, { start, end }))
+      const metadata = { status: 206, headers: {
+        'content-range': `bytes ${start}-${end}/${fixture.release.assets[0].size}`,
+        'content-length': String(end - start + 1),
+      } }
+      if (range === 'bytes=0-0') return new Response(stream, metadata)
+      globalThis.testUpdateConnections.push(slot)
+      const reader = stream.getReader()
       let sent = false
       return new Response(new ReadableStream({
         async pull(controller) {
@@ -378,10 +389,28 @@ async function mockUpdateDownload(app, release, { filePath, body }) {
           }
         },
         cancel: () => reader.cancel(),
-      }))
+      }), metadata)
+    }
+    for (let slot = 0; slot < 6; slot++) {
+      session.fromPartition(slot ? `new-world-update-${slot}` : 'new-world-update').fetch = fetch(slot)
     }
   }, { metadata, download, release, filePath, body })
-  return [mirrorLatest, metadata, download, mirrored]
+  const requests = [
+    { url: mirrorLatest, range: null },
+    { url: metadata, range: null },
+    { url: mirrored, range: 'bytes=0-0' },
+    { url: download, range: 'bytes=0-0' },
+  ]
+  if (!filePath) {
+    // The corrupt whole-file winner falls back to the mirror once more.
+    return [...requests, ...[mirrored, download, mirrored].map((url) => ({ url, range: null }))]
+  }
+  const blockSize = 4 * 1024 * 1024
+  const size = release.assets[0].size
+  for (let start = 0; start < size; start += blockSize) {
+    requests.push({ url: download, range: `bytes=${start}-${Math.min(start + blockSize, size) - 1}` })
+  }
+  return requests
 }
 
 test('启动检查 Windows 正式安装包，支持失败重试并保护未保存的稿件', async ({}, testInfo) => {
@@ -463,9 +492,7 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
       shell.openExternal = async (url) => { globalThis.testExternalLinks.push(url) }
     })
     const corrupt = stable(next)
-    const raced = await mockUpdateDownload(app, corrupt, { body: 'x' })
-    // GitHub wins the race with a corrupt file, so the mirror is asked once more on its own.
-    const expectedRequests = [...raced, raced.at(-1)]
+    const expectedRequests = await mockUpdateDownload(app, corrupt, { body: 'x' })
     await page.evaluate(() => { globalThis.desktopTestStorageFull = true })
     await editor(page).fill('这段正文必须留在桌面端。')
     await page.getByRole('link', { name: '设置', exact: true }).click()
@@ -580,6 +607,7 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     await update.click()
     const progress = help.getByRole('progressbar', { name: '安装包下载进度' })
     await expect.poll(() => progress.evaluate((bar) => bar.value)).toBeGreaterThan(0)
+    await expect(page.locator('#update-banner')).toContainText(/ · \d+% · [\d.,]+ (?:B|KiB|MiB)\/s/)
     await page.screenshot({ path: testInfo.outputPath('windows-update-download.png') })
     await page.locator('.settings-back').click()
     const lastText = '下载期间新增的正文也要保留。'
@@ -587,7 +615,11 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     await editor(page).fill(lastText)
     await app.evaluate(() => globalThis.testContinueUpdate())
     await expect(page.locator('#update-banner')).toContainText('安装包已下载', { timeout: 30_000 })
-    expect(await app.evaluate(() => globalThis.testUpdateRequests)).toEqual(requests)
+    const actualRequests = await app.evaluate(() => globalThis.testUpdateRequests)
+    expect(actualRequests.slice(0, 4)).toEqual(requests.slice(0, 4))
+    expect(actualRequests).toHaveLength(requests.length)
+    expect(actualRequests.slice(4)).toEqual(expect.arrayContaining(requests.slice(4)))
+    expect(new Set(await app.evaluate(() => globalThis.testUpdateConnections)).size).toBe(6)
     await expect(page.locator('.novel-body')).toHaveText(lastText)
     await page.evaluate(() => { globalThis.desktopTestStorageFull = false })
     await page.locator('#update-banner').getByRole('button', { name: '查看更新' }).click()

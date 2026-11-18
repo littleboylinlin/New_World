@@ -373,7 +373,7 @@
   "update.noVerifiableWindowsX64StableInstallerIsAvailable": "No verifiable Windows x64 stable installer is available on GitHub yet.",
   "update.noComparableStableReleaseIsAvailableOnGithub": "No comparable stable release is available on GitHub yet.",
   "update.checkingForUpdates": "Checking for updates…",
-  "update.downloading": "Downloading {0} · {1}%",
+  "update.downloading": "Downloading {0} · {1}% · {2}",
   "update.theCurrentTextIsNotSavedSaveIt": "The current text is not saved. Save it or save a separate copy before updating.",
   "update.theCurrentTextIsNotSavedSaveIt396": "The current text is not saved. Save it or save a separate copy before reloading.",
   "update.preparingToDownload": "Preparing to download {0}…",

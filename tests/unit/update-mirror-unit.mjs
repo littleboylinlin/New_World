@@ -22,7 +22,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 /** A source that sends `bytes` in 256 KiB chunks after `wait` ms each; `failAt` cuts the stream at that offset. */
 function source({ bytes = payload, wait = 0, failAt, status = 200 } = {}) {
   const seen = { started: 0, aborted: false }
-  const respond = (signal) => {
+  const respond = (signal, range) => {
+    if (range) return new Response('', { status, headers: { 'content-length': String(bytes.length) } })
     seen.started++
     signal?.addEventListener('abort', () => { seen.aborted = true })
     if (status !== 200) return new Response('missing', { status })
@@ -49,7 +50,7 @@ async function run(sources, options = {}) {
   const request = async (url, init) => {
     const entry = sources[url]
     if (!entry) throw new TypeError('unknown address ' + url)
-    return entry.respond(init?.signal)
+    return entry.respond(init?.signal, init?.headers?.Range)
   }
   try {
     const used = await downloadVerified({ request, sources: [github, mirror], size: payload.length, sha256, path, progress: (received) => updates.push(received), ...options })
@@ -85,6 +86,18 @@ test('a winner that fails midway falls back to the other source', async () => {
   const result = await run({ [github]: source({ wait: 1, failAt: leadBytes + 256 * 1024 }), [mirror]: source({ wait: 30 }) })
   assert.equal(result.used, mirror)
   assert.ok(result.bytes.equals(payload))
+})
+
+test('a corrupt whole-file winner is not retried when the earlier source is unavailable', async () => {
+  const corrupt = Buffer.from(payload)
+  corrupt[0] ^= 1
+  const missing = source({ status: 404 })
+  const winner = source({ bytes: corrupt })
+  const result = await run({ [mirror]: missing, [github]: winner }, { sources: [mirror, github] })
+  assert.equal(result.error.kind, 'invalid')
+  assert.deepEqual(result.files, [])
+  assert.equal(missing.seen.started, 2)
+  assert.equal(winner.seen.started, 1)
 })
 
 test('one source missing is not an error while the other works', async () => {
