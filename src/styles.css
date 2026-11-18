@@ -58,7 +58,7 @@ h1, h2, h3, p { margin: 0; }
 .trash-count:empty { display: none; }
 .site-header .button:hover .trash-count { color: var(--yellow); background: var(--ink); }
 .page { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; overflow-x: clip; }
-.main-content { flex: 1; min-width: 0; padding-block: 34px 48px; }
+.main-content { flex: 1; min-width: 0; padding-block: 34px calc(48px + var(--corner-tips-space, 0px)); }
 .main-content.home-main { display: flex; flex-direction: column; justify-content: center; padding-block: clamp(12px, 2vh, 24px); }
 .site-footer { position: sticky; bottom: 0; z-index: 3; flex: none; margin-top: auto; border-top: 2px solid var(--ink); background: var(--paper); color: var(--muted); font-size: .78rem; }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 10px 16px; min-height: 44px; padding-block: 6px; }
@@ -235,6 +235,28 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .undo-toast :focus-visible { outline-color: var(--yellow); }
 .undo-close { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; color: var(--paper); background: transparent; }
 .undo-close:hover { color: var(--on-yellow); background: var(--yellow); }
+.corner-tips { position: fixed; z-index: 4; right: 16px; bottom: 62px; display: grid; justify-items: end; gap: 10px; width: min(340px, calc(100% - 32px)); pointer-events: none; }
+.corner-tip { position: relative; width: 100%; padding: 12px 40px 12px 14px; border: 2px solid var(--ink); border-radius: 12px; color: var(--ink); background: var(--sheet); box-shadow: 3px 3px 0 var(--edge), 0 14px 30px -16px var(--pop-soft); font-size: .86rem; line-height: 1.5; pointer-events: auto; }
+.corner-tip[data-tip="version"] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-block: 10px; border-color: var(--ink); background: var(--yellow); color: var(--on-yellow); }
+.corner-tip[data-tip="version"] .corner-tip-text { flex: 1 1 auto; }
+.corner-tip[data-tip="version"] .corner-tip-actions { margin-top: 0; }
+.corner-tip[data-tip="version"] .corner-tip-error { flex-basis: 100%; }
+.corner-tip-text { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.corner-tip-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.corner-tip-actions .button { min-height: 34px; }
+.corner-tip-error { margin: 8px 0 0; color: var(--danger-text); font-weight: 700; }
+.corner-tip-close { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; color: inherit; background: transparent; }
+.corner-tip-close:hover { color: var(--on-yellow); background: var(--yellow); }
+.corner-tip[data-tip="version"] .corner-tip-close:hover { background: var(--sheet); color: var(--ink); }
+.focus-writing .corner-tips { bottom: 16px; }
+@media (max-width: 560px) { .corner-tips { right: 12px; left: 12px; width: auto; } }
+.web-storage-warning { margin: 18px 0 0; padding: 10px 14px; border: 2px solid var(--ink); border-radius: 10px; color: var(--on-yellow); background: var(--yellow); font-size: .9rem; font-weight: 700; line-height: 1.5; }
+.web-storage-warning a { color: inherit; text-underline-offset: 3px; }
+.web-storage-row { margin-top: 18px; padding-top: 16px; border-top: 2px solid var(--hair); }
+.web-storage-label { margin: 0; font-weight: 800; }
+.web-storage-value { margin: 4px 0 0; color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+.web-storage-value[data-state="on"] { color: var(--ink); }
+.web-storage-row .button { margin-top: 10px; }
 
 .manage-dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; overflow: hidden; border: 2px solid var(--pop-border); border-radius: 18px; color: var(--ink); background: var(--sheet); box-shadow: 6px 6px 0 var(--pop-hard), 0 26px 60px -18px var(--pop-soft); }
 /* The brand stripe of the header, on top of every dialog. */
@@ -271,7 +293,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .settings-nav-item[aria-current="page"] { border-color: var(--ink); color: var(--on-accent); background: var(--accent); box-shadow: 2px 2px 0 var(--edge); font-weight: 850; }
 .settings-nav-item[aria-current="page"] svg { color: var(--on-accent); }
 .settings-nav-item[aria-disabled="true"] { opacity: .55; cursor: default; }
-.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: 24px clamp(18px, 4vw, 44px) 44px; scroll-padding-block: 24px; }
+.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: 24px clamp(18px, 4vw, 44px) calc(44px + var(--corner-tips-space, 0px)); scroll-padding-block: 24px; }
 /* Focus can move to the scrolling pane when entering Settings; avoid a full-panel outline ring. */
 .settings-content:focus { outline: none; }
 .settings-panel { min-width: 0; max-width: 720px; }
@@ -371,7 +393,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .settings-page-title { font-size: 1.25rem; }
   .settings-nav { display: flex; min-width: 0; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-bottom: 2px; scrollbar-width: thin; }
   .settings-nav-item { flex: none; white-space: nowrap; min-height: 36px; padding: 6px 11px; }
-  .settings-content { padding: 16px 14px 32px; overflow-y: visible; }
+  .settings-content { padding: 16px 14px calc(32px + var(--corner-tips-space, 0px)); overflow-y: visible; }
   .settings-card, .settings-subgroup { padding: 15px 16px; }
 }
 
@@ -379,7 +401,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .shell { width: calc(100% - 32px); }
   .header-inner { min-height: 58px; gap: 8px; }
   .brand img { width: 32px; height: 32px; }
-  .main-content { padding-block: 24px 44px; }
+  .main-content { padding-block: 24px calc(44px + var(--corner-tips-space, 0px)); }
   .main-content.home-main { justify-content: flex-start; padding-block: 16px 24px; }
   .home { gap: 12px; }
   .home-head { align-items: flex-start; }

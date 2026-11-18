@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { defineConfig } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 
@@ -13,9 +14,24 @@ function dependencyNotices() {
   })
 }
 
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+// Each build gets its own id, so a deploy without a version bump still reaches open web pages.
+const build = process.env.GITHUB_SHA || randomUUID()
+
+function versionFile() {
+  return {
+    name: 'version-file',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: `${JSON.stringify({ version, build })}\n` })
+    },
+  }
+}
+
 export default defineConfig({
   base: './',
+  define: { __BUILD_ID__: JSON.stringify(build) },
   plugins: [
+    versionFile(),
     viteStaticCopy({
       targets: [
         {

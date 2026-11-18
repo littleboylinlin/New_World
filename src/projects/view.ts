@@ -1,3 +1,4 @@
+import { recordExport } from '../web-storage'
 import { t } from '../i18n'
 import { formDialog } from '../dialogs'
 import { bookPath, button, downloadFile, element, libraries } from '../ui'
@@ -35,6 +36,7 @@ export function showProjectExport(root: ProjectRoot, title: string) {
         const stream = await handle.createWritable()
         try { await stream.write(blob); await stream.close() } catch (error) { await stream.abort().catch(() => {}); throw error }
       } else downloadFile(blob, filename)
+      if (!window.newWorldDesktop) recordExport()
       showNotice(t('project.exported'))
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return

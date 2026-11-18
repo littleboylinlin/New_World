@@ -1,6 +1,6 @@
 import { t } from './i18n'
 import { version } from '../package.json'
-import { readMacInstaller, readWindowsInstaller, releaseEndpoint, releasePages, desktopReleaseList } from '../desktop/release.mjs'
+import { readMacInstaller, readWindowsInstaller, releasePages, desktopReleaseList } from '../desktop/release.mjs'
 
 const timeoutMs = 8000
 const notesLimit = 12000
@@ -69,12 +69,6 @@ function describeRelease(release: Release, current: Version, platform?: string):
   }
 }
 
-function webReleaseResult(payload: unknown, current: Version): UpdateResult {
-  const release = readRelease(payload)
-  if (!release) return failed(invalidRelease)
-  return release.stable ? describeRelease(release, current) : { kind: 'unpublished' }
-}
-
 function desktopReleaseResult(payload: unknown, current: Version): UpdateResult {
   if (!Array.isArray(payload)) return failed(invalidRelease)
   const releases = payload.map(readRelease).filter((release) => release !== undefined)
@@ -91,6 +85,7 @@ function desktopReleaseResult(payload: unknown, current: Version): UpdateResult 
   return best ? describeRelease(best, current, platform) : { kind: 'unpublished' }
 }
 
+/** Desktop only. The web app learns about new deploys from its own version.json (see web-version.ts). */
 export async function checkForUpdate(): Promise<UpdateResult> {
   const current = parseVersion(version)
   if (!current) return failed(t('updates.theRunningVersionCouldNotBeIdentified'))
@@ -98,9 +93,8 @@ export async function checkForUpdate(): Promise<UpdateResult> {
 
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
-  const desktop = !!window.newWorldDesktop
   try {
-    const response = await fetch(desktop ? desktopReleaseList : `${releaseEndpoint}/latest`, {
+    const response = await fetch(desktopReleaseList, {
       headers: { Accept: 'application/vnd.github+json' },
       credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
       cache: 'no-store', signal: controller.signal,
@@ -115,7 +109,7 @@ export async function checkForUpdate(): Promise<UpdateResult> {
 
     const payload: unknown = await response.json().catch(() => undefined)
     if (controller.signal.aborted) return failed(t('updates.theUpdateCheckTimedOutTryAgainLater'))
-    return desktop ? desktopReleaseResult(payload, current) : webReleaseResult(payload, current)
+    return desktopReleaseResult(payload, current)
   } catch {
     return failed(controller.signal.aborted ? t('updates.theUpdateCheckTimedOutTryAgainLater') : t('updates.githubCouldNotBeReachedCheckYourConnection'))
   } finally {

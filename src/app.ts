@@ -20,6 +20,9 @@ import { mountWindowControls } from './window-controls'
 import { libraryChanges, listBooks, storageError } from './library'
 import type { LibraryId } from './library'
 import { renderTasks } from './tasks/view'
+import { mountWebVersionCheck } from './web-version'
+import { mountWebStorage } from './web-storage'
+import { mountFolderSync } from './web-folder'
 
 for (const node of document.querySelectorAll<HTMLElement>('[data-i18n]')) node.textContent = t(node.dataset.i18n!)
 for (const node of document.querySelectorAll<HTMLElement>('[data-i18n-label]')) node.setAttribute('aria-label', t(node.dataset.i18nLabel!))
@@ -167,6 +170,9 @@ libraryChanges.addEventListener('update', () => { void refreshTrashCount() })
 void refreshTrashCount()
 mountAiDesktopHost()
 mountTaskReminders()
+mountWebVersionCheck(saveBeforeLeaving)
+mountWebStorage()
+void mountFolderSync()
 window.newWorldDesktop?.reportReady?.()
 startAutomaticBackups()
 

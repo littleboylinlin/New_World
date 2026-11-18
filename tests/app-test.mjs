@@ -9,8 +9,14 @@ export async function withoutRelease(context) {
   return context
 }
 
+// The web first-visit note sits in the corner; specs about it use the plain Playwright test.
+export async function pastFirstVisit(context) {
+  await context.addInitScript(() => { try { localStorage.setItem('new-world:web-notice-seen', '1') } catch { /* Opaque pages have no storage. */ } })
+  return context
+}
+
 export const test = base.extend({
-  context: async ({ context }, use) => use(await withoutRelease(context)),
+  context: async ({ context }, use) => use(await pastFirstVisit(await withoutRelease(context))),
 })
 
 export { chromium, expect } from '@playwright/test'
