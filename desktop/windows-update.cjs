@@ -1,11 +1,9 @@
 const { spawn } = require('node:child_process')
-const { createHash } = require('node:crypto')
-const { createReadStream } = require('node:fs')
-const { mkdir, mkdtemp, stat } = require('node:fs/promises')
+const { rmdir, stat } = require('node:fs/promises')
 const { join } = require('node:path')
 const { findInstaller, isNewerWindowsTag, isUpdateUrl } = require('./windows-release.mjs')
-const { downloadVerified } = require('./update-download.cjs')
-const { cleanDownloads, remove: removeDownload } = require('./cleanup.cjs')
+const { downloadVerified, installerRequest, matchesInstaller } = require('./update-download.cjs')
+const { cleanDownloads, downloadDirectory, remove: removeDownload } = require('./cleanup.cjs')
 
 class UpdateError extends Error {}
 
@@ -21,17 +19,10 @@ async function officialInstaller(request, tag) {
 
 async function saveVerifiedInstaller(request, installer, path, progress) {
   try {
-    await downloadVerified({ request, sources: [installer.url, installer.mirror], size: installer.size, sha256: installer.sha256, path, progress })
+    await downloadVerified({ request, sources: [installer.mirror, installer.url], size: installer.size, sha256: installer.sha256, path, progress })
   } catch (error) {
     throw new UpdateError(error?.kind === 'invalid' ? invalidPackage : downloadFailed)
   }
-}
-
-async function verifyOnDisk(installer) {
-  if ((await stat(installer.path)).size !== installer.size) throw new UpdateError(invalidPackage)
-  const hash = createHash('sha256')
-  for await (const chunk of createReadStream(installer.path)) hash.update(chunk)
-  if (hash.digest('hex') !== installer.sha256) throw new UpdateError(invalidPackage)
 }
 
 function launchInstaller(path, installDir) {
@@ -50,16 +41,13 @@ function launchInstaller(path, installDir) {
   })
 }
 
-function createWindowsUpdater({ network, cache, installDir, version }) {
-  const cleanup = cleanDownloads(cache)
+function createWindowsUpdater({ network, connection, cache, installDir, version }) {
+  const cleanup = cleanDownloads(cache, version)
   let ready
   let downloading = false
   let installing = false
 
-  network.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
-    done({ cancel: request.method !== 'GET' || !isUpdateUrl(request.url) })
-  })
-  const request = (address, options) => network.fetch(address, { cache: 'no-store', credentials: 'omit', ...options })
+  const request = installerRequest(network, isUpdateUrl, connection)
 
   async function download(tag, progress) {
     if (!isNewerWindowsTag(tag, version)) throw new UpdateError("windowsUpdate.thisVersionCannotBeUsedForAnUpdate")
@@ -76,13 +64,12 @@ function createWindowsUpdater({ network, cache, installDir, version }) {
         ready = undefined
       }
       const installer = await officialInstaller(request, tag)
-      await mkdir(cache, { recursive: true })
-      directory = await mkdtemp(join(cache, 'download-'))
+      directory = await downloadDirectory(cache, tag)
       const path = join(directory, installer.name)
       await saveVerifiedInstaller(request, installer, path, progress)
       ready = { ...installer, path, directory }
     } catch (error) {
-      if (directory) await removeDownload(directory)
+      if (directory) await rmdir(directory).catch(() => {})
       throw error instanceof UpdateError ? error : new UpdateError(downloadFailed)
     } finally {
       downloading = false
@@ -93,7 +80,7 @@ function createWindowsUpdater({ network, cache, installDir, version }) {
     if (downloading || installing || !ready || ready.tag !== tag) throw new UpdateError("windowsUpdate.downloadAndVerifyThisVersionSInstallerFirst")
     installing = true
     try {
-      await verifyOnDisk(ready)
+      if (!await matchesInstaller(ready.path, ready.size, ready.sha256)) throw new UpdateError(invalidPackage)
       await launchInstaller(ready.path, installDir)
     } catch (error) {
       await removeDownload(ready.directory)

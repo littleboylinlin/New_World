@@ -22,7 +22,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 /** A source that sends `bytes` in 256 KiB chunks after `wait` ms each; `failAt` cuts the stream at that offset. */
 function source({ bytes = payload, wait = 0, failAt, status = 200 } = {}) {
   const seen = { started: 0, aborted: false }
-  const respond = (signal) => {
+  const respond = (signal, range) => {
+    if (range) return new Response('', { status, headers: { 'content-length': String(bytes.length) } })
     seen.started++
     signal?.addEventListener('abort', () => { seen.aborted = true })
     if (status !== 200) return new Response('missing', { status })
@@ -49,7 +50,7 @@ async function run(sources, options = {}) {
   const request = async (url, init) => {
     const entry = sources[url]
     if (!entry) throw new TypeError('unknown address ' + url)
-    return entry.respond(init?.signal)
+    return entry.respond(init?.signal, init?.headers?.Range)
   }
   try {
     const used = await downloadVerified({ request, sources: [github, mirror], size: payload.length, sha256, path, progress: (received) => updates.push(received), ...options })

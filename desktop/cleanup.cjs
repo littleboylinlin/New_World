@@ -1,4 +1,4 @@
-const { readdir, rm, rmdir, stat } = require('node:fs/promises')
+const { lstat, mkdir, readdir, rm, rmdir, stat } = require('node:fs/promises')
 const { join } = require('node:path')
 
 const started = Date.now()
@@ -19,10 +19,23 @@ async function remove(path) {
   }
 }
 
-async function cleanDownloads(cache) {
+async function cleanDownloads(cache, version, keepTag) {
+  const { isNewerTag, isStableTag } = await import('./release.mjs')
   for (const entry of await entries(cache)) {
-    if (entry.isDirectory() && /^download-[0-9A-Za-z]{6}$/.test(entry.name)) await remove(join(cache, entry.name))
+    if (!entry.isDirectory() || !entry.name.startsWith('download-')) continue
+    const tag = entry.name.slice('download-'.length)
+    const legacy = /^[0-9A-Za-z]{6}$/.test(tag)
+    const obsolete = version && tag !== keepTag && isStableTag(tag) && !isNewerTag(tag, version)
+    if (legacy || obsolete) await remove(join(cache, entry.name))
   }
+}
+
+async function downloadDirectory(cache, tag) {
+  await cleanDownloads(cache, tag.slice(1), tag)
+  const directory = join(cache, 'download-' + tag)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  if (!(await lstat(directory)).isDirectory()) throw new Error('Invalid installer cache directory')
+  return directory
 }
 
 async function cleanOldFiles(directory, matches) {
@@ -59,4 +72,4 @@ async function cleanLegacyMacDownloads(directory) {
   await cleanOldFiles(directory, (name) => legacyMacDownload.test(name))
 }
 
-module.exports = { cleanDownloads, cleanLanguageCache, cleanLegacyMacDownloads, remove }
+module.exports = { cleanDownloads, downloadDirectory, cleanLanguageCache, cleanLegacyMacDownloads, remove }

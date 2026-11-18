@@ -1,4 +1,4 @@
-import { t } from './i18n'
+import { locale, t } from './i18n'
 import { button, element } from './ui'
 import { checkForUpdate, runningVersion } from './updates'
 import type { UpdateResult } from './updates'
@@ -112,11 +112,15 @@ export function mountUpdateView(
     state.textContent = bannerMessage.textContent = message
   }
 
-  desktop?.onUpdateProgress(({ tag, received, total }) => {
+  const speedNumber = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 })
+  desktop?.onUpdateProgress(({ tag, received, total, bytesPerSecond }) => {
     if (!updating || applying || tag !== installerTag) return
     progress.max = total
     progress.value = received
-    updateStatus(t('update.downloading', [tag, Math.floor(100 * received / total)]))
+    const speed = Number.isFinite(bytesPerSecond) ? Math.max(0, bytesPerSecond) : 0
+    const rate = speed >= 1024 * 1024 ? `${speedNumber.format(speed / (1024 * 1024))} MiB/s`
+      : speed >= 1024 ? `${speedNumber.format(speed / 1024)} KiB/s` : `${speedNumber.format(speed)} B/s`
+    updateStatus(t('update.downloading', [tag, Math.floor(100 * received / total), rate]))
   })
 
   update.addEventListener('click', async () => {
