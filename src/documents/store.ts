@@ -93,7 +93,16 @@ export async function readChapter(edition: EditionKey, id: string): Promise<Chap
   return chapter
 }
 
+/** Autosaves stay off libraryChanges to keep typing light; listeners that need them use this instead. */
+export const chapterSaves = new EventTarget()
+
 export async function saveChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent) {
+  const saved = await writeChapter(edition, chapter, content)
+  chapterSaves.dispatchEvent(new CustomEvent('save', { detail: { library: edition.library, bookId: edition.bookId } }))
+  return saved
+}
+
+async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent) {
   const db = await openDatabase()
   const tx = db.transaction(['chapters', 'writingDays'], 'readwrite', { durability: 'strict' })
   const chapters = tx.objectStore('chapters')

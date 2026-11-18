@@ -42,6 +42,10 @@ export function mountUpdateView(
   progress.setAttribute('aria-label', t('update.installerDownloadProgress'))
   progress.hidden = true
   release.append(element('h4', '', t('update.releaseNotes')), notes, releaseActions, updateHint, progress, updateError)
+  if (!desktop) {
+    content.append(currentVersion, element('p', 'dialog-help', t('webUpdate.automatic')))
+    return
+  }
   content.append(currentVersion, controls, state, release)
 
   const bannerMessage = element('p', 'update-banner-message')

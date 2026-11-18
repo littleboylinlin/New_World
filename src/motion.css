@@ -34,6 +34,7 @@
 
   .notice, .import-notice:not([hidden]), .field-error:not([hidden]) { animation: 240ms var(--ease-out) backwards drop-in; }
   .update-banner:not([hidden]) { animation: 360ms var(--ease-out) backwards drop-in; }
+  .corner-tip { animation: 260ms var(--ease-out) backwards rise; }
   .reader-panel, .continuation-list { animation: 360ms var(--ease-out) backwards rise; }
   .continuation-list + .continuation-list { animation-delay: 70ms; }
   .arrive { animation: 380ms var(--ease-out) backwards rise; }

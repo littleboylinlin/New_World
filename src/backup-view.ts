@@ -1,3 +1,4 @@
+import { backupReminderDays, backupReminderEnabled, recordExport, reminderChanges, setBackupReminder } from './web-storage'
 import { locale, t } from './i18n'
 import { formDialog } from './dialogs'
 import { BackupError, backupName, createBackup, isEncrypted, readBackup, restoreBackup } from './backup'
@@ -149,6 +150,16 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
   }
   section.append(heading(t('backup.encryption')), encryption.group, changePassword, last, actions, status, error,
     element('p', 'dialog-help', desktop ? t('backup.desktopHint', [10]) : t('backup.webHint')))
+  if (!desktop) {
+    const reminder = element('label', 'appearance-check')
+    const toggle = element('input')
+    toggle.type = 'checkbox'
+    toggle.checked = backupReminderEnabled()
+    toggle.addEventListener('change', () => setBackupReminder(toggle.checked))
+    reminderChanges.addEventListener('change', () => { toggle.checked = backupReminderEnabled() })
+    reminder.append(toggle, element('span', '', t('webBackup.setting', [backupReminderDays])))
+    section.append(heading(t('webBackup.title')), reminder)
+  }
 
   function fail(cause: unknown) {
     status.textContent = ''
@@ -266,6 +277,7 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
         anchor.click()
         anchor.remove()
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+        recordExport()
         status.textContent = t('backup.downloaded', [summary.works, name])
       }
     })

@@ -1,5 +1,6 @@
 import { t } from './i18n'
 import { button, element } from './ui'
+import { mountWebStorageSettings } from './web-storage-view'
 
 export function mountStorageView(
   content: HTMLElement,
@@ -25,6 +26,7 @@ export function mountStorageView(
   const controls = element('div', 'settings-actions')
   controls.append(change, reset)
   content.append(box, controls, state, error)
+  if (!desktop) mountWebStorageSettings(content)
 
   let current: StorageState | null = null
   let busy = false
