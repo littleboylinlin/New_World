@@ -373,7 +373,9 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
   const selected = new Set<string>()
   const query = field(labelKey('search'), 'search')
   query.input.placeholder = labelKey('searchHint')
-  query.input.addEventListener('input', () => paintContent())
+  // Repainting moves the field, which would end an input method's composition: wait for the word.
+  query.input.addEventListener('input', (event) => { if (!(event as InputEvent).isComposing) paintContent() })
+  query.input.addEventListener('compositionend', () => paintContent())
   const quick = element('form', 'task-quick'),
     input = element('input', 'title-input')
   input.required = true
