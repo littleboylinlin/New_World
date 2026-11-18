@@ -123,13 +123,13 @@ function session(field: Field) {
     // Text after the caret's paragraph cannot move the caret; leave it out of long fields.
     const paragraphEnd = value.indexOf('\n', Math.max(caretIndex, reading?.end ?? 0))
     const end = paragraphEnd < 0 ? value.length : paragraphEnd
-    const cuts = new Set([0, end, caretIndex, Math.max(0, caretIndex - 1)])
+    const cuts = new Set([0, end, caretIndex])
     if (reading) { cuts.add(reading.start); cuts.add(reading.end) }
     const points = [...cuts].sort((a, b) => a - b)
     const marker = document.createElement('span')
     marker.textContent = '​'
     const readingSpans: HTMLElement[] = []
-    let before: HTMLElement | undefined
+    let before: Text | undefined
     const parts: Node[] = []
     for (let i = 0; i < points.length; i++) {
       const at = points[i]
@@ -139,7 +139,7 @@ function session(field: Field) {
       const span = document.createElement('span')
       span.textContent = value.slice(at, next)
       if (reading && at >= reading.start && next <= reading.end) readingSpans.push(span)
-      if (next === caretIndex && at === caretIndex - 1) before = span
+      if (next === caretIndex) before = span.firstChild as Text
       parts.push(span)
     }
     mirror.replaceChildren(...parts)
@@ -150,11 +150,19 @@ function session(field: Field) {
     const offsetX = inset - field.scrollLeft
     const offsetY = center - field.scrollTop
     const frameRect = mirror.getBoundingClientRect()
+    // Measure the last character within its run so the mirror keeps kerning and ligatures.
+    let characterWidth = 0
+    if (before) {
+      const range = document.createRange()
+      range.setStart(before, before.length - 1)
+      range.setEnd(before, before.length)
+      characterWidth = range.getBoundingClientRect().width / scale
+    }
     const measured: Measure = {
       x: marker.offsetLeft + offsetX,
       y: marker.offsetTop + offsetY,
       height: marker.offsetHeight,
-      width: (before?.getBoundingClientRect().width ?? 0) / scale || parseFloat(style.fontSize),
+      width: characterWidth || parseFloat(style.fontSize),
       line: multiline ? parseFloat(style.lineHeight) || marker.offsetHeight : line,
       scroll: field.scrollLeft + field.scrollTop,
       boxes: lines(readingSpans.flatMap((span) => [...span.getClientRects()]).map((rect) => new DOMRect(
