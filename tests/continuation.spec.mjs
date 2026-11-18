@@ -1,3 +1,4 @@
+import { chooseImportType } from './navigation-helpers.mjs'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './app-test.mjs'
 import { file } from './fixtures.mjs'
@@ -12,6 +13,7 @@ test('按原作进入续写项目，原文与续写分开，移除原文不删�
   const other = file('山谷.txt', '山谷里有回声。')
   const extra = file('港湾补篇.txt', '港外有艘小船。')
   await page.locator('input[type=file]').setInputFiles([first, other])
+  await chooseImportType(page, 'reference')
   await expect(page.getByText('已导入 2 部。')).toBeVisible()
   await page.getByRole('link', { name: '查看 港湾', exact: true }).click()
   await expect(page.getByRole('heading', { name: '续写列表' })).toBeVisible()

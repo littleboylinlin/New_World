@@ -1,3 +1,4 @@
+import { chooseImportType } from './navigation-helpers.mjs'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from './app-test.mjs'
 import { annotationNovel, annotationRows, createAnnotation, readingBody, selectReading } from './annotation-helpers.mjs'
@@ -181,6 +182,7 @@ test('文字原件和 EPUB 分节批注持久化，下载原文件不变', async
   await page.goto('/#/original')
   const source = file('原文.txt', '第一段。\n第二段，English!\n重复。重复。')
   await page.locator('input[type=file]').setInputFiles(source)
+  await chooseImportType(page, 'original')
   await page.getByRole('link', { name: '查看 原文', exact: true }).click()
   await expect(page.locator('.annotation-manager summary')).toContainText('（0）')
   await selectReading(page, 2, 15, '.reading-text')
@@ -191,6 +193,7 @@ test('文字原件和 EPUB 分节批注持久化，下载原文件不变', async
   expect(await readFile(await download.path())).toEqual(source.buffer)
   await page.goto('/#/original')
   await page.locator('input[type=file]').setInputFiles(await epub())
+  await chooseImportType(page, 'original')
   await page.getByRole('link', { name: '查看 纸上森林', exact: true }).click()
   await selectReading(page, 0, 4, '.reading-text'); await createAnnotation(page, '第一节的说明')
   await page.getByRole('button', { name: '下一节' }).click()

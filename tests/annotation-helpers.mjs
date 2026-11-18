@@ -1,3 +1,4 @@
+import { startWork, chooseImportType } from './navigation-helpers.mjs'
 import { expect } from '@playwright/test'
 
 export const readingBody = (page) => page.locator('.novel-body')
@@ -5,12 +6,13 @@ export async function annotationNovel(page, text = '重复的句子。中文、E
   await page.goto(`/#/${library}`)
   if (library === 'reference') {
     await page.locator('input[type=file]').setInputFiles({ name: '参考.txt', mimeType: 'text/plain', buffer: Buffer.from('参考原文。') })
+    await chooseImportType(page, 'reference')
     await page.getByRole('link', { name: '查看 参考', exact: true }).click()
     await page.getByRole('button', { name: '新建续写' }).click()
     await page.getByRole('textbox', { name: '续写名称' }).fill('批注测试')
     await page.getByRole('button', { name: '开始续写' }).click()
   } else {
-    await page.getByRole('button', { name: '新建小说' }).click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('批注测试')
     await page.getByRole('button', { name: '创建小说' }).click()
   }

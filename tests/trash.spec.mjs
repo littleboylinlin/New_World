@@ -1,3 +1,4 @@
+import { startWork, chooseImportType } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 import { bookAction, file } from './fixtures.mjs'
 
@@ -9,7 +10,7 @@ const undo = (page) => page.getByRole('status').filter({ hasText: '移入回收�
 
 async function newNovel(page, name) {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()
@@ -72,8 +73,8 @@ test('回收站黄点只提示新条目，查看后切页和刷新保持已读',
   await deleteBook(page)
   const trash = page.getByRole('link', { name: '回收站', exact: true })
   await expect(trashDot(page)).toBeVisible()
-  await page.locator('.brand').click()
-  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
+  await page.locator('#home-link').click()
+  await expect(page.getByRole('heading', { name: '写作统计' })).toBeVisible()
   await expect(trash).toHaveAccessibleDescription('有新移入的条目')
   await expect(trash).not.toContainText(/\d/)
 
@@ -81,9 +82,9 @@ test('回收站黄点只提示新条目，查看后切页和刷新保持已读',
   await expect(trashRow(page, '第一次删除')).toBeVisible()
   await expect(trashDot(page)).toBeHidden()
   expect(await page.evaluate(() => Number(localStorage.getItem('new-world:trash-last-viewed')))).toBeGreaterThan(0)
-  await page.locator('.brand').click()
+  await page.locator('#home-link').click()
   await page.reload()
-  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '写作统计' })).toBeVisible()
   await expect(trashDot(page)).toBeHidden()
   await expect(trash).not.toHaveAttribute('aria-describedby')
 
@@ -133,6 +134,7 @@ test('章节删除后恢复到原来的位置和正文', async ({ page }) => {
 test('编辑版本和续写项目的原文删除后可以撤销', async ({ page }) => {
   await page.goto('/#/original')
   await page.locator('input[type=file]').setInputFiles(file('海图.txt', '海图上的第一行。'))
+  await chooseImportType(page, 'original')
   await page.getByRole('link', { name: '查看 海图', exact: true }).click()
   await page.getByRole('button', { name: '转换为编辑稿' }).click()
   await expect(textArea(page)).toHaveText('海图上的第一行。')
@@ -144,6 +146,7 @@ test('编辑版本和续写项目的原文删除后可以撤销', async ({ page 
 
   await page.goto('/#/reference')
   await page.locator('input[type=file]').setInputFiles(file('旧港.txt', '旧港的原文。'))
+  await chooseImportType(page, 'reference')
   await page.getByRole('link', { name: '查看 旧港', exact: true }).click()
   const originals = page.getByRole('list', { name: '原文列表' })
   await originals.getByRole('button', { name: '移除原文' }).click()
@@ -216,6 +219,7 @@ test('永久删除作品、版本、章节、来源与灵感时级联清理专�
 
   await page.goto('/#/reference')
   await page.locator('input[type=file]').setInputFiles(file('续写底本.txt', '续写底本第一行。'))
+  await chooseImportType(page, 'reference')
   await page.getByRole('link', { name: '查看 续写底本', exact: true }).click()
   await expect(page.getByRole('heading', { name: '续写列表' })).toBeVisible()
   await page.locator('input[type=file]').setInputFiles(file('附属资料.txt', '附属参考内容。'))

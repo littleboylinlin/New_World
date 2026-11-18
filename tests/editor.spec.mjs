@@ -1,3 +1,4 @@
+import { startWork, chooseImportType, activeLibrary } from './navigation-helpers.mjs'
 import { open, readFile } from 'node:fs/promises'
 import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
@@ -8,7 +9,7 @@ const status = (page) => page.locator('.save-status')
 const shelf = (page, library = 'original') => page.goto(`/#/${library}`)
 
 async function newNovel(page, name) {
-  if (new URL(page.url()).hash === '#/reference') {
+  if ((await activeLibrary(page)) === 'reference') {
     await upload(page, [file(`${name}.txt`, '续写项目的原文。')])
     await page.getByRole('link', { name: `查看 ${name}`, exact: true }).click()
     await page.getByRole('button', { name: '新建续写' }).click()
@@ -17,7 +18,7 @@ async function newNovel(page, name) {
     await expect(textArea(page)).toBeVisible()
     return
   }
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()
@@ -25,11 +26,12 @@ async function newNovel(page, name) {
 
 async function upload(page, files, count = files.length) {
   await page.locator('input[type=file]').setInputFiles(files)
+  await chooseImportType(page)
   await expect(page.getByRole('status').filter({ hasText: `已导入 ${count} 部` })).toBeVisible()
 }
 
 async function openBook(page, title) {
-  const reference = new URL(page.url()).hash === '#/reference'
+  const reference = (await activeLibrary(page)) === 'reference'
   await page.getByRole('link', { name: `查看 ${title}`, exact: true }).click()
   if (reference) await page.getByRole('link', { name: `查看原文 ${title}`, exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()

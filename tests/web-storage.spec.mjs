@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { test as base } from '@playwright/test'
 import { expect, test, withoutRelease } from './app-test.mjs'
 
@@ -5,7 +6,7 @@ const day = 24 * 60 * 60 * 1000
 
 async function newNovel(page, title, text) {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(title)
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })

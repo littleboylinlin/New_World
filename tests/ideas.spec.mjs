@@ -1,3 +1,4 @@
+import { startWork, chooseImportType } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 import { file } from './fixtures.mjs'
 
@@ -7,7 +8,7 @@ const ideaRow = (page, text) => ideaList(page).getByRole('listitem').filter({ ha
 
 async function newNovel(page, name, text) {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()
@@ -20,8 +21,8 @@ async function newNovel(page, name, text) {
 
 test('灵感页可以记下、标记已用、关联作品、删除和撤销', async ({ page }, testInfo) => {
   await page.goto('/#/')
-  await page.getByRole('link', { name: '灵感', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: '灵感' })).toBeVisible()
+  await page.getByRole('link', { name: '灵感与任务', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: '灵感与任务' })).toBeVisible()
   await expect(page.getByText('还没有灵感')).toBeVisible()
 
   const box = page.getByRole('textbox', { name: '灵感' })
@@ -70,16 +71,17 @@ test('灵感页可以记下、标记已用、关联作品、删除和撤销', as
   await expect(dialog).toHaveCount(0)
   await expect(bell.getByRole('link', { name: '雾钟' })).toBeVisible()
 
-  // The home page counts ideas that are not used yet.
+  // The combined entry returns to the same section and its used state.
   await page.goto('/#/')
-  await expect(page.getByRole('link', { name: '灵感', exact: true }).locator('.archive-count')).toHaveText('1')
+  await page.locator('#notes-link').click()
+  await expect(page.locator('.idea-row:not(.idea-used)')).toHaveCount(1)
 })
 
 test('网页版 Ctrl+Alt+N 弹出记灵感，默认关联最近打开的作品', async ({ page }) => {
   await newNovel(page, '北方来信')
   await page.goto('/#/')
   // The shortcut is listened for once the app has started.
-  await expect(page.getByRole('link', { name: '灵感', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '灵感与任务', exact: true })).toBeVisible()
   await page.keyboard.press('Control+Alt+KeyN')
   const dialog = page.getByRole('dialog', { name: '记灵感' })
   await expect(dialog).toBeVisible()
@@ -277,6 +279,7 @@ test('归档作品在编辑器中仍自动关联，读取失败时反馈错误�
   // Reading a continuation child source file also resolves auto-link to its parent work.
   await page.goto('/#/reference')
   await page.locator('input[type=file]').setInputFiles(file('港湾.txt', '潮汐的岸边。'))
+  await chooseImportType(page, 'reference')
   await page.getByRole('link', { name: '查看 港湾', exact: true }).click()
   await expect(page.getByRole('heading', { name: '续写列表' })).toBeVisible()
   await page.locator('input[type=file]').setInputFiles(file('港湾补篇.txt', '小船归港。'))

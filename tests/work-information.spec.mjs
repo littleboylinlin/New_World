@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -9,7 +10,7 @@ import { pixel } from './fixtures.mjs'
 const expect = baseExpect.configure({ timeout: 15000 })
 test.setTimeout(90000)
 test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.showSaveFilePicker = undefined }) })
-const importName = '导入 New_World 工程（.newworld）', exportName = '导出 New_World 工程（.newworld）'
+const importName = '导入', exportName = '导出 New_World 工程（.newworld）'
 const infoDialog = page => page.getByRole('dialog', { name: '编辑作品信息', exact: true })
 const editor = page => page.getByRole('textbox', { name: '章节正文', exact: true })
 const values = { author: '无名 <作者>', subtitle: '第二次归航', synopsis: '简介第一段。\n第二行。\n\n简介第二段。', tags: ['奇幻', '海洋, 冒险'], status: 'serializing' }
@@ -20,7 +21,7 @@ async function fillInfo(dialog, metadata = values) {
 }
 async function create(page, library, name, metadata) {
   await page.goto(`/#/${library}`)
-  await page.getByRole('button', { name: library === 'original' ? '新建小说' : '新建续写工程', exact: true }).click()
+  await startWork(page, library)
   const form = page.getByRole('dialog')
   await expect(form.getByLabel('作者', { exact: true })).toHaveValue('')
   await expect(form.getByLabel('创作状态', { exact: true })).toHaveValue('')
@@ -86,7 +87,7 @@ for (const library of ['original', 'reference']) test(`${library} 可选作品�
 })
 
 test('Schema 1 不补默认信息，编辑保留未知字段与未改动的 CRLF，跨窗口冲突拒绝覆盖', async ({ page }) => {
-  await page.goto('/#/'); await choose(page, resolve('docs/examples/雾港.newworld'))
+  await page.goto('/#/writing'); await choose(page, resolve('docs/examples/雾港.newworld'))
   const preview = page.getByRole('dialog', { name: '导入工程预览' }); await preview.getByRole('button', { name: '确认导入' }).click(); await expect(preview).toBeHidden()
   let snapshot = await page.evaluate(databaseSnapshot), book = snapshot.books[0]
   expect(book).not.toHaveProperty('metadata')
@@ -107,7 +108,7 @@ test('Schema 1 不补默认信息，编辑保留未知字段与未改动的 CRLF
 })
 
 for (const library of ['original', 'reference']) test(`${library} Schema 3 完整往返及副本保留未知元数据，全部原文/历史/批注数据不变`, async ({ page, browser }, info) => {
-  await page.goto('/#/'); await expect(page.getByRole('button', { name: importName })).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importName })).toBeVisible()
   const seeded = await page.evaluate(seedProject, projectFixture(library, pixel.toString('base64')))
   const metadata = { ...values, language: 'zh-Hans', future: { id: seeded.root, bookId: seeded.first, code: '<script>window.pwned=true</script>', nested: [null, true, 5] } }
   await updateStoredMetadata(page, seeded.root, metadata)
@@ -121,7 +122,7 @@ for (const library of ['original', 'reference']) test(`${library} Schema 3 完�
   const context = await withoutRelease(await browser.newContext({ locale: 'zh-CN' }))
   const clean = await context.newPage(); await clean.addInitScript(() => { window.showSaveFilePicker = undefined })
   try {
-    await clean.goto('/#/'); await choose(clean, path)
+    await clean.goto('/#/writing'); await choose(clean, path)
     const preview = clean.getByRole('dialog', { name: '导入工程预览' }); await expect(preview).toContainText('3 个章节')
     expect((await clean.evaluate(databaseSnapshot)).books).toEqual([])
     await preview.getByRole('button', { name: '确认导入' }).click(); await expect(preview).toBeHidden()
@@ -131,7 +132,7 @@ for (const library of ['original', 'reference']) test(`${library} Schema 3 完�
     expect(await clean.evaluate(() => window.pwned)).toBeUndefined()
     await clean.goto(`/#/${library}`); const second = info.outputPath('再次导出.newworld'); await exportProject(clean, second)
     const again = await unpack(second); entries.delete('manifest.json'); again.delete('manifest.json'); expect([...again]).toEqual([...entries])
-    await clean.goto('/#/'); await choose(clean, path); await clean.getByRole('dialog', { name: '导入工程预览' }).getByLabel('导入方式').selectOption('copy')
+    await clean.goto('/#/writing'); await choose(clean, path); await clean.getByRole('dialog', { name: '导入工程预览' }).getByLabel('导入方式').selectOption('copy')
     await clean.getByRole('button', { name: '确认导入', exact: true }).click(); await expect(clean.getByRole('dialog', { name: '导入工程预览' })).toBeHidden()
     const copied = (await clean.evaluate(databaseSnapshot)).books.find(b => !b.workId && b.id !== seeded.root)
     expect(copied.metadata).toEqual(metadata); expect(copied.id).not.toBe(metadata.future.id)
@@ -144,7 +145,7 @@ for (const library of ['original', 'reference']) test(`${library} Schema 3 完�
 
 test('不安全/超限元数据、未知结构字段及未来 Schema 明确拒绝且不改变书库', async ({ page }, info) => {
   await create(page, 'original', '既有作品')
-  await page.goto('/#/'); const before = await page.evaluate(databaseSnapshot)
+  await page.goto('/#/writing'); const before = await page.evaluate(databaseSnapshot)
   const cases = [
     ['type', b => { b[0].metadata = { author: [] } }],
     ['resource', b => { b[0].metadata = { extension: { $resource: 'assets/evil.bin' } } }],
@@ -196,7 +197,7 @@ test('正文五种格式的信息选项默认关闭，可选择标题副标题�
 })
 
 test('移除及恢复续写工程首个原文件不丢失或回写旧作品信息', async ({ page }) => {
-  await page.goto('/#/'); await expect(page.getByRole('button',{name:importName})).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button',{name:importName})).toBeVisible()
   const seeded = await page.evaluate(seedProject, projectFixture('reference', pixel.toString('base64')))
   await updateStoredMetadata(page, seeded.root, values)
   await page.goto(`/#/reference/${seeded.root}`)

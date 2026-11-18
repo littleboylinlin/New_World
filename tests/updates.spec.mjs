@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { readFileSync } from 'node:fs'
 import { expect, test } from './app-test.mjs'
 
@@ -59,7 +60,7 @@ test('刷新前先确认正文已保存：保存失败不刷新，保存后刷�
     }
   })
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill('更新前的稿件')
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })

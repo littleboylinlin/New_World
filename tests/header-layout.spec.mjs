@@ -1,3 +1,4 @@
+import { openDrawer } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 import { checkSettingsLayout, expectHeaderLayout } from './header-layout.mjs'
 
@@ -25,12 +26,14 @@ for (const locale of ['zh-CN', 'en-US']) {
           : [1220, 1024, 820, 720, 641, 640, 480, 1220]
         for (const width of widths) {
           await page.setViewportSize({ width, height: 420 })
+          await openDrawer(page)
           await expectHeaderLayout(page)
           await expect(page.getByRole('link', { name: locale === 'en-US' ? 'Trash' : '回收站', exact: true })).toBeVisible()
           if ([1024, 641, 480, 320].includes(width)) {
             await page.screenshot({ path: info.outputPath(`home-header-${platform}-${locale}-${width}.png`), animations: 'disabled' })
           }
           if (width === 480) await checkSettingsLayout(page)
+          else if (width <= 640) await page.keyboard.press('Escape')
         }
       })
     }

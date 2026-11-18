@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
     window.showSaveFilePicker = undefined
   })
 })
-const projectImport = '导入 New_World 工程（.newworld）',
+const projectImport = '导入',
   projectExport = '导出 New_World 工程（.newworld）'
 const taskNames = [
   'tasks',
@@ -33,7 +33,7 @@ async function fresh(browser) {
   await page.addInitScript(() => {
     window.showSaveFilePicker = undefined
   })
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await expect(page.getByRole('button', { name: projectImport, exact: true })).toBeVisible()
   return { context, page }
 }
@@ -77,7 +77,7 @@ async function exportWork(page, work, path) {
   await expect(page.getByRole('dialog', { name: projectExport })).toBeHidden()
 }
 async function seed(page, library = 'original') {
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await expect(page.getByRole('button', { name: projectImport })).toBeVisible()
   const fixture = projectFixture(library, pixel.toString('base64')),
     work = await page.evaluate(seedProject, fixture),
@@ -127,7 +127,7 @@ for (const library of ['original', 'reference'])
       entries.delete('manifest.json')
       again.delete('manifest.json')
       expect([...again]).toEqual([...entries])
-      await clean.page.goto('/#/')
+      await clean.page.goto('/#/writing')
       await choose(clean.page, projectImport, path)
       await preview.getByLabel('导入方式').selectOption('copy')
       await preview.getByRole('button', { name: '确认导入', exact: true }).click()
@@ -242,7 +242,7 @@ test('Schema 3 损坏、未知字段、错误引用和危险附件明确拒绝�
   }
 })
 test('已发布 Schema 2 文件可直接导入，旧字段及未知元数据保留，任务为空', async ({ page }) => {
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await choose(page, projectImport, resolve('docs/examples/雾港-作品信息.newworld'))
   const preview = page.getByRole('dialog', { name: '导入工程预览', exact: true })
   await preview.getByRole('button', { name: '确认导入', exact: true }).click()

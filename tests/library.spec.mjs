@@ -1,14 +1,16 @@
+import { chooseImportType, activeLibrary, openDrawer } from './navigation-helpers.mjs'
 import { readFile } from 'node:fs/promises'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
 import { bookAction, docx, epub, file, odt, pdf } from './fixtures.mjs'
 
 async function importFiles(page, files, count = files.length) {
   await page.locator('input[type=file]').setInputFiles(files)
+  await chooseImportType(page)
   await expect(page.getByRole('status').filter({ hasText: `已导入 ${count} 部` })).toBeVisible()
 }
 
 async function openBook(page, title) {
-  const reference = new URL(page.url()).hash === '#/reference'
+  const reference = (await activeLibrary(page)) === 'reference'
   await page.getByRole('link', { name: `查看 ${title}`, exact: true }).click()
   if (reference) await page.getByRole('link', { name: `查看原文 ${title}`, exact: true }).click()
   await expect(page.getByRole('heading', { name: title, level: 1, exact: true })).toBeVisible()
@@ -25,19 +27,23 @@ async function expectOriginal(page, expected) {
 
 test('首页、两个独立书库、原件下载、去重、重命名与删除', async ({ page }, testInfo) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
-  const original = page.getByRole('link', { name: '进入原创库' })
-  const reference = page.getByRole('link', { name: '进入续写／仿写库' })
-  await expect(original).toContainText('0 部作品')
-  await expect(reference).toContainText('0 部作品')
+  await expect(page.getByRole('heading', { name: '写作统计' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新建作品' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('home-desktop.png') })
+  await page.locator('#writing-link').click()
+  const original = page.getByRole('button', { name: '原创', exact: true })
+  const reference = page.getByRole('button', { name: '续写·仿写', exact: true })
+  await reference.click()
+  await expect(page.locator('.list-count')).toHaveText('0 部')
   await original.click()
+  await expect(page.locator('.list-count')).toHaveText('0 部')
   await expect(page.getByText('还没有原创作品')).toBeVisible()
 
   const novel = file('纸船与星光.TXT', '第一章\n\n一只纸船绕过了桥墩。')
   const fileChooser = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: '导入文件' }).click()
+  await page.getByRole('button', { name: '导入', exact: true }).click()
   await (await fileChooser).setFiles(novel)
+  await chooseImportType(page, 'original')
   await expect(page.getByText('已导入 1 部。')).toBeVisible()
   await importFiles(page, [file('另一份文件.txt', novel.buffer)], 0)
   await expect(page.getByText('已导入 0 部，跳过 1 部重复文件。')).toBeVisible()
@@ -55,9 +61,11 @@ test('首页、两个独立书库、原件下载、去重、重命名与删除',
   const originalDetail = new URL(page.url()).hash
 
   await page.getByRole('link', { name: '书库首页', exact: true }).click()
-  await expect(original).toContainText('1 部作品')
-  await expect(reference).toContainText('0 部作品')
+  await expect(page.locator('.recent-list')).toContainText('星光初稿')
+  await page.locator('#writing-link').click()
+  await expect(page.locator('.list-count')).toHaveText('1 部')
   await reference.click()
+  await expect(page.locator('.list-count')).toHaveText('0 部')
   await expect(page.getByText('还没有参考原作')).toBeVisible()
   await importFiles(page, [novel])
   await expect(page.getByRole('link', { name: '查看 纸船与星光' })).toBeVisible()
@@ -116,6 +124,7 @@ test('不同标签页同时导入同一文件仅产生一部作品', async ({ pa
   const novel = file('一起读.txt', '相同的正文。')
   await Promise.all([page.goto('/#/original'), other.goto('/#/original')])
   await Promise.all([page, other].map((tab) => tab.locator('input[type=file]').setInputFiles(novel)))
+  await Promise.all([page, other].map((tab) => chooseImportType(tab, 'original')))
   for (const tab of [page, other]) await expect(tab.getByRole('status').filter({ hasText: '已导入' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('link', { name: '查看 一起读' })).toHaveCount(1)
@@ -264,13 +273,15 @@ test.describe('手机视口', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     }
     await page.goto('/')
-    const original = page.getByRole('link', { name: '进入原创库' })
-    const reference = page.getByRole('link', { name: '进入续写／仿写库' })
-    await expect(reference).toBeVisible()
-    expect((await reference.boundingBox()).y).toBeGreaterThan((await original.boundingBox()).y)
+    await openDrawer(page)
+    const home = page.locator('#home-link')
+    const writing = page.locator('#writing-link')
+    await expect(writing).toBeVisible()
+    expect((await writing.boundingBox()).y).toBeGreaterThan((await home.boundingBox()).y)
     await expectNoOverflow()
     await page.screenshot({ path: testInfo.outputPath('home-mobile.png'), fullPage: true })
-    await reference.tap()
+    await writing.tap()
+    await page.getByRole('button', { name: '续写·仿写', exact: true }).tap()
     const title = '中文长文件名'.repeat(18)
     await importFiles(page, [file(`${title}.txt`, '窄屏也能读。'.repeat(20))])
     await expectNoOverflow()

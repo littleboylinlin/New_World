@@ -1,10 +1,11 @@
+import { startWork } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 
 async function newNovel(page, name) {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()

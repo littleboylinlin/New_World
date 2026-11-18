@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { expect } from '@playwright/test'
 
 export const chapterText = (page) => page.getByRole('textbox', { name: '章节正文', exact: true })
@@ -5,7 +6,7 @@ export const caret = (page) => page.locator('.writing-caret')
 
 export async function newWritingNovel(page, title = '平滑写作') {
   await page.goto(new URL('#/original', page.url()).href)
-  await page.getByRole('button', { name: '新建小说', exact: true }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名', exact: true }).fill(title)
   await page.getByRole('button', { name: '创建小说', exact: true }).click()
   await expect(chapterText(page)).toBeVisible()

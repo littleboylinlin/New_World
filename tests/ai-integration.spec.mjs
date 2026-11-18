@@ -1,3 +1,4 @@
+import { startWork, chooseImportType, openDrawer } from './navigation-helpers.mjs'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -180,6 +181,7 @@ async function gotoReady(page, url = '/') {
 }
 
 async function openAiSettings(page) {
+  await openDrawer(page)
   await page.getByRole('link', { name: '设置', exact: true }).click()
   await page.getByRole('link', { name: 'AI 接入', exact: true }).click()
   const dialog = page.locator('.settings-page')
@@ -192,17 +194,18 @@ async function createUiNovel(page, library, title, bodyText) {
   await page.goto(`/#/${library}`)
   if (library === 'reference') {
     const fileChooserPromise = page.waitForEvent('filechooser')
-    await page.getByRole('button', { name: '导入原作建立项目' }).click()
+    await page.getByRole('button', { name: '导入', exact: true }).click()
     const fileChooser = await fileChooserPromise
     await fileChooser.setFiles({
       name: `${title}.txt`,
       mimeType: 'text/plain',
       buffer: Buffer.from(bodyText || `${title} 正文内容`, 'utf-8'),
     })
+    await chooseImportType(page, 'reference')
     await expect(page.locator('.book-title', { hasText: title })).toBeVisible()
     return
   }
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   const createDialog = page.getByRole('dialog', { name: '新建小说' })
   await createDialog.getByRole('textbox', { name: '作品名' }).fill(title)
   await createDialog.getByRole('button', { name: '创建小说' }).click()
@@ -347,6 +350,7 @@ test('设置页 AI 权限管理、多 AI 隔离、指定范围、未授权泄露
     // Mobile viewport check in AI settings panel
     await dialog.locator('.settings-back').click()
     await page.setViewportSize({ width: 390, height: 700 })
+    await openDrawer(page)
     await page.getByRole('link', { name: '设置', exact: true }).click()
     await page.getByRole('link', { name: 'AI 接入', exact: true }).click()
     await expect(dialog).toBeVisible()
@@ -655,6 +659,7 @@ test('Update 变相删除全链路防护与备份恢复兼容性', async ({ page
 
     // 5. Real New_World .zip backup & restore compatibility test via Settings UI
     await page.goto('/')
+    await openDrawer(page)
     await page.getByRole('link', { name: '设置', exact: true }).click()
     await page.getByRole('link', { name: '备份与恢复', exact: true }).click()
     const settingsDialog = page.locator('.settings-page')
@@ -674,6 +679,7 @@ test('Update 变相删除全链路防护与备份恢复兼容性', async ({ page
     expect((await harness.api('GET', '/works', token)).json.data.works).toEqual([])
 
     // Restore from saved .zip via UI
+    await openDrawer(page)
     await page.getByRole('link', { name: '设置', exact: true }).click()
     await page.getByRole('link', { name: '备份与恢复', exact: true }).click()
     const chooserPromise = page.waitForEvent('filechooser')

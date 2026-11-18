@@ -1,3 +1,4 @@
+import { startWork, openDrawer } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 
 const desktopState = () => {
@@ -54,35 +55,35 @@ const desktopState = () => {
 test('设置入口位于左下角独立位置，点击进入独立设置页，侧栏固定且分类互斥展示', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '写作统计' })).toBeVisible()
 
-  // Settings entry must no longer live inside the top header; it lives on the bottom-left footer dock.
+  // Settings entry must no longer live inside the top header; it lives on the bottom of the primary sidebar.
   await expect(page.locator('.site-header').getByRole('link', { name: '设置' })).toHaveCount(0)
   await expect(page.locator('.site-header').getByRole('button', { name: '设置' })).toHaveCount(0)
 
-  const entry = page.locator('.site-footer #settings')
+  const entry = page.locator('#app-sidebar #settings')
   await expect(entry).toBeVisible()
   await expect(entry).toHaveText('设置')
   await expect(entry.locator('svg')).toHaveCount(1)
 
   const dockLayout = await page.evaluate(() => {
-    const footer = document.querySelector('.footer-inner').getBoundingClientRect()
+    const sidebar = document.querySelector('#app-sidebar').getBoundingClientRect()
     const settings = document.querySelector('#settings').getBoundingClientRect()
     const meta = document.querySelector('.footer-meta').getBoundingClientRect()
-    const home = document.querySelector('.home').getBoundingClientRect()
+    const trash = document.querySelector('#trash-link').getBoundingClientRect()
     return {
       settingsLeft: settings.left,
-      footerLeft: footer.left,
+      sidebarLeft: sidebar.left,
       settingsRight: settings.right,
       metaLeft: meta.left,
       settingsTop: settings.top,
-      homeBottom: home.bottom,
+      trashBottom: trash.bottom,
       viewportHeight: innerHeight,
     }
   })
-  expect(dockLayout.settingsLeft).toBeLessThanOrEqual(dockLayout.footerLeft + 24)
+  expect(dockLayout.settingsLeft).toBeLessThanOrEqual(dockLayout.sidebarLeft + 24)
   expect(dockLayout.settingsRight).toBeLessThanOrEqual(dockLayout.metaLeft + 1)
-  expect(dockLayout.settingsTop).toBeGreaterThanOrEqual(dockLayout.homeBottom - 1)
+  expect(dockLayout.settingsTop).toBeGreaterThanOrEqual(dockLayout.trashBottom - 1)
   expect(dockLayout.settingsTop).toBeLessThan(dockLayout.viewportHeight)
 
   // Enter Settings: default category is General, full page (zero dialogs).
@@ -155,7 +156,7 @@ test('设置页支持直接 hash 路由、刷新、浏览器前进后退、返�
 
   // Origin memory: enter from #/original, switch categories, reload, Back returns straight to #/original
   await page.goto('/#/original')
-  await expect(page.getByRole('heading', { name: '原创库' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '写作' })).toBeVisible()
   await page.locator('#settings').click()
   await expect(page).toHaveURL(/#\/settings\/general$/)
   await expect(settingsPage.locator('.settings-back')).toContainText('返回上一页')
@@ -176,8 +177,8 @@ test('设置页支持直接 hash 路由、刷新、浏览器前进后退、返�
   await page.reload()
   await expect(settingsPage.locator('.settings-back')).toContainText('返回上一页')
   await settingsPage.locator('.settings-back').click()
-  await expect(page).toHaveURL(/#\/original$/)
-  await expect(page.getByRole('heading', { name: '原创库' })).toBeVisible()
+  await expect(page).toHaveURL(/#\/writing$/)
+  await expect(page.getByRole('heading', { name: '写作' })).toBeVisible()
 
   // ArrowUp / ArrowDown / Home / End keyboard navigation in left category sidebar
   await page.locator('#settings').click()
@@ -242,6 +243,7 @@ test('切换设置分类保留异步任务状态、已显露 AI 令牌与进行�
 test('移动端与窄窗设置布局不横向溢出，专注写作模式隐藏底部设置入口', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
+  await openDrawer(page)
   await page.locator('#settings').click()
   const settingsPage = page.locator('.settings-page')
   await expect(settingsPage).toBeVisible()
@@ -257,7 +259,7 @@ test('移动端与窄窗设置布局不横向溢出，专注写作模式隐藏�
   // Focus writing mode in editor must keep bottom dock hidden
   await page.setViewportSize({ width: 1200, height: 800 })
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill('专注模式设置检查')
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(page.getByRole('textbox', { name: '章节正文' })).toBeVisible()

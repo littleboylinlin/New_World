@@ -1,3 +1,4 @@
+import { startWork } from '../navigation-helpers.mjs'
 import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
@@ -112,11 +113,11 @@ test('从 DMG 安装后原生打开，标题栏、Command 保存、PDF 导出和
     expect(left).toBeGreaterThanOrEqual(80)
     const status = await page.locator('.local-label').boundingBox()
     const trash = await page.locator('#trash-link').boundingBox()
-    expect(status.x + status.width).toBeLessThanOrEqual(trash.x)
+    expect(status.y + status.height).toBeLessThanOrEqual(trash.y)
     await page.screenshot({ path: info.outputPath('macos-home.png'), animations: 'disabled' })
     await checkNativeHeader(app, page, info, 'macos')
-    await page.getByRole('link', { name: '进入原创库', exact: true }).click()
-    await page.getByRole('button', { name: '新建小说', exact: true }).click()
+    await page.getByRole('link', { name: '写作', exact: true }).click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('Mac 上的小说')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('A manuscript saved on macOS. 中文正文。')
@@ -179,7 +180,7 @@ test('Mac 应用菜单可打开设置，语言切换和后台关闭后可恢复'
     await stop(app)
     app = await launch()
     page = await app.firstWindow()
-    await expect(page.getByRole('heading', { name: 'My novel library' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Writing stats' })).toBeVisible()
     settings = await openSettingsCategory(page, 'general', 'en')
     await settings.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh-CN')
     await settings.getByRole('button', { name: 'Apply language', exact: true }).click()
@@ -250,8 +251,9 @@ test('Mac 校验实际 DMG，完整替换并重启，清理旧文件且保留下
     }, { release, dmg })
     await page.reload()
     await expect(page.locator('#update-banner')).toContainText(tag)
-    await page.locator('a[href="#/original"]').first().click()
-    await page.getByRole('button', { name: '新建小说', exact: true }).click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('整包更新前的小说')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('整包更新必须保留正文。')
@@ -333,7 +335,7 @@ test('Mac 新版进程启动失败后原子恢复旧应用，保留书库并清�
     await expect.poll(() => { try { process.kill(restarted, 0); return true } catch { return false } }, { timeout: 10_000 }).toBe(false)
     restarted = undefined
     const app = await launch()
-    try { await expect((await app.firstWindow()).getByRole('heading', { name: '我的小说书库' })).toBeVisible() } finally { await stop(app) }
+    try { await expect((await app.firstWindow()).getByRole('heading', { name: '写作统计' })).toBeVisible() } finally { await stop(app) }
   } finally { if (restarted) { try { process.kill(restarted, 'SIGKILL') } catch {} } }
 })
 
@@ -542,5 +544,22 @@ test('.newworld 的 UTI、冷启动导入、中文路径导出和 Launch Service
     await reopened.goto(url)
     await expectDesktopWorkInformation(reopened)
     await expect(editor(reopened)).toHaveText('文件关联打开时仍在编辑的正文。')
+  } finally { await stop(app) }
+})
+
+
+test('Mac 安装包通过系统登录项 API 注册与注销后台启动', async () => {
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    const general = await openSettingsCategory(page, 'general')
+    const toggle = general.getByRole('switch')
+    const status = () => app.evaluate(({ app }) => app.getLoginItemSettings({ type: 'mainAppService' }).status)
+    await expect(toggle).toBeEnabled()
+    await expect(toggle).not.toBeChecked()
+    await toggle.check()
+    await expect.poll(status).toMatch(/^(enabled|requires-approval)$/)
+    await toggle.uncheck()
+    await expect.poll(status).toBe('not-registered')
   } finally { await stop(app) }
 })

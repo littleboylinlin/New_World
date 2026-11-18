@@ -1,3 +1,4 @@
+import { startWork, openDrawer } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 import { bookAction } from './fixtures.mjs'
 
@@ -8,7 +9,7 @@ const tooltip = (page) => page.locator('.heat-tooltip')
 const todayCell = (page) => page.locator('.heat-cell.today')
 
 async function newNovel(page, name) {
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()
@@ -308,6 +309,7 @@ test('键盘聚焦引发自动滚动后提示保留，窗口刷新保留焦点�
   await page.locator('.heatmap-grid-wrap').evaluate((node) => { node.scrollLeft = 0 })
   await layoutFrame(page)
   await expect(tooltip(page)).toBeHidden()
+  await openDrawer(page)
   await page.getByRole('link', { name: '设置', exact: true }).focus()
   await expect(tooltip(page)).toBeHidden()
 })
@@ -324,7 +326,8 @@ test('静止悬停时刷新数据更新提示并保留横向位置，离开首�
   await expect(todayCell(page)).toHaveAttribute('data-words', '500')
   expect(await wrap.evaluate((node) => node.scrollLeft)).toBe(left)
   await expect(tooltip(page)).toHaveText(await cell.getAttribute('aria-label'))
-  await page.getByRole('link', { name: '进入原创库', exact: true }).click()
+  await openDrawer(page)
+  await page.getByRole('link', { name: '写作', exact: true }).click()
   await expect(tooltip(page)).toHaveCount(0)
   await expect(page.locator('.heat-tooltip:popover-open')).toHaveCount(0)
 })
