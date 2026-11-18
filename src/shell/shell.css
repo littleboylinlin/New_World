@@ -116,3 +116,8 @@ html.fixed-page .main-content.fixed-main > * { flex: 1 1 auto; min-height: 0; }
 
 /* ——— Collapsible blocks (height animated from script) ——— */
 .shell-collapse { transition: height var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard); }
+
+/* Printing (such as a PDF export) flows over as many pages as it needs. */
+@media print {
+  html.fixed-page body { position: static; height: auto; overflow: visible; }
+}

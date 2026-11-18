@@ -1,3 +1,4 @@
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { expect, test } from './app-test.mjs'
 import { chapterText, newWritingNovel } from './writing-motion-helpers.mjs'
 import { chapterHeading, chapterItem, chapterTitles, editorAction, openSidePanel } from './editor-helpers.mjs'
@@ -87,6 +88,19 @@ test.describe('页面外壳', () => {
     expect(state).toEqual({ window: 0, page: 0, fits: true })
     expect(await vertical()).toEqual(before)
     await expect.poll(() => reachable(page.getByRole('button', { name: '撤销', exact: true }))).toBe(true)
+  })
+
+  test('打印（导出 PDF）不受固定页面限制，长章节分成多页', async ({ page }) => {
+    await page.addInitScript(() => { window.print = () => { document.body.dataset.printRequested = 'yes' } })
+    await seedChapters(page, [['长章', longChapter('印', 400)]])
+    await editorAction(page, '导出')
+    const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
+    await dialog.getByRole('radio', { name: 'PDF' }).check()
+    await dialog.getByRole('button', { name: '开始导出' }).click()
+    await expect(page.locator('body')).toHaveAttribute('data-print-requested', 'yes')
+    await page.emulateMedia({ media: 'print' })
+    const loading = getDocument({ data: Uint8Array.from(await page.pdf({ format: 'A4' })) })
+    try { expect((await loading.promise).numPages).toBeGreaterThan(3) } finally { await loading.destroy() }
   })
 
   test('窄屏时工具按优先级收进「⋯」，工具栏不换行也不横向滚动 @webkit', async ({ page }) => {
