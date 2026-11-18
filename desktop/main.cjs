@@ -526,6 +526,8 @@ let recentWorks = []
 let pendingCommands = []
 
 const quickNoteFlag = '--quick-note'
+let pendingCapture = process.argv.includes(quickNoteFlag)
+let requestedMainWindow = false
 
 function openCapture() {
   if (!captureWindow || captureWindow.isDestroyed()) {
@@ -849,7 +851,11 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', (_event, argv, cwd) => {
     if (argv.includes(backgroundFlag)) return
     queueProjects(projectFiles.projectPaths(argv, cwd))
-    if (argv.includes(quickNoteFlag)) openCapture(); else if (desktopStarted) showWindow()
+    if (argv.includes(quickNoteFlag)) {
+      if (desktopStarted) openCapture()
+      else pendingCapture = true
+    } else if (desktopStarted) showWindow()
+    else requestedMainWindow = true
   })
   // macOS delivers open-file before ready as well as to an already-running app.
   app.on('open-file', (event, path) => { event.preventDefault(); queueProjects(projectFiles.projectPaths([path])) })
@@ -955,10 +961,10 @@ if (!app.requestSingleInstanceLock()) {
     refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
     desktopStarted = true
-    const background = login.backgroundLaunch() && tray && !pendingProjectPaths.size
+    const background = login.backgroundLaunch() && tray && !requestedMainWindow && !pendingProjectPaths.size
     if (background && process.platform === 'darwin') app.dock.hide()
     const opened = openWindow(!background)
-    if (process.argv.includes(quickNoteFlag)) openCapture()
+    if (pendingCapture) openCapture()
     return opened
   }).catch(() => {
     dialog.showErrorBox('New World', t('main.theLocalApplicationFilesCouldNotBeOpened'))

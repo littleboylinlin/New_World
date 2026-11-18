@@ -10,7 +10,7 @@ const libraryIds: LibraryId[] = ['original', 'reference']
  * The quick note form: a text box, the work it belongs to, and a button. Enter keeps the idea,
  * Shift + Enter starts a new line and Escape leaves.
  */
-export function captureForm(done: () => void, cancel?: () => void) {
+export function captureForm(done: () => void, cancel?: () => void, instructions = t('ideas.keys')) {
   const form = element('form', 'capture-form')
   const text = element('textarea', 'title-input capture-text')
   text.name = 'idea'
@@ -24,7 +24,7 @@ export function captureForm(done: () => void, cancel?: () => void) {
   workLabel.append(work)
   const status = element('p', 'settings-state capture-state')
   status.setAttribute('role', 'status')
-  const hint = element('p', 'dialog-help capture-hint', t('ideas.keys'))
+  const hint = element('p', 'dialog-help capture-hint', instructions)
   const close = button(t('common.cancel'), 'button button-quiet')
   const save = button(t('ideas.save'), 'button button-primary', 'plus')
   save.type = 'submit'

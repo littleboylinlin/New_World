@@ -147,7 +147,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .heatmap-grid-wrap::-webkit-scrollbar-thumb:hover { background: var(--ink); }
 .heatmap-scroll { width: max-content; }
 .heatmap-months { display: flex; gap: 3px; height: 20px; margin-bottom: 3px; }
-.month { flex: 0 0 13px; color: var(--muted); font-size: .66rem; font-weight: 700; line-height: 20px; white-space: nowrap; }
+.month { flex: 0 0 13px; min-width: 0; color: var(--muted); font-size: .66rem; font-weight: 700; line-height: 20px; white-space: nowrap; }
 .heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 13px); grid-auto-columns: 13px; gap: 3px; }
 .heat-cell { width: 13px; height: 13px; border: 1px solid var(--hair); border-radius: 3px; background: var(--sheet); }
 .heat-cell[data-level="1"] { background: color-mix(in srgb, var(--accent) 24%, var(--sheet)); }

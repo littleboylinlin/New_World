@@ -18,7 +18,7 @@ const ideaTab = button(t('ideas.title'), 'segment')
 const reminderTab = button(t('capture.reminder'), 'segment')
 modes.append(ideaTab, reminderTab)
 const hide = () => { void desktop.hideCapture?.() }
-const idea = captureForm(hide, hide)
+const idea = captureForm(hide, hide, t('capture.ideaKeys'))
 const reminder = element('form', 'capture-form')
 const title = element('input', 'title-input capture-task-title')
 title.placeholder = t('capture.reminderText')

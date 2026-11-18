@@ -1184,5 +1184,6 @@
   "capture.today": "今天",
   "capture.tomorrow": "明天",
   "capture.scheduled": "提醒时间为{0} {1}",
-  "capture.saveReminder": "保存并启用本地提醒"
+  "capture.saveReminder": "保存并启用本地提醒",
+  "capture.ideaKeys": "Enter 保存，Shift + Enter 换行，Tab 切换到提醒，Esc 关闭。"
 }

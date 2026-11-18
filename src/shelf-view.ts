@@ -11,7 +11,7 @@ import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
 import { renderWritingStats } from './writing-stats'
 import { openMenu } from './menu'
-import { recentWorks } from './ideas'
+import { lastOpened, recentWorks } from './ideas'
 import { writingFilter, writingSort } from './navigation-preferences'
 import { chooseWorkType, workType } from './work-type'
 import type { MenuItem } from './menu'
@@ -264,7 +264,8 @@ export function renderShelf(root: HTMLElement, signal: AbortSignal) {
   const { choose, input, progress } = bookImport(() => chooseWorkType(t('writing.importType'), signal),
     t('writing.import'), () => changes.dispatchEvent(new Event('update')))
   choose.className = 'button button-quiet'
-  actions.append(createButton(root, signal), choose, input)
+  const create = createButton(root, signal)
+  actions.append(create, choose, input)
   header.append(element('h1', '', t('navigation.writing')), actions)
   const toolbar = element('div', 'writing-toolbar')
   const filters = element('div', 'segment-switch')
@@ -315,11 +316,18 @@ export function renderShelf(root: HTMLElement, signal: AbortSignal) {
     }
     const query = search.value.trim().toLocaleLowerCase(locale)
     const books = works.filter((book) => (filter === 'all' || book.library === filter) && book.title.toLocaleLowerCase(locale).includes(query))
-    const ranks = new Map(recentWorks().map((work, index) => [work.library + work.bookId, index]))
-    const rank = (book: Book) => ranks.get(book.library + book.id) ?? Infinity
+    const order = writingSort.get()
+    const recent = recentWorks()
+    const ranked = new Map(recent.map((work, index) => [work.library + work.bookId, index]))
+    const opened = new Map(order === 'opened' ? books.map((book) => [book, lastOpened(book.library, book.id)]) : [])
     books.sort((a, b) => {
-      if (writingSort.get() === 'title') return a.title.localeCompare(b.title, locale)
-      if (writingSort.get() === 'opened' && rank(a) !== rank(b)) return rank(a) - rank(b)
+      if (order === 'title') return a.title.localeCompare(b.title, locale)
+      if (order === 'opened') {
+        const aRank = ranked.get(a.library + a.id) ?? recent.length
+        const bRank = ranked.get(b.library + b.id) ?? recent.length
+        const difference = aRank - bRank || opened.get(b)! - opened.get(a)!
+        if (difference) return difference
+      }
       return b.importedAt - a.importedAt || a.title.localeCompare(b.title, locale)
     })
     count.textContent = t('shelf.workS308', [books.length])
@@ -353,7 +361,7 @@ export function renderShelf(root: HTMLElement, signal: AbortSignal) {
   try {
     if (sessionStorage.getItem('new-world:new-novel') === '1') {
       sessionStorage.removeItem('new-world:new-novel')
-      createWork(root, 'original')
+      create.click()
     }
   } catch { /* The writing page remains accessible. */ }
   changes.addEventListener('update', () => void refresh(), { signal })
