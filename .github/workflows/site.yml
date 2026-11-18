@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths: ['site/**', '.github/workflows/site.yml']
   release:
     types: [published]
   # Checks publishes releases with GITHUB_TOKEN, which does not start release-triggered workflows.
@@ -36,6 +35,51 @@ jobs:
       - run: npm test
         env:
           CI: 'true'
+
+  # A version of the full site, web app included, at a Version URL for review. Production is untouched.
+  preview:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency: website-preview-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/package-lock.json
+      - name: Build the web app
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: |
+          npm ci
+          npm run build
+      - name: Build the site
+        working-directory: site
+        env:
+          APP_DIST: ${{ github.workspace }}/dist
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          npm ci
+          npm run build
+      - name: Upload a preview version
+        working-directory: site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Applies preview_urls from wrangler.jsonc; routes and the live version stay as they are.
+          npx wrangler triggers deploy
+          npx wrangler versions upload --preview-alias "pr-$PR_NUMBER" --message "PR #$PR_NUMBER" | tee upload.log
+          {
+            echo '### Preview'
+            grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' upload.log | sort -u | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     if: github.repository == 'littleboylinlin/New_World' && github.event_name != 'pull_request'
