@@ -38,6 +38,20 @@ jobs:
             test-results/**/attachments/*typing-performance*
           retention-days: 7
 
+  # Key cases again in WebKit, Safari's engine, including iPhone sizes.
+  webkit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit
+      - run: npm run test:webkit
+
   windows-tests:
     runs-on: windows-2025
     timeout-minutes: 20
@@ -131,7 +145,7 @@ jobs:
 
   release:
     if: github.repository == 'littleboylinlin/New_World' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [browser-tests, windows-tests, macos-tests]
+    needs: [browser-tests, webkit-tests, windows-tests, macos-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: desktop-release
