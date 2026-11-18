@@ -86,10 +86,11 @@ export function expectSmoothTrace(trace) {
   expect(Math.abs(delta)).toBeGreaterThan(5)
   const moved = samples.filter((point) => Math.abs(point.x - before.x) > .5)
   expect(moved.length).toBeGreaterThan(1)
-  // A time constant of 80ms covers about a fifth of the way in the first 60Hz frame.
+  // A time constant of 80ms covers about a fifth of the way in a 60Hz frame. Slow machines can
+  // stretch the first frame, but each step counts at most 50ms: 1 - e^(-50/80) is about 0.46.
   const first = (moved[0].x - before.x) / delta
   expect(first).toBeGreaterThan(.1)
-  expect(first).toBeLessThan(.32)
+  expect(first).toBeLessThan(.5)
   expect(moved.some((point) => Math.abs(point.x - target.x) > 1)).toBe(true)
 }
 
