@@ -160,7 +160,9 @@ test.describe('选中文字的浮动工具条', () => {
   test('点击别处、输入文字、按 Esc、选区变空时消失；键盘选择停下后出现', async ({ page }) => {
     await seedChapters(page, [['第一章', [paragraph('第一句话。第二句话。第三句话。')]]])
     const select = async () => {
-      await chapterText(page).evaluate((body) => { body.editor.commands.focus(); body.editor.commands.setTextSelection(1) })
+      // Put the caret in the text the way a person would, then select the first sentence.
+      await chapterText(page).click()
+      await expect(chapterText(page)).toBeFocused()
       await chapterText(page).evaluate((body) => body.editor.commands.setTextSelection({ from: 1, to: 6 }))
       await expect(floating(page)).toBeVisible()
     }
