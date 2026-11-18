@@ -90,6 +90,8 @@ export function mountSidebar() {
   })
   narrow.addEventListener('change', () => { drawer = false; paint() })
   paint()
+  menu.disabled = false
+  toggle.disabled = false
   return {
     active(id: Destination, detail = false) {
       if (detail !== inWork) {

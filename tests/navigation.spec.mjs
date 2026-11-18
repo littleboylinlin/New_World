@@ -94,8 +94,19 @@ test('侧栏按顺序接受键盘焦点，标记当前页，记住宽度，在�
 
 test('手机抽屉由左上角打开，点击外部、Esc 或选择入口后关闭', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  let releaseLanguage
+  const hold = new Promise((resolve) => { releaseLanguage = resolve })
+  const pack = '**/New-World-lang-zh-CN.json*'
+  await page.route(pack, async (route) => { await hold; await route.continue() })
+  const loading = page.waitForRequest(pack)
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await loading
+  try {
+    await expect(page.locator('#drawer-toggle')).toBeDisabled()
+    await expect(page.locator('#sidebar-toggle')).toBeDisabled()
+  } finally { releaseLanguage() }
   const menu = page.getByRole('button', { name: '打开导航' })
+  await expect(menu).toBeEnabled()
   for (const action of ['outside', 'escape', 'writing']) {
     await menu.click()
     await expect(page.locator('#home-link')).toBeFocused()
