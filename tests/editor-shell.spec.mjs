@@ -163,8 +163,11 @@ test.describe('选中文字的浮动工具条', () => {
       // Put the caret in the text the way a person would, then select the first sentence.
       await chapterText(page).click()
       await expect(chapterText(page)).toBeFocused()
-      await chapterText(page).evaluate((body) => body.editor.commands.setTextSelection({ from: 1, to: 6 }))
-      await expect(floating(page)).toBeVisible()
+      // The editor may still settle the click's caret a moment later; select again until it holds.
+      await expect(async () => {
+        await chapterText(page).evaluate((body) => body.editor.commands.setTextSelection({ from: 1, to: 6 }))
+        await expect(floating(page)).toBeVisible({ timeout: 1500 })
+      }).toPass({ timeout: 8000 })
     }
     await select()
     await page.keyboard.press('Escape')
@@ -277,6 +280,7 @@ test.describe('章节目录', () => {
     await expect(page.locator('.chapter-ghost')).toHaveCount(0)
     await expect.poll(() => chapterTitles(page)).toEqual(['乙', '丙', '甲', '丁'])
     await expect(chapterHeading(page)).toHaveText('甲')
+    await expect(page.locator('.chapter-navigation [aria-live]')).toHaveText('「甲」已移到第 3 位')
     await page.reload()
     await expect.poll(() => chapterTitles(page)).toEqual(['乙', '丙', '甲', '丁'])
   })
@@ -293,6 +297,8 @@ test.describe('章节目录', () => {
     await expect(page.locator('.chapter-navigation [aria-live]')).toHaveText('「丙」已移到第 1 位')
     await page.keyboard.press('Alt+ArrowDown')
     await expect.poll(() => chapterTitles(page)).toEqual(['甲', '丙', '乙'])
+    // The announcement comes once the new order is saved.
+    await expect(page.locator('.chapter-navigation [aria-live]')).toHaveText('「丙」已移到第 2 位')
     await page.reload()
     await expect.poll(() => chapterTitles(page)).toEqual(['甲', '丙', '乙'])
 
