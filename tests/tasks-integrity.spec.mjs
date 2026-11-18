@@ -161,8 +161,8 @@ test('已发布 v8 升级中断原子回滚，再次升级保留元数据、原�
     const open = indexedDB.open.bind(indexedDB)
     indexedDB.open = function (...args) {
       const q = open(...args)
-      q.addEventListener('upgradeneeded', () => {
-        if (q.result.version === 9) queueMicrotask(() => q.transaction?.abort())
+      q.addEventListener('upgradeneeded', (event) => {
+        if (event.oldVersion === 8) queueMicrotask(() => q.transaction?.abort())
       })
       return q
     }
@@ -198,7 +198,7 @@ test('已发布 v8 升级中断原子回滚，再次升级保留元数据、原�
       q.result.close()
       return result
     }),
-  ).toEqual({ version: 9, unique: false })
+  ).toEqual({ version: 10, unique: false })
   await page.goto(`/#/reference/${work.root}/${work.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText(
     '灯塔亮了。',

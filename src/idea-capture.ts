@@ -165,55 +165,135 @@ export function openCaptureDialog(work?: { library: LibraryId; bookId: string },
   capture.focus()
 }
 
+const acceleratorKeys: Partial<Record<string, string>> = {
+  ' ': 'Space', Enter: 'Return', '+': 'Plus',
+  ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down',
+  Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+  Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
+  NumpadAdd: 'numadd', NumpadSubtract: 'numsub', NumpadMultiply: 'nummult', NumpadDivide: 'numdiv', NumpadDecimal: 'numdec',
+}
+
+function shortcutKey(event: KeyboardEvent) {
+  if (/^Numpad[0-9]$/.test(event.code)) return `num${event.code.at(-1)}`
+  if (/^Digit[0-9]$/.test(event.code) || /^Key[A-Z]$/.test(event.code) && !/^[a-z]$/i.test(event.key)) return event.code.at(-1)!
+  return acceleratorKeys[event.code] ?? acceleratorKeys[event.key] ?? event.key
+}
+
 /** The quick note section of the settings: the desktop shortcut, or how to use it on the web. */
 export function mountCaptureSettings(section: HTMLElement) {
-  const desktop = window.newWorldDesktop?.getCaptureState ? window.newWorldDesktop : undefined
-  if (!desktop) {
+  const desktop = window.newWorldDesktop
+  if (!desktop?.getCaptureState || !desktop.setCaptureShortcut) {
     section.append(element('p', 'dialog-help', t('ideas.webShortcut')))
     return async () => {}
   }
-  const group = element('div', 'settings-options')
-  group.setAttribute('role', 'radiogroup')
-  group.setAttribute('aria-label', t('ideas.shortcut'))
+  const label = element('p', 'field-label', t('ideas.shortcut'))
+  label.id = 'capture-shortcut-label'
+  const group = element('div', 'settings-actions')
+  const record = button('', 'button button-quiet button-small')
+  const value = element('span')
+  value.id = 'capture-shortcut-value'
+  record.setAttribute('aria-labelledby', `${label.id} ${value.id}`)
+  record.title = t('ideas.shortcutRecord')
+  record.append(value)
+  const reset = button(t('ideas.shortcutReset'), 'button button-quiet button-small')
+  const disable = button(t('ideas.shortcutDisable'), 'button button-quiet button-small')
+  group.append(record, reset, disable)
   const status = element('p', 'settings-state')
   status.setAttribute('role', 'status')
   const error = element('p', 'field-error')
   error.setAttribute('role', 'alert')
   error.hidden = true
-  section.append(group, status, error, element('p', 'dialog-help', t('ideas.shortcutHint')))
-  let inputs: HTMLInputElement[] = []
+  section.append(label, group, status, error, element('p', 'dialog-help', t('ideas.shortcutEditHint')))
+  let state: CaptureState | undefined
+  let recording = false
+  let saving = false
+  let request = 0
 
-  function paint(state: CaptureState) {
-    if (!inputs.length) {
-      inputs = state.options.map((shortcut) => {
-        const item = element('label', 'settings-option')
-        const input = element('input')
-        input.type = 'radio'
-        input.name = 'capture-shortcut'
-        input.value = shortcut
-        input.addEventListener('change', () => void choose(shortcut))
-        item.append(input, element('span', '', shortcut === 'off' ? t('backup.off') : state.labels[shortcut] ?? shortcut))
-        group.append(item)
-        return input
-      })
-    }
-    for (const input of inputs) input.checked = input.value === state.shortcut
-    error.hidden = state.registered
-    error.textContent = state.registered ? '' : t('ideas.shortcutTaken')
+  function paint() {
+    value.textContent = recording ? t('ideas.shortcutRecording')
+      : state ? state.label || t('ideas.shortcutOff') : t('ideas.shortcutRecord')
+    record.setAttribute('aria-pressed', String(recording))
+    record.disabled = !state
+    reset.disabled = !state || saving || state.shortcut === state.defaultShortcut && state.registered
+    disable.disabled = !state || saving || state.shortcut === 'off'
   }
+
+  function showError(key?: string) {
+    error.textContent = key ? t(key) : ''
+    error.hidden = !key
+  }
+
   async function choose(shortcut: string) {
+    if (!state || saving) return
+    request++
+    saving = true
+    recording = false
     status.textContent = ''
+    showError()
+    paint()
     try {
-      paint(await desktop!.setCaptureShortcut!(shortcut))
-      status.textContent = t('editor.saved')
-    } catch (cause) {
-      error.textContent = storageError(cause)
-      error.hidden = false
+      const result = await desktop!.setCaptureShortcut!(shortcut)
+      if (result.ok) {
+        state = result.state
+        status.textContent = t('editor.saved')
+      } else showError(result.error === 'taken' ? 'ideas.shortcutTaken' : 'ideas.shortcutInvalid')
+    } catch {
+      showError('settings.settingsCouldNotBeSavedTryAgain')
+    } finally {
+      saving = false
+      paint()
     }
   }
+
+  record.addEventListener('click', () => {
+    if (saving) return
+    recording = !recording
+    showError()
+    status.textContent = ''
+    paint()
+  })
+  record.addEventListener('blur', () => {
+    if (!recording) return
+    recording = false
+    paint()
+  })
+  record.addEventListener('keydown', (event) => {
+    if (!recording) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.repeat || event.isComposing || ['Control', 'Alt', 'Shift', 'Meta', 'AltGraph'].includes(event.key)) return
+    const modifiers = [
+      event.ctrlKey && 'Control', event.altKey && 'Alt', event.shiftKey && 'Shift',
+      event.metaKey && (desktop.platform === 'darwin' ? 'Command' : 'Super'),
+    ].filter(Boolean)
+    if (!modifiers.length && event.key === 'Escape') {
+      recording = false
+      showError()
+      paint()
+      return
+    }
+    const key = shortcutKey(event)
+    if (!modifiers.length || modifiers.length === 1 && event.shiftKey && !/^F(?:[1-9]|1\d|2[0-4])$/.test(key)) {
+      showError('ideas.shortcutNeedsModifier')
+      return
+    }
+    void choose([...modifiers, key].join('+'))
+  })
+  reset.addEventListener('click', () => { if (state) void choose(state.defaultShortcut) })
+  disable.addEventListener('click', () => void choose('off'))
+
   async function refresh() {
-    try { paint(await desktop!.getCaptureState!()) } catch { /* Shown again when the settings open. */ }
+    if (saving) return
+    const turn = ++request
+    try {
+      const current = await desktop!.getCaptureState!()
+      if (turn !== request) return
+      state = current
+      showError(state.registered ? undefined : 'ideas.shortcutTaken')
+      paint()
+    } catch { /* The next visit can retry. */ }
   }
+  paint()
   void refresh()
   return refresh
 }

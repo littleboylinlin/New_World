@@ -4,6 +4,7 @@ import { bookAction, file } from './fixtures.mjs'
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const chapters = (page) => page.getByRole('list', { name: '章节' }).getByRole('button')
 const trashRow = (page, title) => page.getByRole('list', { name: '回收站内容' }).getByRole('listitem').filter({ hasText: title })
+const trashDot = (page) => page.locator('#trash-unread')
 const undo = (page) => page.getByRole('status').filter({ hasText: '移入回收站' }).getByRole('button', { name: '撤销' })
 
 async function newNovel(page, name) {
@@ -46,14 +47,14 @@ test('删除作品后可以撤销，也能在回收站恢复或彻底删除', as
   await expect(textArea(page)).toHaveText('退潮以后，礁石上留着字。')
 
   await deleteBook(page)
-  await expect(page.locator('#trash-count')).toHaveText('1')
+  await expect(trashDot(page)).toBeVisible()
   await page.getByRole('link', { name: '回收站' }).click()
   await expect(page.getByRole('heading', { level: 1, name: '回收站' })).toBeVisible()
   await expect(trashRow(page, '潮间带')).toContainText('作品')
   await trashRow(page, '潮间带').getByRole('button', { name: '恢复' }).click()
   await expect(page.getByRole('status').filter({ hasText: '已恢复「潮间带」。' })).toBeVisible()
   await expect(page.getByText('回收站是空的')).toBeVisible()
-  await expect(page.locator('#trash-count')).toHaveText('')
+  await expect(trashDot(page)).toBeHidden()
   await page.goto('/#/original')
   await expect(page.getByRole('link', { name: '查看 潮间带', exact: true })).toBeVisible()
 
@@ -64,6 +65,36 @@ test('删除作品后可以撤销，也能在回收站恢复或彻底删除', as
   await expect(page.getByText('回收站是空的')).toBeVisible()
   await page.goto('/#/original')
   await expect(page.getByText('还没有原创作品')).toBeVisible()
+})
+
+test('回收站黄点只提示新条目，查看后切页和刷新保持已读', async ({ page }) => {
+  await newNovel(page, '第一次删除')
+  await deleteBook(page)
+  const trash = page.getByRole('link', { name: '回收站', exact: true })
+  await expect(trashDot(page)).toBeVisible()
+  await page.locator('.brand').click()
+  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
+  await expect(trash).toHaveAccessibleDescription('有新移入的条目')
+  await expect(trash).not.toContainText(/\d/)
+
+  await trash.click()
+  await expect(trashRow(page, '第一次删除')).toBeVisible()
+  await expect(trashDot(page)).toBeHidden()
+  expect(await page.evaluate(() => Number(localStorage.getItem('new-world:trash-last-viewed')))).toBeGreaterThan(0)
+  await page.locator('.brand').click()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
+  await expect(trashDot(page)).toBeHidden()
+  await expect(trash).not.toHaveAttribute('aria-describedby')
+
+  await newNovel(page, '第二次删除')
+  await deleteBook(page)
+  await expect(trashDot(page)).toBeVisible()
+  await expect(trash).not.toContainText(/\d/)
+  await trash.click()
+  await expect(trashRow(page, '第一次删除')).toBeVisible()
+  await expect(trashRow(page, '第二次删除')).toBeVisible()
+  await expect(trashDot(page)).toBeHidden()
 })
 
 test('章节删除后恢复到原来的位置和正文', async ({ page }) => {
@@ -145,7 +176,7 @@ test('回收站永久保留超过 30 天的旧内容与历史记录格式，直�
     db.close()
   })
   await page.reload()
-  await expect(page.locator('#trash-count')).toHaveText('2')
+  await expect(trashDot(page)).toBeHidden()
   await expect(page.getByText('会持续保留在这里，可随时恢复，直到你手动彻底删除。')).toBeVisible()
   await expect(trashRow(page, '旧版百日旧稿')).toContainText('删除')
   await expect(trashRow(page, '旧版百日旧稿')).not.toContainText('还剩')
@@ -153,7 +184,7 @@ test('回收站永久保留超过 30 天的旧内容与历史记录格式，直�
   await expect(trashRow(page, '满月旧稿')).not.toContainText('还剩')
 
   await trashRow(page, '旧版百日旧稿').getByRole('button', { name: '恢复' }).click()
-  await expect(page.locator('#trash-count')).toHaveText('1')
+  await expect(trashDot(page)).toBeHidden()
 
   await trashRow(page, '满月旧稿').getByRole('button', { name: '彻底删除' }).click()
   await page.getByRole('button', { name: '取消' }).click()
@@ -161,7 +192,7 @@ test('回收站永久保留超过 30 天的旧内容与历史记录格式，直�
   await trashRow(page, '满月旧稿').getByRole('button', { name: '彻底删除' }).click()
   await page.getByRole('button', { name: '彻底删除' }).last().click()
   await expect(page.getByText('回收站是空的')).toBeVisible()
-  await expect(page.locator('#trash-count')).toHaveText('')
+  await expect(trashDot(page)).toBeHidden()
 
   await page.goto('/#/original')
   await expect(page.getByRole('link', { name: '查看 旧版百日旧稿', exact: true })).toBeVisible()

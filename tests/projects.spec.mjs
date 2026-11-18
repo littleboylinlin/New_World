@@ -290,7 +290,7 @@ test('ZIP 重复路径、异常压缩率和超过 10000 条目被拒绝', async 
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
 })
 
-test('现有 v7 书库升级到 v9 后完整保留数据和索引主键', async ({ page }) => {
+test('现有 v7 书库升级到 v10 后完整保留数据和索引主键', async ({ page }) => {
   await page.goto('/appearance.js')
   await page.evaluate(async () => {
     const q = indexedDB.open('new-world-library', 7)
@@ -316,12 +316,13 @@ test('现有 v7 书库升级到 v9 后完整保留数据和索引主键', async 
   const before = await page.evaluate(databaseSnapshot)
   await page.goto('/#/')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  await expect(page.locator('#trash-unread')).toBeVisible()
   const version = await page.evaluate(async () => {
     const db = await new Promise((r) => { const q = indexedDB.open('new-world-library'); q.onsuccess = () => r(q.result) })
     const books = db.transaction('books').objectStore('books')
     const result = { version: db.version, unique: books.index('byLibraryDigest').unique, keyPath: books.keyPath }; db.close(); return result
   })
-  expect(version).toEqual({ version: 9, unique: false, keyPath: ['library', 'id'] })
+  expect(version).toEqual({ version: 10, unique: false, keyPath: ['library', 'id'] })
   for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments']) before[name] = []
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)

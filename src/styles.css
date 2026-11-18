@@ -42,7 +42,7 @@ h1, h2, h3, p { margin: 0; }
 .mode-reference { --accent: var(--blue); --tint: var(--tint-blue); }
 
 /* The header is also the window title bar, so it keeps its dark colours in every theme. */
-.site-header { --ink: var(--bar); --paper: var(--bar-text); --edge: var(--bar); position: relative; color: var(--paper); background: var(--ink); }
+.site-header { --ink: var(--bar); --paper: var(--bar-text); --edge: var(--bar); position: relative; z-index: 3; color: var(--paper); background: var(--ink); }
 .site-header::after { content: ""; display: block; height: 6px; background: linear-gradient(90deg, var(--red) 0 34%, var(--yellow) 34% 67%, var(--blue) 67%); }
 .site-header :focus-visible { outline-color: var(--yellow); }
 .header-inner { container: header / inline-size; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; }
@@ -56,7 +56,8 @@ h1, h2, h3, p { margin: 0; }
 .site-header .button:hover { color: var(--ink); background: var(--yellow); border-color: var(--yellow); transform: none; }
 .trash-count { min-width: 1.5em; padding: 0 5px; border-radius: 20px; color: var(--ink); background: var(--yellow); font-size: .74rem; font-variant-numeric: tabular-nums; text-align: center; }
 .trash-count:empty { display: none; }
-.site-header .button:hover .trash-count { color: var(--yellow); background: var(--ink); }
+.trash-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); }
+.site-header .button:hover .trash-dot { outline: 1px solid var(--ink); }
 .page { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; overflow-x: clip; }
 .main-content { flex: 1; min-width: 0; padding-block: 34px calc(48px + var(--corner-tips-space, 0px)); }
 .main-content.home-main { display: flex; flex-direction: column; justify-content: center; padding-block: clamp(12px, 2vh, 24px); }
@@ -302,6 +303,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .settings-panel-title:focus { outline: none; }
 .settings-panel-desc { margin-top: 4px; color: var(--muted); font-size: .9rem; line-height: 1.5; }
 .settings-panel-body { display: grid; gap: 16px; }
+.settings-layout-link { justify-self: start; }
 .settings-card, .settings-subgroup { min-width: 0; padding: 18px 20px; border: 2px solid var(--ink); border-radius: 13px; background: var(--sheet); box-shadow: var(--shadow); }
 .settings-heading, .settings-group-title { margin-bottom: 12px; font-size: 1rem; font-weight: 850; }
 .settings-heading:focus { outline: none; }

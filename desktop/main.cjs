@@ -509,23 +509,10 @@ function applyWindowTheme() {
 }
 
 // Quick notes: a global shortcut opens a small window that writes straight into the library.
-let captureShortcut = capture.readShortcut(appData)
-let captureRegistered = false
+const captureShortcut = capture.createShortcutRegistration(appData, globalShortcut, openCapture)
 let captureWindow
 let recentWorks = []
 let pendingCommands = []
-
-function registerCapture() {
-  if (captureRegistered) globalShortcut.unregisterAll()
-  captureRegistered = false
-  if (captureShortcut === 'off') return
-  try { captureRegistered = globalShortcut.register(captureShortcut, openCapture) } catch { captureRegistered = false }
-}
-
-function captureState() {
-  return { shortcut: captureShortcut, options: capture.shortcuts, registered: captureShortcut === 'off' || captureRegistered,
-    labels: Object.fromEntries(capture.shortcuts.map((shortcut) => [shortcut, capture.shortcutLabel(shortcut)])) }
-}
 
 const quickNoteFlag = '--quick-note'
 
@@ -567,8 +554,9 @@ function flushCommands() {
 }
 
 function trayMenu() {
+  const { shortcut, registered } = captureShortcut.state()
   return Menu.buildFromTemplate(capture.trayTemplate({
-    t, shortcut: captureShortcut, recent: recentWorks, capture: openCapture, command,
+    t, shortcut: registered ? shortcut : 'off', recent: recentWorks, capture: openCapture, command,
     showFolder: () => {
       const folder = backupState().folder
       try { mkdirSync(folder, { recursive: true }) } catch { /* shell reports a missing folder */ }
@@ -581,15 +569,14 @@ function trayMenu() {
 
 ipcMain.handle('new-world:capture-state', (event) => {
   if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
-  return captureState()
+  return captureShortcut.state()
 })
 
 ipcMain.handle('new-world:set-capture-shortcut', (event, shortcut) => {
-  if (!trustedMainRenderer(event) || !capture.shortcuts.includes(shortcut)) throw new Error(t('main.invalidSettingsRequest'))
-  captureShortcut = capture.writeShortcut(appData, shortcut)
-  registerCapture()
-  refreshMenus()
-  return captureState()
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
+  const result = captureShortcut.change(shortcut)
+  if (result.ok) refreshMenus()
+  return result
 })
 
 ipcMain.handle('new-world:hide-capture', (event) => {
@@ -947,9 +934,9 @@ if (!app.requestSingleInstanceLock()) {
       ...(testConfirmTimeout ? { confirmTimeoutMs: testConfirmTimeout } : {}),
     })
     await aiBridge.sync()
+    captureShortcut.start()
     refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
-    registerCapture()
     desktopStarted = true
     const opened = openWindow()
     if (process.argv.includes(quickNoteFlag)) openCapture()

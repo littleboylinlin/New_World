@@ -6,7 +6,7 @@ import type { Book } from '../library'
 import { bookPath, button, element, icon } from '../ui'
 import type { IconName } from '../ui'
 import { offerUndo } from '../undo'
-import { appearanceMenu } from '../appearance-view'
+import { appearanceMenu, readingLayoutButton } from '../appearance-view'
 import { appearance, onAppearanceChange } from '../appearance'
 import { listIdeas, setIdeaUsed } from '../ideas'
 import type { Idea } from '../ideas'
@@ -151,7 +151,7 @@ export async function renderEdition(
   historyButton.append(element('span', '', t('revisions.button')), historyCount)
   historyButton.title = t('revisions.buttonTitle')
   const headerMeta = element('div', 'writing-header-meta')
-  headerMeta.append(counts, historyButton)
+  headerMeta.append(counts, readingLayoutButton(writing), historyButton)
   chapterHeader.append(chapterTitle, headerMeta)
   const toolbar = element('div', 'format-toolbar')
   toolbar.setAttribute('role', 'group')

@@ -134,7 +134,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 9)
+    const request = indexedDB.open('new-world-library', 10)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -187,6 +187,7 @@ export function openDatabase() {
       if (event.oldVersion < 9) {
         for (const name of taskStores) db.createObjectStore(name, { keyPath: 'id' })
       }
+      if (event.oldVersion < 10) request.transaction!.objectStore('trash').createIndex('byDeletedAt', 'deletedAt')
     }
     request.onsuccess = () => {
       const db = request.result

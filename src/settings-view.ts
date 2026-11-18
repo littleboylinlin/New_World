@@ -1,6 +1,6 @@
 import { changeLanguage, locale, t } from './i18n'
 import type { Locale } from '../shared/language-packs.mjs'
-import { button, element, icon } from './ui'
+import { button, element, icon, link } from './ui'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
@@ -127,6 +127,8 @@ export function mountSettingsView(
 
   // Category 1: General (Language & Close behavior)
   const generalBody = panelBodies.get('general')!
+  const layoutEntry = link('#/settings/appearance', t('settings.appearanceGroupTypography'), 'button button-quiet settings-layout-link')
+  generalBody.append(layoutEntry)
   const languageCard = createCard(generalBody, t('settings.language'), 'language-settings-title')
   const languageLabel = element('label', 'field-label')
   const language = element('select', 'editor-select')
@@ -216,6 +218,8 @@ export function mountSettingsView(
       if (locked) link.setAttribute('aria-disabled', 'true')
       else link.removeAttribute('aria-disabled')
     }
+    if (locked) layoutEntry.setAttribute('aria-disabled', 'true')
+    else layoutEntry.removeAttribute('aria-disabled')
   }
 
   function recordOrigin(hash: string) {
@@ -359,6 +363,7 @@ export function mountSettingsView(
     if (locked) return
     navigate(returnHash || '#/')
   })
+  layoutEntry.addEventListener('click', (event) => { if (locked) event.preventDefault() })
 
   nav.addEventListener('click', (event) => {
     const target = (event.target as HTMLElement | null)?.closest('a')

@@ -1,6 +1,6 @@
 import { expect, test } from './app-test.mjs'
 import { pixel } from './fixtures.mjs'
-import { caret, chapterText, expectCaretAligned, measureTyping, newWritingNovel, writingMotionFlow, setTypewriter, centerError, traceCaretMotion, expectSmoothTrace, expectSnapTrace } from './writing-motion-helpers.mjs'
+import { caret, chapterText, expectCaretAligned, measureTyping, newWritingNovel, writingMotionFlow, setTypewriter, centerError, traceCaretMotion, expectBoundedTrace, expectSnapTrace } from './writing-motion-helpers.mjs'
 
 test.beforeEach(async ({ page }) => { await page.goto('/') })
 
@@ -8,7 +8,7 @@ test('平滑光标、选区、失焦、输入法、减少动态效果和打字�
   await writingMotionFlow(page)
 })
 
-test('一次上屏超过 80px 仍按 0.35 逐帧追赶；滚动通知不打断，停稳后不跑循环', async ({ page }) => {
+test('快速输入时光标落后不超过一个字符宽度，滚动通知不中断追赶，停止后不跑循环', async ({ page }) => {
   await newWritingNovel(page)
   const text = chapterText(page)
   await text.fill('灯塔')
@@ -16,11 +16,11 @@ test('一次上屏超过 80px 仍按 0.35 逐帧追赶；滚动通知不打断�
   await expectCaretAligned(page)
   await page.evaluate(() => Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished)))
   const trace = await traceCaretMotion(page, async () => {
-    await page.keyboard.insertText('一二三四五六七八九十')
+    await page.keyboard.insertText('i'.repeat(24))
     await page.evaluate(() => document.dispatchEvent(new Event('scroll')))
   })
   expect(Math.abs(trace.target.x - trace.before.x)).toBeGreaterThan(80)
-  expectSmoothTrace(trace)
+  expectBoundedTrace(trace)
   await expect(caret(page)).toHaveCSS('transition-duration', '0s')
   await expect(page.locator('.save-status')).toHaveText('已保存')
   const frames = await page.evaluate(async () => {
@@ -32,6 +32,54 @@ test('一次上屏超过 80px 仍按 0.35 逐帧追赶；滚动通知不打断�
   })
   expect(frames).toBe(0)
 })
+
+for (const desktop of [false, true]) {
+  test(`按住键连续输入并换行时光标瞬移且保持两行余量（${desktop ? '桌面滚动区' : '网页'}）`, async ({ page }) => {
+    await page.setViewportSize({ width: 960, height: 590 })
+    if (desktop) await page.evaluate(() => document.documentElement.classList.add('desktop'))
+    await newWritingNovel(page)
+    const text = chapterText(page)
+    await text.fill('w'.repeat(290))
+    await text.evaluate((node) => node.editor.commands.focus('end'))
+    await expectCaretAligned(page)
+    await page.keyboard.down('w')
+    await expectCaretAligned(page)
+
+    const sample = () => text.evaluate(async (node) => {
+      await new Promise(requestAnimationFrame)
+      const coords = node.editor.view.coordsAtPos(node.editor.state.selection.head)
+      const paper = node.closest('.editor-paper')
+      const cursor = paper.querySelector('.writing-caret')
+      const rect = cursor.getBoundingClientRect()
+      const footerTop = document.querySelector('.site-footer').getBoundingClientRect().top
+      const toolbarBottom = document.querySelector('.editor-tools-row').getBoundingClientRect().bottom
+      const margin = 2 * parseFloat(getComputedStyle(node).lineHeight)
+      return {
+        gap: Math.hypot(rect.left - coords.left, rect.top - coords.top),
+        below: Math.min(footerTop, paper.getBoundingClientRect().bottom) - rect.bottom - margin,
+        above: rect.top - toolbarBottom,
+        scroll: document.scrollingElement.scrollTop + document.querySelector('#page').scrollTop,
+        head: node.editor.state.selection.head,
+      }
+    })
+    const before = await sample()
+    let last = before
+    try {
+      for (let i = 0; i < 75; i++) {
+        await page.keyboard.down('w')
+        last = await sample()
+        expect(last.head).toBe(before.head + i + 1)
+        expect(last.gap).toBeLessThan(1)
+        expect(last.below).toBeGreaterThanOrEqual(-1)
+        expect(last.above).toBeGreaterThanOrEqual(-1)
+      }
+    } finally {
+      await page.keyboard.up('w')
+    }
+    expect(last.scroll - before.scroll).toBeGreaterThan(40)
+    await expect(text.locator('p')).toHaveCount(1)
+  })
+}
 
 test('点击、方向键、撤销重做和跨行跳转直接定位，不经过中间位置', async ({ page }) => {
   await newWritingNovel(page)

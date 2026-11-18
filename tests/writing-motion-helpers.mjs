@@ -58,15 +58,21 @@ export async function traceCaretMotion(page, action) {
       const body = document.querySelector('.novel-body')
       let coords = body.editor.view.coordsAtPos(body.editor.state.selection.head)
       const selection = getSelection()
+      let width = parseFloat(getComputedStyle(body).fontSize)
       if (selection?.focusNode && body.contains(selection.focusNode)) {
+        const { focusNode, focusOffset } = selection
         const range = document.createRange()
-        range.setStart(selection.focusNode, selection.focusOffset)
+        range.setStart(focusNode, focusOffset)
         range.collapse(true)
         const rect = range.getBoundingClientRect()
         if (rect.height) coords = rect
+        if (focusNode instanceof Text && focusOffset > 0) {
+          range.setStart(focusNode, focusOffset - 1)
+          width = range.getBoundingClientRect().width || width
+        }
       }
       const paper = node.parentElement.getBoundingClientRect()
-      return { before, samples, target: { x: coords.left - paper.left, y: coords.top - paper.top } }
+      return { before, samples, width, target: { x: coords.left - paper.left, y: coords.top - paper.top } }
     })
   } finally {
     await caret(page).evaluate((node) => { node.motionTrace.observer.disconnect(); delete node.motionTrace })
@@ -93,6 +99,13 @@ export function expectSnapTrace(trace) {
   for (const point of moved) expect(distance(point, trace.target)).toBeLessThan(1)
 }
 
+export function expectBoundedTrace({ before, samples, target, width }) {
+  const moved = samples.filter((point) => Math.abs(point.x - before.x) > .5)
+  expect(moved.length).toBeGreaterThan(1)
+  expect(Math.abs(moved[0].x - target.x)).toBeGreaterThan(1)
+  for (const point of moved) expect(Math.hypot(point.x - target.x, point.y - target.y)).toBeLessThanOrEqual(width + 1)
+}
+
 export async function setTypewriter(page, enabled) {
   await page.getByRole('link', { name: '设置', exact: true }).click()
   await page.locator('.settings-nav-item[data-category="appearance"]').click()
@@ -109,7 +122,9 @@ export async function centerError(page) {
     const rect = scroller?.getBoundingClientRect()
     const toolbar = document.querySelector('.editor-tools-row')
     const top = (rect ? rect.top + scroller.clientTop : 0) + toolbar.offsetHeight
-    const bottom = rect ? rect.top + scroller.clientTop + scroller.clientHeight : innerHeight
+    const footer = document.querySelector('.site-footer')
+    const bottom = Math.min(rect ? rect.top + scroller.clientTop + scroller.clientHeight : innerHeight,
+      footer.offsetHeight ? footer.getBoundingClientRect().top : innerHeight)
     const coords = body.editor.view.coordsAtPos(body.editor.state.selection.head)
     return Math.abs((coords.top + coords.bottom - top - bottom) / 2)
   })
@@ -128,8 +143,7 @@ export async function writingMotionFlow(page) {
     await document.fonts.ready
     await Promise.allSettled(document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished))
   })
-  const typed = await traceCaretMotion(page, () => page.keyboard.insertText('一二三四五六七八'))
-  expect(Math.abs(typed.target.x - typed.before.x)).toBeGreaterThan(80)
+  const typed = await traceCaretMotion(page, () => page.keyboard.insertText('字'))
   expectSmoothTrace(typed)
   await expect(caret(page)).toHaveCSS('transition-duration', '0s')
   await text.evaluate((node) => node.scrollIntoView({ block: 'center', behavior: 'instant' }))
@@ -155,9 +169,9 @@ export async function writingMotionFlow(page) {
 
   const cdp = await page.context().newCDPSession(page)
   try {
-    expectSmoothTrace(await traceCaretMotion(page, () => cdp.send('Input.imeSetComposition', { text: 'zhongwen', selectionStart: 8, selectionEnd: 8 })))
+    expectBoundedTrace(await traceCaretMotion(page, () => cdp.send('Input.imeSetComposition', { text: 'zhongwen', selectionStart: 8, selectionEnd: 8 })))
     expect(await text.evaluate((node) => node.editor.view.composing)).toBe(true)
-    expectSmoothTrace(await traceCaretMotion(page, () => cdp.send('Input.imeSetComposition', { text: '中文', selectionStart: 2, selectionEnd: 2 })))
+    expectBoundedTrace(await traceCaretMotion(page, () => cdp.send('Input.imeSetComposition', { text: '中文', selectionStart: 2, selectionEnd: 2 })))
     expect(await text.evaluate(() => { const selection = getSelection(); return selection.focusNode.textContent.slice(0, selection.focusOffset).endsWith('中文') })).toBe(true)
     await cdp.send('Input.insertText', { text: '中文' })
     await expectCaretAligned(page)

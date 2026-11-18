@@ -25,7 +25,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   let frame = 0
   let needsMeasure = false
   let move: Move | undefined
-  let center = false
+  let reveal = false
   let composing = false
   let inputPending = false
   let typewriter = appearance().typewriter
@@ -37,6 +37,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement
   const scrollRoot = scroller ?? document.scrollingElement as HTMLElement
   const toolbar = paper.parentElement?.querySelector<HTMLElement>('.editor-tools-row')
+  const footer = document.querySelector<HTMLElement>('.site-footer')
 
   function viewport() {
     const visual = window.visualViewport
@@ -44,8 +45,9 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     const bottom = top + (visual?.height ?? innerHeight)
     const rect = scroller?.getBoundingClientRect()
     const visibleTop = Math.max(top, rect ? rect.top + scroller!.clientTop : top)
-    const visibleBottom = Math.min(bottom, rect ? rect.top + scroller!.clientTop + scroller!.clientHeight : bottom)
-    return { top: visibleTop + (toolbar?.offsetHeight ?? 0), bottom: visibleBottom }
+    const visibleBottom = Math.min(bottom, rect ? rect.top + scroller!.clientTop + scroller!.clientHeight : bottom,
+      footer?.offsetHeight ? footer.getBoundingClientRect().top : bottom)
+    return { top: visibleTop, bottom: visibleBottom }
   }
 
   function requestFrame() {
@@ -100,11 +102,38 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (rect.height) return { left: rect.left, top: rect.top, bottom: rect.bottom }
   }
 
+  function characterWidth(node: Node | null | undefined, offset: number, fallback: number) {
+    if (!(node instanceof Text) || !node.length || !body.contains(node)) return fallback
+    const range = document.createRange()
+    range.setStart(node, Math.max(0, offset - 1))
+    range.setEnd(node, Math.max(1, offset))
+    return range.getBoundingClientRect().width || fallback
+  }
+
+  function revealInput(coords: { top: number; bottom: number }, margin: number, inComposition: boolean) {
+    const visible = viewport()
+    const top = Math.max(visible.top, toolbar?.getBoundingClientRect().bottom ?? visible.top)
+    const height = coords.bottom - coords.top
+    const centeredTop = visible.top + (toolbar?.offsetHeight ?? 0)
+    const centerLine = typewriter && !inComposition && visible.bottom > centeredTop
+    const clearance = Math.max(0, centerLine ? (visible.bottom - centeredTop - height) / 2 : visible.bottom - top - height)
+    const lowerEdge = visible.bottom - Math.min(margin, clearance)
+    const scroll = scrollRoot.scrollTop
+    const delta = coords.top < top ? coords.top - top : Math.max(0, coords.bottom - lowerEdge)
+    if (Math.abs(delta) > .5) scrollRoot.scrollTo({ top: scroll + delta, behavior: 'instant' })
+    if (centerLine) {
+      const centerDelta = (coords.top + coords.bottom - centeredTop - visible.bottom) / 2
+      if (Math.abs(centerDelta - delta) > 2) {
+        scrollRoot.scrollTo({ top: scroll + centerDelta, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
+      }
+    }
+  }
+
   function measure() {
     const reason = move
     move = undefined
-    const shouldCenter = center
-    center = false
+    const shouldReveal = reveal
+    reveal = inputPending = false
     if (!editor.isEditable || !editor.view.hasFocus() || document.hidden) { hide(); return }
     const inComposition = composing || editor.view.composing
     const selection = editor.state.selection
@@ -124,7 +153,29 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     const height = (coords.bottom - coords.top) / scaleY
     const moved = !target || Math.abs(x - target.x) > .01 || Math.abs(y - target.y) > .01
     const sameLine = target && Math.abs(y - target.y) < precision
-    if (!position || reason === 'snap' || reducedMotion.matches || moved && (reason !== 'input' || !sameLine)) position = { x, y }
+    const snap = !position || reason === 'snap' || reducedMotion.matches || moved && (reason !== 'input' || !sameLine)
+    const focus = nativeSelection?.focusNode
+    const element = focus instanceof Element ? focus : focus?.parentElement
+    const text = element && body.contains(element) ? element : body
+    if (snap) position = { x, y }
+    if (shouldReveal || moved && !snap) {
+      const style = getComputedStyle(text)
+      const zoom = text.currentCSSZoom ?? 1
+      if (moved && !snap && position) {
+        const width = characterWidth(focus, nativeSelection?.focusOffset ?? 0, parseFloat(style.fontSize) * zoom) / scaleX
+        const distance = Math.hypot(x - position.x, y - position.y)
+        if (distance > width) {
+          position.x = x + (position.x - x) * width / distance
+          position.y = y + (position.y - y) * width / distance
+        }
+      }
+      if (shouldReveal) {
+        const margin = 2 * (parseFloat(style.lineHeight) * zoom || coords.bottom - coords.top)
+        const space = `${Math.ceil(margin / scaleY)}px`
+        if (paper.style.getPropertyValue('--writing-bottom-space') !== space) paper.style.setProperty('--writing-bottom-space', space)
+        revealInput(coords, margin, inComposition)
+      }
+    }
     target = { x, y }
     caret.style.height = `${height}px`
     caret.hidden = false
@@ -132,31 +183,23 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       // Restart the blink without forcing layout, keeping the caret lit while typing.
       for (const animation of caret.getAnimations({ subtree: true })) animation.startTime = document.timeline.currentTime
     }
-
-    if (typewriter && shouldCenter && !inComposition) {
-      const visible = viewport()
-      const delta = (coords.top + coords.bottom - visible.top - visible.bottom) / 2
-      if (visible.bottom > visible.top && Math.abs(delta) > 2) {
-        scrollRoot.scrollTo({ top: scrollRoot.scrollTop + delta, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
-      }
-    }
   }
 
   // Scrolling carries the caret with the paper. Unchanged local targets keep following.
   function layout() { schedule() }
   function resize() {
     const visible = viewport()
-    paper.style.setProperty('--typewriter-space', `${Math.max(0, (visible.bottom - visible.top) / 2)}px`)
+    paper.style.setProperty('--typewriter-space', `${Math.max(0, (visible.bottom - visible.top - (toolbar?.offsetHeight ?? 0)) / 2)}px`)
     layout()
   }
-  function cancelCenter() {
-    center = inputPending = false
+  function cancelReveal() {
+    reveal = inputPending = false
     // Stop an in-flight smooth scroll as soon as the user starts browsing.
     if (typewriter) scrollRoot.scrollTo({ top: scrollRoot.scrollTop, behavior: 'instant' })
   }
   function transaction({ transaction }: { transaction: Transaction }) {
     if (transaction.docChanged) {
-      center ||= inputPending
+      reveal ||= inputPending
       inputPending = false
     }
     if (isHistoryTransaction(transaction) || transaction.getMeta('pointer')) schedule('snap')
@@ -170,7 +213,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     resize()
   }
   function motionPreference() {
-    if (reducedMotion.matches) cancelCenter()
+    if (reducedMotion.matches) cancelReveal()
     schedule('snap')
   }
 
@@ -178,36 +221,36 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (event.isComposing || composing || editor.view.composing) return
     inputPending = !event.metaKey && !event.ctrlKey && !event.altKey
       && (event.key.length === 1 || ['Enter', 'Backspace', 'Delete'].includes(event.key))
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)
+    if (event.repeat || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)
       || (event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) schedule('snap')
   }, { capture: true, signal })
   const input = (event: Event) => {
     const inputType = (event as InputEvent).inputType ?? ''
     const typing = !inputType.startsWith('history') && (composing || editor.view.composing || /^(insert|delete)/.test(inputType))
     inputPending = typing
-    center ||= typing
+    reveal ||= typing
     schedule(typing ? 'input' : 'snap')
   }
   body.addEventListener('beforeinput', input, { signal })
   body.addEventListener('input', input, { signal })
   body.addEventListener('compositionstart', () => {
     composing = true
-    center = false
+    reveal = false
     schedule('input')
   }, { signal })
-  body.addEventListener('compositionupdate', () => schedule('input'), { signal })
+  body.addEventListener('compositionupdate', () => { reveal = true; schedule('input') }, { signal })
   body.addEventListener('compositionend', () => {
     composing = false
-    center = true
+    reveal = true
     schedule('input')
   }, { signal })
   body.addEventListener('focus', () => schedule('snap'), { signal })
-  body.addEventListener('blur', () => { center = inputPending = false; hide() }, { signal })
+  body.addEventListener('blur', () => { reveal = inputPending = false; hide() }, { signal })
   document.addEventListener('visibilitychange', layout, { signal })
   document.addEventListener('scroll', layout, { capture: true, passive: true, signal })
-  document.addEventListener('wheel', cancelCenter, { capture: true, passive: true, signal })
-  document.addEventListener('touchstart', cancelCenter, { capture: true, passive: true, signal })
-  document.addEventListener('pointerdown', () => { cancelCenter(); schedule('snap') }, { capture: true, passive: true, signal })
+  document.addEventListener('wheel', cancelReveal, { capture: true, passive: true, signal })
+  document.addEventListener('touchstart', cancelReveal, { capture: true, passive: true, signal })
+  document.addEventListener('pointerdown', () => { cancelReveal(); schedule('snap') }, { capture: true, passive: true, signal })
   document.addEventListener('selectionchange', () => schedule(composing || editor.view.composing ? 'input' : undefined), { signal })
   window.addEventListener('resize', resize, { signal })
   window.visualViewport?.addEventListener('resize', resize, { signal })
@@ -231,8 +274,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   preferences()
 
   return {
-    // ProseMirror's default scrolling would jump before the typewriter scroll begins.
-    handlesScroll: () => typewriter && inputPending && !composing && !editor.view.composing,
+    handlesScroll: () => inputPending && !composing && !editor.view.composing,
     refresh: preferences,
     destroy() {
       events.abort()
@@ -244,6 +286,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       caret.remove()
       paper.classList.remove('smooth-writing', 'typewriter-writing')
       paper.style.removeProperty('--typewriter-space')
+      paper.style.removeProperty('--writing-bottom-space')
     },
   }
 }

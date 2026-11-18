@@ -893,16 +893,36 @@ test('灵感速记：全局快捷键可在设置里更换，任务栏的速记�
     expect(await registered('Control+Alt+N')).toBe(true)
 
     const section = await openSettingsCategory(page, 'capture')
-    const shortcuts = section.getByRole('radiogroup', { name: '全局快捷键' })
-    await expect(shortcuts.getByRole('radio', { name: 'Ctrl + Alt + N' })).toBeChecked()
-    await shortcuts.getByRole('radio', { name: 'Alt + Shift + N' }).check()
+    const shortcut = section.getByRole('button', { name: /^全局快捷键 / })
+    await expect(shortcut).toHaveText('Ctrl + Alt + N')
+    await shortcut.click()
+    for (const key of ['Space', 'Shift+A', 'Shift+1']) {
+      await page.keyboard.press(key)
+      await expect(section.getByRole('alert')).toContainText('只用 Shift 时，请搭配 F1–F24。')
+      await expect(shortcut).toHaveAttribute('aria-pressed', 'true')
+    }
+    expect(await registered('Control+Alt+N')).toBe(true)
+    await page.keyboard.press('Alt+Shift+N')
+    await expect(shortcut).toHaveText('Alt + Shift + N')
     await expect.poll(() => registered('Alt+Shift+N')).toBe(true)
     expect(await registered('Control+Alt+N')).toBe(false)
     expect(await app.evaluate(shortcutFile)).toBe('Alt+Shift+N')
-    await shortcuts.getByRole('radio', { name: '关闭' }).check()
+    const occupied = 'Control+Shift+F9'
+    expect(await app.evaluate(({ globalShortcut }, value) => globalShortcut.register(value, () => {}), occupied)).toBe(true)
+    try {
+      await shortcut.click()
+      await page.keyboard.press(occupied)
+      await expect(section.getByRole('alert')).toHaveText('该组合键已被占用')
+      await expect(shortcut).toHaveText('Alt + Shift + N')
+      expect(await registered('Alt+Shift+N')).toBe(true)
+      expect(await app.evaluate(shortcutFile)).toBe('Alt+Shift+N')
+    } finally {
+      await app.evaluate(({ globalShortcut }, value) => globalShortcut.unregister(value), occupied)
+    }
+    await section.getByRole('button', { name: '关闭快捷键' }).click()
     await expect.poll(() => registered('Alt+Shift+N')).toBe(false)
     // Leave the shared profile as it was for the other desktop tests.
-    await shortcuts.getByRole('radio', { name: 'Ctrl + Alt + N' }).check()
+    await section.getByRole('button', { name: '恢复默认' }).click()
     await expect.poll(() => registered('Control+Alt+N')).toBe(true)
     expect(await app.evaluate(shortcutFile)).toBe('Control+Alt+N')
     await page.locator('.settings-back').click()

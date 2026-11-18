@@ -6,9 +6,28 @@ const { mkdirSync, readFileSync, renameSync, writeFileSync } = require('node:fs'
 const { join } = require('node:path')
 
 const configName = 'NewWorld-capture.json'
-/** Shortcuts offered in the settings. Control + Alt + N is ⌃⌥N on a Mac. */
-const shortcuts = ['Control+Alt+N', 'Control+Shift+Space', 'Alt+Shift+N', 'off']
-const defaultShortcut = shortcuts[0]
+const defaultShortcut = 'Control+Alt+N'
+const modifiers = ['Control', 'Alt', 'Shift', 'Command', 'Super']
+const functionKey = /^F(?:[1-9]|1\d|2[0-4])$/
+const namedKeys = new Set([
+  'Space', 'Tab', 'Return', 'Backspace', 'Escape', 'Delete', 'Insert', 'Home', 'End',
+  'PageUp', 'PageDown', 'Left', 'Right', 'Up', 'Down', 'Plus', 'PrintScreen',
+  'numadd', 'numsub', 'nummult', 'numdiv', 'numdec',
+])
+
+function normalizeShortcut(value) {
+  if (value === 'off') return value
+  if (typeof value !== 'string' || value.length > 48) return
+  const keys = value.split('+')
+  let key = keys.pop()
+  if (!keys.length || new Set(keys).size !== keys.length || !keys.every((part) => modifiers.includes(part))) return
+  if (keys.includes('Command') && keys.includes('Super')) return
+  if (key.length === 1) key = key.toUpperCase()
+  const isFunctionKey = functionKey.test(key)
+  if (keys.length === 1 && keys[0] === 'Shift' && !isFunctionKey) return
+  if (!isFunctionKey && !namedKeys.has(key) && !/^(?:[A-Z0-9`\-=\[\]\\;',./]|num[0-9])$/.test(key)) return
+  return [...modifiers.filter((part) => keys.includes(part)), key].join('+')
+}
 
 function configFile(appData) {
   return join(appData, configName)
@@ -17,14 +36,15 @@ function configFile(appData) {
 function readShortcut(appData) {
   try {
     const stored = JSON.parse(readFileSync(configFile(appData), 'utf8')).shortcut
-    return shortcuts.includes(stored) ? stored : defaultShortcut
+    return normalizeShortcut(stored) ?? defaultShortcut
   } catch {
     return defaultShortcut
   }
 }
 
-function writeShortcut(appData, shortcut) {
-  if (!shortcuts.includes(shortcut)) throw new Error('Invalid shortcut')
+function writeShortcut(appData, value) {
+  const shortcut = normalizeShortcut(value)
+  if (!shortcut) throw new Error('Invalid shortcut')
   mkdirSync(appData, { recursive: true })
   const path = configFile(appData)
   writeFileSync(`${path}.partial`, `${JSON.stringify({ shortcut })}\n`)
@@ -37,10 +57,52 @@ function shortcutLabel(shortcut, platform = process.platform) {
   if (shortcut === 'off') return ''
   const mac = platform === 'darwin'
   const names = mac
-    ? { Control: '⌃', Alt: '⌥', Shift: '⇧', Space: 'Space' }
-    : { Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Space: 'Space' }
+    ? { Control: '⌃', Alt: '⌥', Shift: '⇧', Command: '⌘', Super: '⌘' }
+    : { Control: 'Ctrl', Super: platform === 'win32' ? 'Win' : 'Super', Command: 'Cmd' }
   const parts = shortcut.split('+').map((part) => names[part] ?? part)
   return mac ? parts.join('') : parts.join(' + ')
+}
+
+function createShortcutRegistration(appData, globalShortcut, onCapture) {
+  let shortcut = readShortcut(appData)
+  let registered = false
+
+  function register(value) {
+    try {
+      return !globalShortcut.isRegistered(value) && globalShortcut.register(value, onCapture)
+    } catch {
+      return false
+    }
+  }
+
+  function state() {
+    return { shortcut, defaultShortcut, label: shortcutLabel(shortcut), registered: shortcut === 'off' || registered }
+  }
+
+  function change(value) {
+    const next = normalizeShortcut(value)
+    if (!next) return { ok: false, error: 'invalid' }
+    if (next === shortcut && (registered || next === 'off')) return { ok: true, state: state() }
+    const enabled = next !== 'off'
+    if (enabled && !register(next)) return { ok: false, error: 'taken' }
+    // Keep the previous binding until the new one is registered and saved.
+    try {
+      writeShortcut(appData, next)
+    } catch (error) {
+      if (enabled) globalShortcut.unregister(next)
+      throw error
+    }
+    if (registered) globalShortcut.unregister(shortcut)
+    shortcut = next
+    registered = enabled
+    return { ok: true, state: state() }
+  }
+
+  return {
+    start() { if (!registered && shortcut !== 'off') registered = register(shortcut) },
+    change,
+    state,
+  }
 }
 
 const workHash = /^#\/(original|reference)\/[0-9a-f-]{36}$/
@@ -98,4 +160,4 @@ function contextTemplate(params, { t, replace, learn, saveIdea }) {
   return items.length ? items : null
 }
 
-module.exports = { configFile, shortcuts, defaultShortcut, readShortcut, writeShortcut, shortcutLabel, recentWorks, trayTemplate, contextTemplate }
+module.exports = { configFile, readShortcut, writeShortcut, shortcutLabel, createShortcutRegistration, recentWorks, trayTemplate, contextTemplate }
