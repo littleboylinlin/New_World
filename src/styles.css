@@ -59,7 +59,7 @@ h1, h2, h3, p { margin: 0; }
 .site-header .button:hover .trash-count { color: var(--yellow); background: var(--ink); }
 .page { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; overflow-x: clip; }
 .main-content { flex: 1; min-width: 0; padding-block: 34px calc(48px + var(--corner-tips-space, 0px)); }
-.main-content.home-main { display: flex; flex-direction: column; justify-content: center; padding-block: clamp(12px, 2vh, 24px) calc(clamp(12px, 2vh, 24px) + var(--corner-tips-space, 0px)); }
+.main-content.home-main { display: flex; flex-direction: column; justify-content: center; padding-block: clamp(12px, 2vh, 24px); }
 .site-footer { position: sticky; bottom: 0; z-index: 3; flex: none; margin-top: auto; border-top: 2px solid var(--ink); background: var(--paper); color: var(--muted); font-size: .78rem; }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 10px 16px; min-height: 44px; padding-block: 6px; }
 .footer-nav { display: flex; flex: none; align-items: center; gap: 8px; }
