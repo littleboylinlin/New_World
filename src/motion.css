@@ -46,7 +46,6 @@
   .undo-toast.leaving { animation: 200ms ease-in both toast-out; }
   .pop { animation: 360ms var(--ease-pop) pop; }
 
-  .search-panel:not([hidden]) { animation: 220ms var(--ease-out) backwards drop-in; }
   .novel-body { animation: 300ms var(--ease-out) backwards fade-in; }
   .novel-body[data-turn="next"] { animation-name: chapter-next; }
   .novel-body[data-turn="previous"] { animation-name: chapter-previous; }

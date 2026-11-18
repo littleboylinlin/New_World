@@ -61,12 +61,52 @@
 .format-button[aria-pressed="true"] { border-color: var(--ink); color: var(--on-accent); background: var(--accent); }
 .format-button:disabled { opacity: .38; }
 .find-toggle { flex: none; border-color: var(--ink); background: var(--sheet); }
-.search-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 2px solid var(--ink); background: var(--find-bg); }
-.search-panel input { width: 10.5rem; max-width: 100%; min-height: 36px; padding-block: 4px; font-size: .86rem; }
-.search-panel .format-button { border-color: var(--ink); background: var(--sheet); }
-.search-panel .format-button:disabled { border-color: var(--disabled-border); }
-.match-count { min-width: 3.4em; color: var(--ink); text-align: center; }
-.found-text { color: var(--on-yellow); background: var(--yellow); box-shadow: 0 0 0 1px var(--ink); }
+.search-panel {
+  position: fixed;
+  z-index: 4;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 2px solid var(--pop-border);
+  border-radius: 10px;
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--pop-hard), 0 12px 26px -12px var(--pop-soft);
+  font-size: .84rem;
+}
+.find-input-row, .find-replace-row { display: grid; align-items: center; gap: 4px; }
+.find-input-row { grid-template-columns: minmax(0, 1fr) auto repeat(3, auto); }
+.find-replace-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.search-panel .title-input { min-height: 36px; padding: 4px 8px; border-radius: 7px; font-size: .9rem; }
+.match-count { min-width: 3.4em; color: var(--ink); text-align: center; white-space: nowrap; }
+.find-button { min-height: 34px; padding: 3px 7px; border: 1px solid var(--field-border); border-radius: 6px; background: var(--field); font-weight: 700; white-space: nowrap; }
+.find-icon { display: grid; place-items: center; width: 32px; }
+.find-button:disabled { color: var(--disabled-text); border-color: var(--disabled-border); background: var(--disabled-bg); }
+.find-button:not(:disabled):hover, .find-chapter-jump:not(:disabled):hover { background: var(--find-bg); }
+.find-button[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.find-button[aria-pressed="true"]:hover { color: var(--on-accent); background: var(--accent); }
+.find-options, .find-scopes { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.find-scopes { margin-inline-end: auto; }
+.find-option { min-width: 34px; }
+.find-word { text-decoration: underline; text-underline-offset: 3px; }
+.find-book { min-width: 0; border-top: 1px solid var(--hair); padding-top: 5px; }
+.find-summary { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; padding: 3px 5px; }
+.find-scan-status { color: var(--muted); font-size: .78rem; }
+.find-chapters { max-height: min(9.5rem, 25vh); margin: 0; padding: 0; overflow: auto; list-style: none; }
+.find-chapter-jump { display: flex; align-items: baseline; gap: 10px; width: 100%; min-height: 32px; padding: 5px 7px; border: 1px solid transparent; border-radius: 6px; background: transparent; text-align: start; }
+.find-chapter-jump:focus-visible { outline-offset: -2px; }
+.find-chapter-jump[aria-current] { border-color: var(--field-border); font-weight: 750; }
+.find-chapter-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.find-chapter-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+.found-text { color: var(--ink); background: color-mix(in srgb, var(--yellow) 38%, var(--surface)); }
+.found-text-current { color: var(--on-yellow); background: light-dark(#f1b72a, #f8c934); box-shadow: 0 0 0 1px var(--ink); }
+@media (pointer: coarse), (max-width: 600px) {
+  .search-panel .title-input { font-size: max(16px, 1rem); }
+  .find-icon { width: 36px; min-height: 36px; }
+}
 .editor-paper { position: relative; padding: clamp(14px, 3vw, 38px) clamp(11px, 2.4vw, 28px); border-radius: 0 0 10px 10px; background: var(--surface); }
 .novel-body { max-width: var(--text-width, 44rem); min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: var(--text-line-height, 1.95); overflow-wrap: anywhere; caret-color: var(--accent); }
 .novel-body::selection, .novel-body ::selection { background: var(--tint); }

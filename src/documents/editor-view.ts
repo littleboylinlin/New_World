@@ -19,7 +19,8 @@ import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './mo
 import { checkDocument, documentExtensions } from './schema'
 import { countChapterRevisions } from './revisions'
 import { showRevisionsDialog } from './revisions-view'
-import { replaceMatches, revealMatch, SearchHighlight, searchState, setSearch } from './search'
+import { SearchHighlight } from './search'
+import { mountFindPanel } from './find-panel'
 import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
 import { AnnotationDecorations, documentSurface } from '../annotations/surface'
 import { readingAnnotations } from '../annotations/view'
@@ -77,7 +78,6 @@ export async function renderEdition(
   let timer: number | undefined
   let pending: Promise<boolean> | undefined
   let selectionRequest = 0
-  let activeMatch = 0
   let contentsTimer: number | undefined
   let formatFrame = 0
   let currentWords = 0
@@ -237,24 +237,6 @@ export async function renderEdition(
   sideTools.append(ideasButton, focusButton, appearanceMenu(), findButton)
   toolsRow.append(toolbar, sideTools, imageInput)
 
-  const searchBar = element('div', 'search-panel')
-  searchBar.hidden = true
-  const query = element('input', 'title-input')
-  query.type = 'search'
-  query.setAttribute('aria-label', t('editor.findText'))
-  query.placeholder = t('editor.findInChapter')
-  query.maxLength = 512
-  const replacement = element('input', 'title-input')
-  replacement.setAttribute('aria-label', t('editor.replaceWith'))
-  replacement.placeholder = t('editor.replaceWith')
-  const nextMatch = button(t('editor.nextMatch'), 'format-button')
-  const previousMatch = button(t('editor.previousMatch'), 'format-button')
-  const replace = button(t('editor.replace'), 'format-button')
-  const replaceAll = button(t('editor.replaceAll'), 'format-button')
-  const matchCount = element('span', 'match-count')
-  matchCount.setAttribute('role', 'status')
-  const closeSearch = button(t('editor.closeFind'), 'format-button')
-  searchBar.append(query, previousMatch, nextMatch, matchCount, replacement, replace, replaceAll, closeSearch)
   const annotationTools = element('div')
   const paper = element('div', 'editor-paper')
   // The text inherits spell checking from here; the rest of the page never checks spelling.
@@ -272,10 +254,14 @@ export async function renderEdition(
   ideasCard.append(ideasSummary, ideasPanel)
   const side = element('div', 'edition-side')
   side.append(navigation, ideasCard)
-  writing.append(chapterHeader, toolsRow, searchBar, annotationTools, paper)
+  writing.append(chapterHeader, toolsRow, annotationTools, paper)
   layout.append(side, writing)
   workspace.append(top, error, recover, information, layout)
   host.replaceChildren(workspace)
+  const find = mountFindPanel({
+    writing, toolbar: toolsRow, trigger: findButton, getEditor: () => editor,
+    getEdition: () => edition, getChapterId: () => chapter.id, switchChapter, signal,
+  })
 
   function report(cause: unknown, saving = false) {
     error.textContent = t('common.concatenate', [saving ? t('editor.saveFailed') : '', storageError(cause)])
@@ -300,7 +286,6 @@ export async function renderEdition(
       formatFrame = 0
       if (signal.aborted || editor.isDestroyed) return
       refreshFormat()
-      refreshSearch()
     })
   }
 
@@ -379,7 +364,6 @@ export async function renderEdition(
       return !node.isTextblock
     })
     if (links.childNodes.length) outline.append(element('strong', '', t('editor.sectionsInThisChapter')), links)
-    refreshSearch()
   }
 
   function refreshFormat() {
@@ -387,17 +371,6 @@ export async function renderEdition(
     heading.value = editor.isActive('heading') ? String(editor.getAttributes('heading').level) : '0'
     undo.disabled = !editor.can().undo()
     redo.disabled = !editor.can().redo()
-  }
-
-  function refreshSearch(reveal = false) {
-    const { matches, overflow } = searchState(editor)
-    activeMatch = Math.min(activeMatch, Math.max(0, matches.length - 1))
-    matchCount.textContent = matches.length ? `${activeMatch + 1} / ${overflow ? '≥' : ''}${matches.length}` : query.value ? t('editor.noMatches') : ''
-    previousMatch.disabled = nextMatch.disabled = !matches.length
-    replacement.hidden = replace.hidden = replaceAll.hidden = !editing
-    replace.disabled = !matches.length
-    replaceAll.disabled = !matches.length || overflow
-    if (reveal && matches.length) revealMatch(editor, matches[activeMatch])
   }
 
   function refreshChapters() {
@@ -435,11 +408,12 @@ export async function renderEdition(
       kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id,
       chapterId: chapter.id, sourceRevision: chapter.revision,
     }, signal)
-    refreshSearch()
+    find.modeChanged()
   }
 
   function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous') {
     checkDocument(next.content)
+    if (editor) find.beforeChapterChange()
     destroyAnnotations?.()
     destroyAnnotations = undefined
     caret?.destroy()
@@ -451,7 +425,6 @@ export async function renderEdition(
     paper.replaceChildren()
     chapter = next
     change = saved = 0
-    activeMatch = 0
     status.textContent = t('editor.saved')
     error.hidden = recover.hidden = true
     editor = new Editor({
@@ -476,6 +449,7 @@ export async function renderEdition(
         window.addEventListener('beforeunload', unsaved)
         scheduleSave()
         scheduleContents()
+        find.documentChanged()
       },
     })
     editor.on('transaction', scheduleFormat)
@@ -487,11 +461,11 @@ export async function renderEdition(
       if (change !== saved) { scheduleSave(); scheduleContents() }
     })
     caret = writingMotion(editor, paper)
-    setSearch(editor, query.value)
     applyMode()
     refreshChapters()
     refreshContents()
     refreshFormat()
+    find.chapterMounted()
     void refreshHistoryCount()
   }
 
@@ -506,17 +480,22 @@ export async function renderEdition(
     }
   }
 
-  async function switchChapter(id: string) {
+  async function switchChapter(id: string, wanted: () => boolean = () => true) {
     const request = ++selectionRequest
-    if (id === chapter.id) return
+    const current = () => !signal.aborted && request === selectionRequest && wanted()
+    if (id === chapter.id) return current()
     try {
-      if (!await flush()) return
+      if (!await flush() || !current()) return false
       const next = await readChapter(edition, id)
-      if (!await flush() || signal.aborted || request !== selectionRequest) return
+      if (!await flush() || !current()) return false
       const order = (target: string) => edition.chapters.findIndex((entry) => entry.id === target)
       mountChapter(next, order(id) < order(chapter.id) ? 'previous' : 'next')
       if (matchMedia('(max-width: 779px)').matches) navigation.open = false
-    } catch (cause) { report(cause) }
+      return true
+    } catch (cause) {
+      report(cause)
+      return false
+    }
   }
 
   async function alter(changeRequest: Parameters<typeof changeChapters>[1]) {
@@ -525,12 +504,14 @@ export async function renderEdition(
     edition = result.edition
     if (result.selected !== chapter.id) await switchChapter(result.selected)
     else refreshChapters()
+    find.chaptersChanged()
     if (result.trashed) offerUndo(result.trashed, (restored) => {
       if (signal.aborted || !restored.edition) return
       const [record] = restored.entry.chapters
       edition = restored.edition
       words?.set(record.id, wordCount(record.content))
       refreshChapters()
+      find.chaptersChanged()
     })
   }
 
@@ -547,31 +528,6 @@ export async function renderEdition(
     if (index < 0 && (!selectedIds || selectedIds.has(visibleId))) selection.push(visible)
     return selection
   }
-
-  function changeMatch(offset: number) {
-    const length = searchState(editor).matches.length
-    if (!length) return
-    activeMatch = (activeMatch + offset + length) % length
-    refreshSearch(true)
-  }
-
-  findButton.addEventListener('click', () => { searchBar.hidden = false; query.focus(); query.select() })
-  query.addEventListener('input', () => { activeMatch = 0; setSearch(editor, query.value); refreshSearch(true) })
-  query.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); changeMatch(event.shiftKey ? -1 : 1) }
-    if (event.key === 'Escape') closeSearch.click()
-  })
-  nextMatch.addEventListener('click', () => changeMatch(1))
-  previousMatch.addEventListener('click', () => changeMatch(-1))
-  closeSearch.addEventListener('click', () => { searchBar.hidden = true; query.value = ''; setSearch(editor, ''); findButton.focus() })
-  replace.addEventListener('click', () => {
-    const match = searchState(editor).matches[activeMatch]
-    if (editing && match) { replaceMatches(editor, [match], replacement.value); refreshSearch() }
-  })
-  replaceAll.addEventListener('click', () => {
-    const { matches, overflow } = searchState(editor)
-    if (editing && !overflow) { replaceMatches(editor, matches, replacement.value); refreshSearch() }
-  })
 
   // Focus mode hides everything around the text until it is turned off or the page changes.
   let focused = false
@@ -746,7 +702,6 @@ export async function renderEdition(
   window.addEventListener('keydown', (event) => {
     if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.isComposing || document.querySelector('dialog[open]')) return
     if (event.key.toLowerCase() === 's') { event.preventDefault(); void flush() }
-    if (event.key.toLowerCase() === 'f') { event.preventDefault(); findButton.click() }
   }, { signal })
   document.addEventListener('visibilitychange', () => { if (document.hidden) void flush() }, { signal })
   window.addEventListener('pagehide', () => { void flush() }, { signal })
