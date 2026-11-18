@@ -1,5 +1,5 @@
 import { expect, test } from './app-test.mjs'
-import { caret, chapterText, expectCaretAligned, newWritingNovel, traceCaretMotion, expectSnapTrace } from './writing-motion-helpers.mjs'
+import { caret, chapterText, expectCaretAligned, newWritingNovel, traceCaretMotion, expectSmoothTrace, expectSnapTrace } from './writing-motion-helpers.mjs'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -350,26 +350,55 @@ test('输入法（CompositionEvent）：正文拼写框随拼音更新，上屏�
 test.describe('触屏（iPhone 尺寸）@webkit', () => {
   test.use({ viewport: { width: 390, height: 664 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true })
 
-  test('触屏保留原生光标，只加拼写框', async ({ page }) => {
+  test('触屏正文打字时光标滑动，长按拖选时交给系统，拼写框仍生效', async ({ page }) => {
     await newWritingNovel(page)
     const text = chapterText(page)
     await text.fill('灯塔旁的一封信。')
     await text.evaluate((node) => node.editor.commands.focus('end'))
-    await expect(page.locator('.editor-paper')).toHaveClass(/native-caret/)
+    await expectCaretAligned(page)
+    const trace = await traceCaretMotion(page, () => page.keyboard.insertText('雾'))
+    expectSmoothTrace(trace)
+    expect(await text.evaluate((node) => getComputedStyle(node).caretColor)).toBe('rgba(0, 0, 0, 0)')
+
+    // WebKit automation cannot render the OS magnifier. Drive the touch lifecycle and DOM
+    // selection, then check the caret handoff in both directions.
+    const touch = (type, x) => text.evaluate((node, { type, x }) => {
+      if (type === 'touchmove') {
+        const content = node.querySelector('p').firstChild
+        getSelection().setBaseAndExtent(content, 0, content, 3)
+      }
+      const contact = { identifier: 1, target: node, clientX: x, clientY: 48 }
+      const event = new Event(type, { bubbles: true })
+      Object.defineProperties(event, {
+        touches: { value: type === 'touchend' ? [] : [contact] },
+        changedTouches: { value: [contact] },
+      })
+      node.dispatchEvent(event)
+    }, { type, x })
+    await touch('touchstart', 48)
     await expect(caret(page)).toBeHidden()
+    await touch('touchmove', 96)
     expect(await text.evaluate((node) => getComputedStyle(node).caretColor)).not.toBe('rgba(0, 0, 0, 0)')
+    await expect(caret(page)).toBeHidden()
+    await touch('touchend', 96)
+    await expect(caret(page)).toBeHidden()
+    await text.evaluate((node) => node.editor.commands.focus('end'))
+    await expectCaretAligned(page)
+    expect(await text.evaluate((node) => getComputedStyle(node).caretColor)).toBe('rgba(0, 0, 0, 0)')
     const { states } = await composeInEditor(text, ['deng'], '灯')
     expect(states[0].reading).toBe('deng')
-    await expect.poll(() => plain(text)).toBe('灯塔旁的一封信。灯')
+    await expect.poll(() => plain(text)).toBe('灯塔旁的一封信。雾灯')
+  })
 
+  test('触屏输入框保留平滑光标和拼写框', async ({ page }) => {
     await page.goto('/#/ideas')
     const box = page.getByRole('textbox', { name: '灵感', exact: true })
     await box.tap()
     await expect(box).toBeFocused()
-    await expect(box).not.toHaveAttribute('data-typing-caret')
-    expect(await box.evaluate((node) => getComputedStyle(node).caretColor)).not.toBe('rgba(0, 0, 0, 0)')
+    await expect(box).toHaveAttribute('data-typing-caret', '')
+    expect(await box.evaluate((node) => getComputedStyle(node).caretColor)).toBe('rgba(0, 0, 0, 0)')
     await page.keyboard.insertText('雾里')
-    await expect(page.locator('.typing-overlay .typing-caret')).toBeHidden()
+    await expect(page.locator('.typing-overlay .typing-caret')).toBeVisible()
     const { beginComposition, updateComposition, endComposition, readingBoxes, expectReadingBox } = await import('./typing-helpers.mjs')
     await beginComposition(box)
     await updateComposition(box, 'qiao')

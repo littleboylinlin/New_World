@@ -189,4 +189,3 @@
 
 .export-work-options { margin-block-start: 12px; padding: 6px; border: 1px solid var(--field-border); border-radius: 9px; }
 .export-work-options legend { font-size: .88rem; font-weight: 700; }
-.manage-dialog:has(.export-layout) { overflow: auto; }

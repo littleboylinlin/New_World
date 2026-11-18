@@ -4,9 +4,10 @@ import type { Transaction } from '@tiptap/pm/state'
 import { isHistoryTransaction } from '@tiptap/pm/history'
 import { appearance, onAppearanceChange } from '../appearance'
 import { reducedMotion } from '../motion'
-import { caretFollower, nativeCaret } from '../typing/caret-motion'
+import { caretFollower } from '../typing/caret-motion'
 import type { CaretMove } from '../typing/caret-motion'
 import { editorComposition } from '../typing/composition'
+import { touchSelection } from '../typing/touch-selection'
 
 const precision = .5
 type Move = 'input' | 'commit' | 'snap'
@@ -74,6 +75,15 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     follower.reset()
   }
 
+  const selectingByTouch = touchSelection(body, (active) => {
+    paper.classList.toggle('native-caret', active)
+    if (active) hide()
+    else schedule('snap')
+  }, () => {
+    const selection = body.ownerDocument.getSelection()
+    return !!selection?.anchorNode && body.contains(selection.anchorNode) && !selection.isCollapsed
+  }, signal)
+
   function tick() {
     frame = 0
     if (needsMeasure) {
@@ -137,6 +147,8 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       return
     }
 
+    if (selectingByTouch()) { hide(); return }
+
     const coords = inComposition && compositionCoords() || editor.view.coordsAtPos(selection.head)
     const rect = paper.getBoundingClientRect()
     if (!rect.width || !rect.height) { hide(); return }
@@ -169,7 +181,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     }
     target = { x, y }
     caret.style.height = `${height}px`
-    caret.hidden = nativeCaret.matches
+    caret.hidden = false
     if (moved) {
       // Restart the blink without forcing layout, keeping the caret lit while typing.
       for (const animation of caret.getAnimations({ subtree: true })) animation.startTime = document.timeline.currentTime
@@ -205,7 +217,6 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   function preferences() {
     typewriter = appearance().typewriter
     paper.classList.toggle('typewriter-writing', typewriter && editor.isEditable)
-    paper.classList.toggle('native-caret', nativeCaret.matches)
     resize()
   }
   function motionPreference() {
@@ -270,7 +281,6 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (event.target instanceof Element && (event.target.contains(paper) || paper.contains(event.target))) layout()
   }, { signal })
   reducedMotion.addEventListener('change', motionPreference, { signal })
-  nativeCaret.addEventListener('change', preferences, { signal })
   const stopFollowing = onAppearanceChange(preferences)
   editor.on('transaction', transaction)
   preferences()

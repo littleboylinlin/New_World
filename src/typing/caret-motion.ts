@@ -89,6 +89,3 @@ export function caretFollower(paint: (point: CaretPoint) => void) {
     destroy() { settle() },
   }
 }
-
-/** Touch screens draw their own caret and selection handles; keep those native. */
-export const nativeCaret = matchMedia('(hover: none) and (pointer: coarse)')

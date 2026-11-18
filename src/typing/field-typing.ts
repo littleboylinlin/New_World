@@ -1,8 +1,9 @@
 import './typing.css'
 import { reducedMotion } from '../motion'
-import { caretFollower, nativeCaret } from './caret-motion'
+import { caretFollower } from './caret-motion'
 import type { CaretMove } from './caret-motion'
 import './composition'
+import { touchSelection } from './touch-selection'
 
 /**
  * Smooth carets and reading boxes for every native text field, installed once for the document.
@@ -80,11 +81,16 @@ function session(field: Field) {
   let previous: Measure | undefined
   const follower = caretFollower((point) => { caret.style.transform = `translate(${point.x}px, ${point.y}px)` })
 
-  function smooth() { return !nativeCaret.matches }
-  function paintNativeCaret() {
-    if (smooth()) field.dataset.typingCaret = ''
-    else delete field.dataset.typingCaret
-  }
+  const selectingByTouch = touchSelection(field, (active) => {
+    if (active) {
+      caret.hidden = true
+      follower.reset()
+      delete field.dataset.typingCaret
+    } else {
+      field.dataset.typingCaret = ''
+      schedule('snap')
+    }
+  }, () => !composing() && field.selectionStart !== field.selectionEnd, signal)
 
   function schedule(next?: Reason) {
     if (next && (!reason || rank[next] > rank[reason])) reason = next
@@ -196,7 +202,7 @@ function session(field: Field) {
     if (!next) { caret.hidden = true; return }
     paintBoxes(next.boxes)
     const collapsed = field.selectionStart === field.selectionEnd
-    if (!smooth() || !collapsed && !composing()) {
+    if (selectingByTouch() || !collapsed && !composing()) {
       caret.hidden = true
       follower.reset()
       previous = next
@@ -269,10 +275,9 @@ function session(field: Field) {
   document.addEventListener('animationend', relayout, { capture: true, signal })
   document.addEventListener('transitionend', relayout, { capture: true, signal })
   reducedMotion.addEventListener('change', () => schedule('snap'), { signal })
-  nativeCaret.addEventListener('change', () => { paintNativeCaret(); schedule('snap') }, { signal })
   const observer = new ResizeObserver(relayout)
   observer.observe(field)
-  paintNativeCaret()
+  field.dataset.typingCaret = ''
   schedule('snap')
 
   return () => {
