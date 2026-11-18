@@ -1172,5 +1172,9 @@
   "navigation.collapse": "Collapse sidebar",
   "notes.search": "Search idea text",
   "notes.noMatch": "No matching ideas.",
-  "notes.tasks": "Tasks"
+  "notes.tasks": "Tasks",
+  "settings.loginItem": "Start in the background at login",
+  "settings.loginItemHint": "Use the shortcut to capture ideas and reminders without opening New World yourself.",
+  "settings.loginApproval": "Allow New World in Login Items in macOS System Settings.",
+  "settings.loginReadError": "Could not read the system login item setting."
 }

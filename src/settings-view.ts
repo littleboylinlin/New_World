@@ -174,6 +174,47 @@ export function mountSettingsView(
   error.hidden = true
   windowCard.append(options, badge, state, error)
 
+  let refreshLogin: (() => Promise<void>) | undefined
+  if (desktop?.getLoginItem && desktop.setLoginItem && ['darwin', 'win32'].includes(desktop.platform)) {
+    const { getLoginItem, setLoginItem } = desktop
+    const card = createCard(generalBody)
+    const label = element('label', 'appearance-check')
+    const toggle = element('input')
+    toggle.type = 'checkbox'
+    toggle.setAttribute('role', 'switch')
+    toggle.disabled = true
+    label.append(toggle, t('settings.loginItem'))
+    const status = element('p', 'settings-state')
+    status.setAttribute('role', 'status')
+    card.append(label, element('p', 'dialog-help', t('settings.loginItemHint')), status)
+    let request = 0
+    let saving = false
+    function showLogin(state: LoginItemState) {
+      toggle.checked = state !== 'off'
+      status.textContent = state === 'approval' ? t('settings.loginApproval') : ''
+    }
+    refreshLogin = async () => {
+      if (saving) return
+      const turn = ++request
+      try {
+        const state = await getLoginItem()
+        if (turn === request) { showLogin(state); toggle.disabled = false }
+      } catch {
+        if (turn === request) status.textContent = t('settings.loginReadError')
+      }
+    }
+    toggle.onchange = async () => {
+      request++
+      toggle.disabled = saving = true
+      try {
+        showLogin(await setLoginItem(toggle.checked))
+      } catch {
+        toggle.checked = !toggle.checked
+        status.textContent = t('settings.settingsCouldNotBeSavedTryAgain')
+      } finally { toggle.disabled = saving = false }
+    }
+  }
+
   // Category 2: Appearance
   mountAppearanceSettings(panelBodies.get('appearance')!)
 
@@ -236,6 +277,7 @@ export function mountSettingsView(
     void refreshStorage()
     void refreshBackups()
     void refreshCapture()
+    void refreshLogin?.()
     void refreshAi()
   }
 

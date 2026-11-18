@@ -1172,5 +1172,9 @@
   "navigation.collapse": "收起侧栏",
   "notes.search": "搜索灵感正文",
   "notes.noMatch": "没有找到匹配的灵感。",
-  "notes.tasks": "任务"
+  "notes.tasks": "任务",
+  "settings.loginItem": "开机时在后台启动",
+  "settings.loginItemHint": "开启后，不用手动打开 New World 也能用快捷键记录灵感和提醒。",
+  "settings.loginApproval": "请在 macOS「系统设置」的「登录项」中允许 New World。",
+  "settings.loginReadError": "无法读取系统登录项设置。"
 }
