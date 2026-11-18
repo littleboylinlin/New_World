@@ -105,6 +105,54 @@ function heading(text: string) {
   return element('h4', 'appearance-heading', text)
 }
 
+function readingLayoutControls(persistent = false) {
+  return [
+    heading(t('appearance.textSize')), sizeControls(true, persistent),
+    heading(t('appearance.lineHeight')),
+    radioGroup(t('appearance.lineHeight'), 'settings-options choice-options', lineHeights,
+      (value) => [element('span', '', lineHeightLabel(value))], (value) => updateAppearance({ lineHeight: value }), (value) => value.lineHeight, persistent),
+    heading(t('appearance.paragraphSpacing')),
+    radioGroup(t('appearance.paragraphSpacing'), 'settings-options choice-options', paragraphSpacings,
+      (value) => [element('span', '', paragraphLabel(value))], (value) => updateAppearance({ paragraph: value }), (value) => value.paragraph, persistent),
+    heading(t('appearance.indent')),
+    radioGroup(t('appearance.indent'), 'settings-options', switches,
+      (value) => [element('span', '', value === 'on' ? t('appearance.indentOn') : t('appearance.indentOff'))],
+      (value) => updateAppearance({ indent: value === 'on' }), (value) => value.indent ? 'on' : 'off', persistent),
+    heading(t('appearance.textWidth')),
+    radioGroup(t('appearance.textWidth'), 'settings-options choice-options', textWidths,
+      (value) => [element('span', '', widthLabel(value))], (value) => updateAppearance({ width: value }), (value) => value.width, persistent),
+  ]
+}
+
+export function readingLayoutButton(host: HTMLElement) {
+  const title = t('settings.appearanceGroupTypography')
+  const open = button(t('appearance.layout'), 'button button-quiet button-small')
+  open.title = title
+  open.setAttribute('aria-label', title)
+  open.setAttribute('aria-haspopup', 'dialog')
+  let dialog: HTMLDialogElement | undefined
+  open.addEventListener('click', () => {
+    if (!dialog) {
+      const panel = element('dialog', 'manage-dialog reading-layout-dialog')
+      const content = element('div', 'manage-form')
+      const header = element('div', 'modal-head')
+      const label = element('h2', '', title)
+      label.id = `reading-layout-${++groups}`
+      panel.setAttribute('aria-labelledby', label.id)
+      const close = button(t('common.close'), 'button button-quiet button-small')
+      close.autofocus = true
+      close.addEventListener('click', () => panel.close())
+      header.append(label, close)
+      content.append(header, ...readingLayoutControls())
+      panel.append(content)
+      host.append(panel)
+      dialog = panel
+    }
+    dialog.showModal()
+  })
+  return open
+}
+
 const spellingErrors: Record<SpellingError, string> = {
   name: 'spelling.errorName', bundled: 'spelling.errorBundled', size: 'spelling.errorSize', format: 'spelling.errorFormat',
   link: 'spelling.errorLink', download: 'spelling.errorDownload', busy: 'spelling.errorBusy', locked: 'spelling.errorLocked',
@@ -232,20 +280,7 @@ export function mountAppearanceSettings(section: HTMLElement) {
   const typographyGroup = element('div', 'settings-subgroup')
   typographyGroup.append(
     element('h3', 'settings-group-title', t('settings.appearanceGroupTypography')),
-    heading(t('appearance.textSize')), sizeControls(true, true),
-    heading(t('appearance.lineHeight')),
-    radioGroup(t('appearance.lineHeight'), 'settings-options choice-options', lineHeights,
-      (value) => [element('span', '', lineHeightLabel(value))], (value) => updateAppearance({ lineHeight: value }), (value) => value.lineHeight, true),
-    heading(t('appearance.paragraphSpacing')),
-    radioGroup(t('appearance.paragraphSpacing'), 'settings-options choice-options', paragraphSpacings,
-      (value) => [element('span', '', paragraphLabel(value))], (value) => updateAppearance({ paragraph: value }), (value) => value.paragraph, true),
-    heading(t('appearance.indent')),
-    radioGroup(t('appearance.indent'), 'settings-options', switches,
-      (value) => [element('span', '', value === 'on' ? t('appearance.indentOn') : t('appearance.indentOff'))],
-      (value) => updateAppearance({ indent: value === 'on' }), (value) => value.indent ? 'on' : 'off', true),
-    heading(t('appearance.textWidth')),
-    radioGroup(t('appearance.textWidth'), 'settings-options choice-options', textWidths,
-      (value) => [element('span', '', widthLabel(value))], (value) => updateAppearance({ width: value }), (value) => value.width, true),
+    ...readingLayoutControls(true),
   )
 
   const spellingGroup = element('div', 'settings-subgroup')
@@ -270,7 +305,7 @@ export function mountAppearanceSettings(section: HTMLElement) {
     element('h3', 'settings-group-title', t('appearance.writing')),
     typewriter, element('p', 'dialog-help', t('appearance.typewriterHint')),
   )
-  section.append(themeGroup, typographyGroup, writingGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
+  section.append(typographyGroup, themeGroup, writingGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
 }
 
 /** The "Aa" button in the reading and writing toolbars, with a small appearance panel. */

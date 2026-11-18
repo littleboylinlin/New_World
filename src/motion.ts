@@ -11,7 +11,6 @@ function shelfOf(hash: string) {
   return hash.match(/^#\/(original|reference)\/?$/)?.[1]
 }
 
-// Between the home page and a shelf, the library name flies from its card to the page heading or back.
 function libraryName(view: HTMLElement, library: string) {
   return view.querySelector<HTMLElement>(`.shelf-${library} .card-copy h2, .shelf-page .page-heading h1`)
 }
@@ -38,16 +37,23 @@ function fly(from: DOMRect, target: HTMLElement) {
   const land = () => {
     ghost.remove()
     target.classList.remove('name-landing')
+    if (cancelFlight === cancel) cancelFlight = undefined
   }
+  const cancel = () => { flight.cancel(); land() }
+  cancelFlight = cancel
   flight.finished.then(land, land)
 }
 
+let cancelFlight: (() => void) | undefined
 let travelling = false
+
+reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancelFlight?.() })
 
 // Swap the page at once, then let the new page animate in. Nothing waits on the animation.
 export function changeView(view: HTMLElement, from: string, to: string, render: () => void) {
+  cancelFlight?.()
   const direction = depth(to) > depth(from) ? 'forward' : depth(to) < depth(from) ? 'back' : 'level'
-  const library = depth(from) === 0 ? shelfOf(to) : depth(to) === 0 ? shelfOf(from) : undefined
+  const library = depth(from) === 0 ? shelfOf(to) : undefined
   const start = !reducedMotion.matches && library ? libraryName(view, library)?.getBoundingClientRect() : undefined
   delete view.dataset.enter
   travelling = !!start

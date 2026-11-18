@@ -165,6 +165,7 @@
 .appearance-font .editor-select { width: 100%; }
 .appearance-more { justify-self: center; padding: 4px 8px; border: 0; border-radius: 6px; color: var(--muted); background: none; font-size: .84rem; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
 .appearance-more:hover { color: var(--ink); }
+.reading-layout-dialog { overflow: auto; }
 
 @media (max-width: 520px) {
   .settings-options.theme-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }

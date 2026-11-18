@@ -45,7 +45,7 @@ function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (messa
   return row
 }
 
-export function renderTrash(root: HTMLElement, signal: AbortSignal) {
+export function renderTrash(root: HTMLElement, signal: AbortSignal, viewed: (time: number) => void) {
   const panel = element('section', 'trash-page')
   const nav = element('nav', 'breadcrumbs')
   nav.setAttribute('aria-label', t('trash.currentLocation'))
@@ -73,6 +73,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
   let arriving = true
   async function refresh() {
     const turn = ++request
+    const startedAt = Date.now()
     try {
       const items = await listTrash()
       if (signal.aborted || turn !== request) return
@@ -89,6 +90,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
         empty.append(emptyIcon, element('h3', '', t('trash.theTrashIsEmpty')))
         content.replaceChildren(empty)
       }
+      viewed(startedAt)
     } catch (error) {
       if (!signal.aborted && turn === request) content.replaceChildren(notice(storageError(error), true))
     }
