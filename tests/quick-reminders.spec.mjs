@@ -4,6 +4,15 @@ import loginModule from '../desktop/login-item.cjs'
 test.use({ timezoneId: 'America/New_York' })
 
 test('桌面小窗默认记灵感，Tab 切换提醒，无日期的时间预览及保存一致', async ({ page, context }) => {
+  const now = new Date('2026-11-18T20:00:00Z')
+  await page.clock.setFixedTime(now)
+  await page.addInitScript(() => {
+    window.notifiedTasks = []
+    window.Notification = class {
+      static permission = 'granted'
+      constructor(_title, options) { window.notifiedTasks.push(options.body) }
+    }
+  })
   await page.goto('/#/notes/tasks')
   await expect(page.locator('.task-quick')).toBeVisible()
   const capture = await context.newPage()
@@ -14,7 +23,7 @@ test('桌面小窗默认记灵感，Tab 切换提醒，无日期的时间预览�
       onCaptureShown: (shown) => { window.showCapture = shown },
     }
   })
-  await capture.clock.setFixedTime(new Date('2026-11-18T20:00:00Z'))
+  await capture.clock.setFixedTime(now)
   await capture.goto('/#/capture')
   const idea = capture.getByRole('textbox', { name: '灵感', exact: true })
   await expect(idea).toBeFocused()
@@ -55,6 +64,10 @@ test('桌面小窗默认记灵感，Tab 切换提醒，无日期的时间预览�
   expect(tasks['只定日期'].reminderMinutes).toBeUndefined()
   expect(tasks['查看来信']).toMatchObject({ projectId: null, planDate: null })
   expect(tasks['查看来信'].reminderMinutes).toBeUndefined()
+  expect(await page.evaluate(() => window.notifiedTasks)).toEqual([])
+  await page.clock.setFixedTime(new Date('2026-11-19T00:00:01Z'))
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect.poll(() => page.evaluate(() => window.notifiedTasks)).toEqual(['今晚校稿'])
   await page.getByRole('link', { name: '灵感', exact: true }).click()
   await expect(page.locator('.idea-text')).toHaveText(['钟楼的回声'])
   await page.locator('.capture-text').focus()
@@ -67,7 +80,14 @@ for (const platform of ['win32', 'darwin']) test(platform + ' 系统登录项注
   let enabled = false
   const app = {
     isPackaged: true,
-    getLoginItemSettings: () => ({ openAtLogin: enabled, wasOpenedAtLogin: enabled }),
+    getLoginItemSettings: () => ({
+      openAtLogin: platform === 'darwin' && enabled, wasOpenedAtLogin: enabled,
+      launchItems: [
+        { name: 'Another login entry', enabled: true, scope: 'user' },
+        { name: 'NewWorldBackground', enabled: true, scope: 'machine' },
+        { name: 'NewWorldBackground', enabled, scope: 'user' },
+      ],
+    }),
     setLoginItemSettings: (options) => { calls.push(options); enabled = options.openAtLogin },
   }
   const service = loginModule.loginItems(app, platform, [])

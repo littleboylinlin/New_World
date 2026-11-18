@@ -12,6 +12,10 @@ function loginItems(app, platform, argv = process.argv) {
   function get() {
     if (!supported) return 'off'
     const state = app.getLoginItemSettings(options)
+    if (platform === 'win32') {
+      // Electron's openAtLogin reads the default AppUserModelId, even when a named Run entry was registered.
+      return state.launchItems.some((item) => item.scope === 'user' && item.name === windowsName && item.enabled) ? 'on' : 'off'
+    }
     if (state.status === 'requires-approval') return 'approval'
     return state.openAtLogin ? 'on' : 'off'
   }
