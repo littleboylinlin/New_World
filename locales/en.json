@@ -1162,5 +1162,15 @@
   "writing.sort.opened": "Recently opened",
   "writing.sort.title": "Title",
   "writing.type.original": "Original",
-  "writing.type.reference": "Continuation / imitation"
+  "writing.type.reference": "Continuation / imitation",
+  "navigation.start": "Home",
+  "navigation.notes": "Ideas & tasks",
+  "navigation.main": "Main navigation",
+  "navigation.openMenu": "Open navigation",
+  "navigation.closeMenu": "Close navigation",
+  "navigation.expand": "Expand sidebar",
+  "navigation.collapse": "Collapse sidebar",
+  "notes.search": "Search idea text",
+  "notes.noMatch": "No matching ideas.",
+  "notes.tasks": "Tasks"
 }

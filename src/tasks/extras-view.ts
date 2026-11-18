@@ -149,7 +149,7 @@ export function templatesView(data: TaskData, projectId: string | null) {
       element('span', '', template.name),
       action('useTemplate', async () => {
         await instantiateTemplate(template.id, projectId)
-        location.hash = '#/tasks/all'
+        location.hash = '#/notes/tasks/all'
       }),
       action('deleteTemplate', () =>
         taskForm(

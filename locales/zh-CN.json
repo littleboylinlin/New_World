@@ -1162,5 +1162,15 @@
   "writing.sort.opened": "最近打开",
   "writing.sort.title": "书名",
   "writing.type.original": "原创",
-  "writing.type.reference": "续写·仿写"
+  "writing.type.reference": "续写·仿写",
+  "navigation.start": "主页",
+  "navigation.notes": "灵感与任务",
+  "navigation.main": "主导航",
+  "navigation.openMenu": "打开导航",
+  "navigation.closeMenu": "关闭导航",
+  "navigation.expand": "展开侧栏",
+  "navigation.collapse": "收起侧栏",
+  "notes.search": "搜索灵感正文",
+  "notes.noMatch": "没有找到匹配的灵感。",
+  "notes.tasks": "任务"
 }

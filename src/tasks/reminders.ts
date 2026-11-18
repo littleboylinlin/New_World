@@ -64,7 +64,7 @@ export async function checkReminders(now = Date.now()) {
         })
         notification.onclick = () => {
           window.focus()
-          location.hash = '#/tasks/today'
+          location.hash = '#/notes/tasks/today'
           notification.close()
         }
         await changeTasks((current) => {

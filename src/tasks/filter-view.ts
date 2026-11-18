@@ -163,7 +163,7 @@ export function filterDialog(data: TaskData, current?: TaskFilter) {
         revision: current?.revision,
       }
       await saveFilter(value)
-      location.hash = '#/tasks/filter/' + value.id
+      location.hash = '#/notes/tasks/filter/' + value.id
     },
   )
 }

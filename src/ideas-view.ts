@@ -1,4 +1,3 @@
-import { createLinkedTask } from './tasks/links'
 import { readTasks } from './tasks/store'
 import { taskDialog } from './tasks/view'
 import { locale, t } from './i18n'
@@ -230,7 +229,15 @@ export function ideaActions(idea: Idea, books: Book[], report: (message: string)
     items.push({ label: t('revisions.button'), icon: 'history', action: () => { void showIdeaRevisionsDialog(idea, books) } })
   }
   items.push(
-    { label:t('tasks.fromIdea'),icon:'plus',action:run(async()=>{const source=books.find(b=>b.id===idea.bookId&&b.library===idea.library),work=source?(books.find(b=>b.id===(source.workId??source.id)&&b.library===source.library)):undefined;const patch={title:idea.text.split('\n')[0].slice(0,500)||t('tasks.fromIdea'),description:idea.text};if(work)await createLinkedTask({library:work.library,bookId:work.id,title:work.title},patch);else await taskDialog(await readTasks(),undefined,patch)}) },
+    { label: t('tasks.fromIdea'), icon: 'plus', action: run(async () => {
+      const source = books.find((book) => book.id === idea.bookId && book.library === idea.library)
+      const work = source?.workId ? books.find((book) => book.id === source.workId && book.library === source.library) : source
+      await taskDialog(await readTasks(), undefined, {
+        title: idea.text.split('\n')[0].slice(0, 500) || t('tasks.fromIdea'),
+        description: idea.text,
+        ...(work ? { link: { library: work.library, bookId: work.id, title: work.title } } : {}),
+      }, (task) => { location.hash = '#/notes/tasks/item/' + task.id })
+    }) },
     { label: t('ideas.copy'), icon: 'copy', action: run(() => navigator.clipboard.writeText(idea.text)) },
     { label: t('shelf.delete'), icon: 'trash', danger: true, action: run(async () => {
       const entry = await deleteIdea(idea.id)
@@ -274,21 +281,16 @@ function ideaRow(idea: Idea, books: Book[], report: (message: string) => void, r
 
 export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
   const panel = element('section', 'trash-page ideas-page')
-  const nav = element('nav', 'breadcrumbs')
-  nav.setAttribute('aria-label', t('trash.currentLocation'))
-  const current = element('span', '', t('ideas.title'))
-  current.setAttribute('aria-current', 'page')
-  nav.append(link('#/', t('navigation.home')), element('span', 'crumb-separator', '/'), current)
-  const header = element('div', 'page-heading')
-  const heading = element('div')
-  heading.append(element('p', 'eyebrow', 'IDEAS'), element('h1', '', t('ideas.title')), element('p', 'intro-copy', t('ideas.intro')))
-  header.append(heading)
+  const search = element('input', 'title-input idea-search')
+  search.type = 'search'
+  search.placeholder = t('notes.search')
+  search.setAttribute('aria-label', search.placeholder)
   const capture = captureForm(() => {})
   capture.form.classList.add('ideas-capture')
   const message = element('div', 'version-message')
   const content = element('div')
   content.append(notice(t('ideas.loading')))
-  panel.append(nav, header, capture.form, message, content)
+  panel.append(capture.form, search, message, content)
   root.append(panel)
   void capture.refresh()
 
@@ -306,18 +308,20 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
       ])
       if (signal.aborted || turn !== request) return
       const books = [...original, ...reference]
-      if (ideas.length) {
+      const matching = ideas.filter((idea) => idea.text.toLocaleLowerCase(locale).includes(search.value.trim().toLocaleLowerCase(locale)))
+      if (matching.length) {
         const list = element('ul', 'book-list idea-list')
         list.setAttribute('aria-label', t('ideas.list'))
         // Ideas not used yet come first; used ones stay below for reference.
-        const ordered = [...ideas.filter((idea) => !idea.usedAt), ...ideas.filter((idea) => idea.usedAt)]
+        const ordered = [...matching.filter((idea) => !idea.usedAt), ...matching.filter((idea) => idea.usedAt)]
         list.append(...ordered.map((idea) => ideaRow(idea, books, report, revCounts.get(idea.id) ?? 0)))
         content.replaceChildren(arriving ? stagger(list) : list)
       } else {
         const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
         const emptyIcon = element('div', 'empty-icon')
         emptyIcon.append(icon('idea'))
-        empty.append(emptyIcon, element('h3', '', t('ideas.none')), element('p', '', t('ideas.noneHint')))
+        empty.append(emptyIcon, element('h3', '', t(ideas.length ? 'notes.noMatch' : 'ideas.none')))
+        if (!ideas.length) empty.append(element('p', '', t('ideas.noneHint')))
         content.replaceChildren(empty)
       }
     } catch (error) {
@@ -325,7 +329,8 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
     }
     if (!signal.aborted && turn === request) arriving = false
   }
-  libraryChanges.addEventListener('update', () => { void refresh() }, { signal })
+  search.addEventListener('input', refresh)
+  libraryChanges.addEventListener('update', refresh, { signal })
   window.addEventListener('focus', () => { void refresh() }, { signal })
   void refresh()
 }
