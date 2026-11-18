@@ -38,10 +38,12 @@ jobs:
             test-results/**/attachments/*typing-performance*
           retention-days: 7
 
-  # Key cases again in WebKit, Safari's engine, including iPhone sizes.
+  # Key cases again in WebKit, Safari's engine, including iPhone sizes. The Playwright image
+  # already holds WebKit and its system libraries, which are slow to fetch with apt.
   webkit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    container: mcr.microsoft.com/playwright:v1.65.0-noble
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -49,7 +51,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps webkit
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npm run test:webkit
 
   windows-tests:
