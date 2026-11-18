@@ -4,10 +4,13 @@ import type { Transaction } from '@tiptap/pm/state'
 import { isHistoryTransaction } from '@tiptap/pm/history'
 import { appearance, onAppearanceChange } from '../appearance'
 import { reducedMotion } from '../motion'
+import { caretFollower, nativeCaret } from '../typing/caret-motion'
+import type { CaretMove } from '../typing/caret-motion'
+import { editorComposition } from '../typing/composition'
 
-const smoothing = .35
 const precision = .5
-type Move = 'input' | 'snap'
+type Move = 'input' | 'commit' | 'snap'
+const rank: Record<Move, number> = { input: 1, commit: 2, snap: 3 }
 interface Point { x: number; y: number }
 
 /** A sibling of ProseMirror, so neither the document nor the IME's DOM is changed. */
@@ -16,7 +19,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   const { signal } = events
   const body = editor.view.dom
   const caret = document.createElement('span')
-  caret.className = 'writing-caret'
+  caret.className = 'writing-caret typing-caret'
   caret.setAttribute('aria-hidden', 'true')
   caret.hidden = true
   paper.append(caret)
@@ -27,10 +30,14 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   let move: Move | undefined
   let reveal = false
   let composing = false
+  let committing = false
   let inputPending = false
+  // A held key or a jump stays in force until the key is released, however late its edit lands.
+  let held = false
   let typewriter = appearance().typewriter
-  let position: Point | undefined
   let target: Point | undefined
+  const follower = caretFollower((point) => { caret.style.transform = `translate(${point.x}px, ${point.y}px)` })
+  const composition = editorComposition(editor, () => schedule())
 
   // The desktop scrolls .page; the web version scrolls the document.
   let scroller = paper.parentElement
@@ -57,17 +64,14 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   function schedule(reason?: Move) {
     needsMeasure = true
     // An explicit jump takes precedence over input notifications in the same frame.
-    if (reason === 'snap' || move !== 'snap' && reason) move = reason
+    if (reason && (!move || rank[reason] > rank[move])) move = reason
     requestFrame()
   }
 
   function hide() {
     caret.hidden = true
-    position = target = undefined
-  }
-
-  function paint() {
-    if (position) caret.style.transform = `translate(${position.x}px, ${position.y}px)`
+    target = undefined
+    follower.reset()
   }
 
   function tick() {
@@ -76,18 +80,6 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       needsMeasure = false
       measure()
     }
-    if (!position || !target) return
-    if (reducedMotion.matches) {
-      position = { ...target }
-      paint()
-      return
-    }
-    position.x += (target.x - position.x) * smoothing
-    position.y += (target.y - position.y) * smoothing
-    const settled = Math.hypot(target.x - position.x, target.y - position.y) < precision
-    if (settled) position = { ...target }
-    paint()
-    if (!settled) requestFrame()
   }
 
   function compositionCoords() {
@@ -132,6 +124,8 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   function measure() {
     const reason = move
     move = undefined
+    const committed = committing
+    committing = false
     const shouldReveal = reveal
     reveal = inputPending = false
     if (!editor.isEditable || !editor.view.hasFocus() || document.hidden) { hide(); return }
@@ -153,32 +147,29 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     const height = (coords.bottom - coords.top) / scaleY
     const moved = !target || Math.abs(x - target.x) > .01 || Math.abs(y - target.y) > .01
     const sameLine = target && Math.abs(y - target.y) < precision
-    const snap = !position || reason === 'snap' || reducedMotion.matches || moved && (reason !== 'input' || !sameLine)
+    // Text that wrapped onto the next line: the caret returns like a carriage, then slides down.
+    const wrapped = target && x < target.x && y > target.y && y - target.y < 2.5 * height
+    let kind: CaretMove = 'snap'
+    if (follower.position && !reducedMotion.matches && (reason === 'input' || reason === 'commit' || committed && reason !== 'snap')) {
+      kind = sameLine ? (reason === 'commit' || committed ? 'commit' : 'glide') : wrapped ? 'wrap' : 'snap'
+    }
     const focus = nativeSelection?.focusNode
     const element = focus instanceof Element ? focus : focus?.parentElement
     const text = element && body.contains(element) ? element : body
-    if (snap) position = { x, y }
-    if (shouldReveal || moved && !snap) {
-      const style = getComputedStyle(text)
-      const zoom = text.currentCSSZoom ?? 1
-      if (moved && !snap && position) {
-        const width = characterWidth(focus, nativeSelection?.focusOffset ?? 0, parseFloat(style.fontSize) * zoom) / scaleX
-        const distance = Math.hypot(x - position.x, y - position.y)
-        if (distance > width) {
-          position.x = x + (position.x - x) * width / distance
-          position.y = y + (position.y - y) * width / distance
-        }
-      }
-      if (shouldReveal) {
-        const margin = 2 * (parseFloat(style.lineHeight) * zoom || coords.bottom - coords.top)
-        const space = `${Math.ceil(margin / scaleY)}px`
-        if (paper.style.getPropertyValue('--writing-bottom-space') !== space) paper.style.setProperty('--writing-bottom-space', space)
-        revealInput(coords, margin, inComposition)
-      }
+    const zoom = text.currentCSSZoom ?? 1
+    if (moved || !follower.position) {
+      const width = kind === 'glide' ? characterWidth(focus, nativeSelection?.focusOffset ?? 0, parseFloat(getComputedStyle(text).fontSize) * zoom) / scaleX : 0
+      follower.move({ x, y }, kind, width)
+    }
+    if (shouldReveal) {
+      const margin = 2 * (parseFloat(getComputedStyle(text).lineHeight) * zoom || coords.bottom - coords.top)
+      const space = `${Math.ceil(margin / scaleY)}px`
+      if (paper.style.getPropertyValue('--writing-bottom-space') !== space) paper.style.setProperty('--writing-bottom-space', space)
+      revealInput(coords, margin, inComposition)
     }
     target = { x, y }
     caret.style.height = `${height}px`
-    caret.hidden = false
+    caret.hidden = nativeCaret.matches
     if (moved) {
       // Restart the blink without forcing layout, keeping the caret lit while typing.
       for (const animation of caret.getAnimations({ subtree: true })) animation.startTime = document.timeline.currentTime
@@ -198,18 +189,23 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (typewriter) scrollRoot.scrollTo({ top: scrollRoot.scrollTop, behavior: 'instant' })
   }
   function transaction({ transaction }: { transaction: Transaction }) {
+    const typing = inputPending
     if (transaction.docChanged) {
       reveal ||= inputPending
       inputPending = false
     }
-    if (isHistoryTransaction(transaction) || transaction.getMeta('pointer')) schedule('snap')
-    else if (transaction.docChanged || (composing || editor.view.composing) && transaction.selectionSet) schedule('input')
+    const typed = !held && (typing || committing) || composing || editor.view.composing
+    if (isHistoryTransaction(transaction) || transaction.getMeta('pointer') || ['paste', 'drop', 'cut'].includes(transaction.getMeta('uiEvent'))) schedule('snap')
+    // Replacements, insertions from tools and other changes that were not typed arrive at once.
+    else if (transaction.docChanged) schedule(typed ? 'input' : 'snap')
+    else if ((composing || editor.view.composing) && transaction.selectionSet) schedule('input')
     else if (transaction.selectionSet) schedule('snap')
     else schedule()
   }
   function preferences() {
     typewriter = appearance().typewriter
     paper.classList.toggle('typewriter-writing', typewriter && editor.isEditable)
+    paper.classList.toggle('native-caret', nativeCaret.matches)
     resize()
   }
   function motionPreference() {
@@ -221,15 +217,19 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (event.isComposing || composing || editor.view.composing) return
     inputPending = !event.metaKey && !event.ctrlKey && !event.altKey
       && (event.key.length === 1 || ['Enter', 'Backspace', 'Delete'].includes(event.key))
-    if (event.repeat || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)
-      || (event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) schedule('snap')
+    held = event.repeat || ['Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)
+      || (event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())
+    if (held) schedule('snap')
   }, { capture: true, signal })
+  body.addEventListener('keyup', () => { held = false }, { capture: true, signal })
   const input = (event: Event) => {
     const inputType = (event as InputEvent).inputType ?? ''
-    const typing = !inputType.startsWith('history') && (composing || editor.view.composing || /^(insert|delete)/.test(inputType))
+    // Pasting, dropping, cutting and history land at once; only typing slides.
+    const typing = composing || editor.view.composing || /^(insertText|insertCompositionText|delete(Content|Word)(Backward|Forward))$/.test(inputType)
     inputPending = typing
     reveal ||= typing
-    schedule(typing ? 'input' : 'snap')
+    // Held keys still keep the caret in view, but land at once.
+    schedule(typing && (!held || composing || editor.view.composing) ? 'input' : 'snap')
   }
   body.addEventListener('beforeinput', input, { signal })
   body.addEventListener('input', input, { signal })
@@ -241,8 +241,9 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   body.addEventListener('compositionupdate', () => { reveal = true; schedule('input') }, { signal })
   body.addEventListener('compositionend', () => {
     composing = false
+    committing = true
     reveal = true
-    schedule('input')
+    schedule('commit')
   }, { signal })
   body.addEventListener('focus', () => schedule('snap'), { signal })
   body.addEventListener('blur', () => { reveal = inputPending = false; hide() }, { signal })
@@ -269,6 +270,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (event.target instanceof Element && (event.target.contains(paper) || paper.contains(event.target))) layout()
   }, { signal })
   reducedMotion.addEventListener('change', motionPreference, { signal })
+  nativeCaret.addEventListener('change', preferences, { signal })
   const stopFollowing = onAppearanceChange(preferences)
   editor.on('transaction', transaction)
   preferences()
@@ -283,8 +285,10 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       observer.disconnect()
       mutations.disconnect()
       cancelAnimationFrame(frame)
+      follower.destroy()
+      composition.destroy()
       caret.remove()
-      paper.classList.remove('smooth-writing', 'typewriter-writing')
+      paper.classList.remove('smooth-writing', 'typewriter-writing', 'native-caret')
       paper.style.removeProperty('--typewriter-space')
       paper.style.removeProperty('--writing-bottom-space')
     },

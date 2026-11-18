@@ -8,7 +8,7 @@ test('平滑光标、选区、失焦、输入法、减少动态效果和打字�
   await writingMotionFlow(page)
 })
 
-test('快速输入时光标落后不超过一个字符宽度，滚动通知不中断追赶，停止后不跑循环', async ({ page }) => {
+test('快速输入时光标落后不超过 1.5 个字符宽度，滚动通知不中断追赶，停止后不跑循环', async ({ page }) => {
   await newWritingNovel(page)
   const text = chapterText(page)
   await text.fill('灯塔')

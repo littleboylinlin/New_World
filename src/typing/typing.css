@@ -1,0 +1,23 @@
+/* Smooth carets and input-method reading boxes shared by the editor and every text field. */
+:root {
+  --composition-bg: color-mix(in srgb, var(--yellow) 34%, transparent);
+  --composition-line: var(--ink);
+}
+.typing-caret { position: absolute; top: 0; left: 0; width: 2px; pointer-events: none; z-index: 1; transition: none; }
+.typing-caret[hidden] { display: none; }
+.typing-caret::after { content: ''; display: block; width: 100%; height: 100%; background: var(--typing-caret-color, var(--ink)); animation: typing-caret-blink 1s step-end infinite; }
+@keyframes typing-caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* Chromium already underlines the reading, so only the background is added there. */
+::highlight(typing-composition) { background-color: var(--composition-bg); text-decoration: underline dashed var(--composition-line); }
+.ime-native-underline ::highlight(typing-composition) { text-decoration: none; }
+
+/* Native fields cannot be decorated, so a layer that ignores the pointer is laid over them. */
+.typing-overlay { position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 50; pointer-events: none; }
+.typing-layer { position: absolute; top: 0; left: 0; overflow: hidden; pointer-events: none; contain: layout paint; }
+.typing-layer[hidden] { display: none; }
+.typing-composition-box { position: absolute; background: var(--composition-bg); border-bottom: 1px dashed var(--composition-line); }
+.ime-native-underline .typing-composition-box { border-bottom: 0; }
+.typing-measure { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; }
+.typing-mirror { box-sizing: content-box; position: absolute; top: 0; left: 0; visibility: hidden; overflow: hidden; pointer-events: none; }
+[data-typing-caret] { caret-color: transparent !important; }

@@ -86,9 +86,10 @@ export function expectSmoothTrace(trace) {
   expect(Math.abs(delta)).toBeGreaterThan(5)
   const moved = samples.filter((point) => Math.abs(point.x - before.x) > .5)
   expect(moved.length).toBeGreaterThan(1)
+  // A time constant of 80ms covers about a fifth of the way in the first 60Hz frame.
   const first = (moved[0].x - before.x) / delta
-  expect(first).toBeGreaterThan(.25)
-  expect(first).toBeLessThan(.45)
+  expect(first).toBeGreaterThan(.1)
+  expect(first).toBeLessThan(.32)
   expect(moved.some((point) => Math.abs(point.x - target.x) > 1)).toBe(true)
 }
 
@@ -104,7 +105,7 @@ export function expectBoundedTrace({ before, samples, target, width }) {
   const moved = samples.filter((point) => Math.abs(point.x - before.x) > .5)
   expect(moved.length).toBeGreaterThan(1)
   expect(Math.abs(moved[0].x - target.x)).toBeGreaterThan(1)
-  for (const point of moved) expect(Math.hypot(point.x - target.x, point.y - target.y)).toBeLessThanOrEqual(width + 1)
+  for (const point of moved) expect(Math.hypot(point.x - target.x, point.y - target.y)).toBeLessThanOrEqual(1.5 * width + 1)
 }
 
 export async function setTypewriter(page, enabled) {

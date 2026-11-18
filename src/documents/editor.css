@@ -70,12 +70,9 @@
 .editor-paper { position: relative; padding: clamp(14px, 3vw, 38px) clamp(11px, 2.4vw, 28px); border-radius: 0 0 10px 10px; background: var(--surface); }
 .novel-body { max-width: var(--text-width, 44rem); min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: var(--text-line-height, 1.95); overflow-wrap: anywhere; caret-color: var(--accent); }
 .novel-body::selection, .novel-body ::selection { background: var(--tint); }
-.smooth-writing .novel-body { caret-color: transparent; }
+.smooth-writing:not(.native-caret) .novel-body { caret-color: transparent; }
 .smooth-writing .novel-body[contenteditable="true"] { padding-bottom: max(56px, 2lh, var(--writing-bottom-space, 0px)); }
-.writing-caret { position: absolute; top: 0; left: 0; width: 2px; pointer-events: none; z-index: 1; transition: none; }
-.writing-caret[hidden] { display: none; }
-.writing-caret::after { content: ''; display: block; width: 100%; height: 100%; background: var(--ink); animation: writing-caret-blink 1s step-end infinite; }
-@keyframes writing-caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+/* The smooth caret and the reading box are drawn by src/typing. */
 .typewriter-writing .novel-body[contenteditable="true"] { padding-block: var(--typewriter-space, 40vh) max(var(--typewriter-space, 40vh), var(--writing-bottom-space, 0px)); }
 .novel-body[contenteditable="true"]:focus { outline: none; }
 .edition-reading .novel-body { cursor: text; }
