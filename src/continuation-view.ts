@@ -1,3 +1,4 @@
+import { rememberWork } from './ideas'
 import { workTaskControls } from './tasks/links'
 import { showProjectExport } from './projects/view'
 import { workInformationPanel } from './work-information-view'
@@ -64,6 +65,7 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
         body.replaceChildren(notice(t('continuation.thisWorkWasNotFoundInThisLibrary'), true))
         return
       }
+      if (arriving) rememberWork({ library: 'reference', bookId: id })
       title.textContent = work.title
       const chapterList = element('ul', 'book-list')
       chapterList.setAttribute('aria-label', t('continuation.continuations'))

@@ -10,6 +10,8 @@ interface StorageResult {
   restart: boolean
 }
 
+type LoginItemState = 'off' | 'on' | 'approval'
+
 type CloseBehavior = 'quit' | 'background'
 
 type BackupFrequency = 'off' | 'daily' | 'weekly'
@@ -82,6 +84,8 @@ interface Window {
     getStorageLocation: () => Promise<StorageState>
     setStorageLocation: () => Promise<StorageResult | null>
     resetStorageLocation: () => Promise<StorageResult | null>
+    getLoginItem?: () => Promise<LoginItemState>
+    setLoginItem?: (enabled: boolean) => Promise<LoginItemState>
     getCloseBehavior: () => Promise<CloseBehavior>
     setCloseBehavior: (mode: CloseBehavior) => Promise<CloseBehavior>
     setWindowTheme?: (theme: import('./appearance').Theme) => Promise<void>

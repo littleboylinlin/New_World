@@ -118,8 +118,8 @@ function recentWorks(value) {
 function trayTemplate({ t, shortcut, recent, capture, command, showFolder, settings, show, quit }) {
   const label = shortcutLabel(shortcut)
   return [
-    { label: label ? `${t('ideas.capture')}\t${label}` : t('ideas.capture'), click: capture },
-    { label: t('shelf.newNovel'), click: () => command({ type: 'new-novel' }) },
+    { label: label ? `${t('capture.title')}\t${label}` : t('capture.title'), click: capture },
+    { label: t('writing.create'), click: () => command({ type: 'new-novel' }) },
     { label: t('tray.recent'), submenu: recent.length
       ? recent.map((work) => ({ label: work.title, click: () => command({ type: 'open', hash: work.hash }) }))
       : [{ label: t('tray.noRecent'), enabled: false }] },

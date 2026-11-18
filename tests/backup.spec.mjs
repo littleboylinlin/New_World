@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import { expect, test } from './app-test.mjs'
@@ -19,7 +20,7 @@ async function closeSettings(page) {
 
 async function newNovel(page, name, text) {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill(name)
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()
@@ -71,7 +72,8 @@ test('作品可以归档、撤销归档，在归档页打开和放回书库', as
 
   await bookAction(page, '归档')
   await page.goto('/#/')
-  await expect(page.locator('.shelf-original .card-count')).toHaveText('0 部作品')
+  await page.goto('/#/original')
+  await expect(page.locator('.list-count')).toHaveText('0 部')
   await page.getByRole('link', { name: '归档', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: '归档' })).toBeVisible()
   const row = page.getByRole('list', { name: '归档的作品' }).getByRole('listitem').filter({ hasText: '旧港口' })
@@ -121,7 +123,8 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   await expect(confirm).toContainText('1 部作品')
   await confirm.getByRole('button', { name: '替换当前书库' }).click()
   await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
-  await expect(page.locator('.shelf-original .card-count')).toHaveText('0 部作品')
+  await page.goto('/#/original')
+  await expect(page.locator('.list-count')).toHaveText('0 部')
   await page.goto('/#/archive')
   await page.getByRole('link', { name: '雾中灯塔' }).click()
   await expect(textArea(page)).toHaveText('The keeper climbed the stairs. 灯塔守望者。')

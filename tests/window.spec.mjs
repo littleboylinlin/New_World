@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 
 test('桌面版页眉固定在窗口顶部，页面在页眉下方滚动', async ({ page }) => {
@@ -16,7 +17,7 @@ test('桌面版页眉固定在窗口顶部，页面在页眉下方滚动', async
     }
   })
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill('长卷')
   await page.getByRole('button', { name: '创建小说' }).click()
   await page.getByRole('textbox', { name: '章节正文' }).fill(Array.from({ length: 80 }, (_, line) => `第 ${line + 1} 行。`).join('\n'))
@@ -37,17 +38,19 @@ test('桌面版页眉固定在窗口顶部，页面在页眉下方滚动', async
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 
   await page.getByRole('link', { name: 'New World 书库首页' }).click()
-  await expect(page.getByRole('heading', { name: '我的小说书库' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '写作统计' })).toBeVisible()
   expect((await position()).page).toBe(0)
 })
 
-test('Web 端页眉随页面滚动', async ({ page }) => {
+test('Web 端长页面可滚动，侧栏留在视口内', async ({ page }) => {
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill('长卷')
   await page.getByRole('button', { name: '创建小说' }).click()
   await page.getByRole('textbox', { name: '章节正文' }).fill(Array.from({ length: 80 }, (_, line) => `第 ${line + 1} 行。`).join('\n'))
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await page.evaluate(() => window.scrollBy(0, innerHeight))
   expect(await page.evaluate(() => scrollY)).toBeGreaterThan(0)
-  expect(await page.evaluate(() => document.querySelector('.site-header').getBoundingClientRect().top)).toBeLessThan(0)
+  expect(await page.evaluate(() => document.querySelector('#app-sidebar').getBoundingClientRect().top)).toBe(0)
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+  await expect(page.locator('.site-footer')).toBeInViewport()
 })

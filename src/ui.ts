@@ -14,6 +14,9 @@ export const libraries = {
 } as const
 
 const paths = {
+  home: 'm3 10 9-7 9 7M5 9v12h14V9M10 21v-7h4v7',
+  sidebar: 'M3 4h18v16H3zM9 4v16',
+  menu: 'M3 6h18M3 12h18M3 18h18',
   arrow: 'M4 12h15m-6-6 6 6-6 6',
   back: 'M20 12H5m6-6-6 6 6 6',
   plus: 'M12 5v14M5 12h14',

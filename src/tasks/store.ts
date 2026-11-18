@@ -133,7 +133,7 @@ function touch(task: Task) {
   task.updatedAt = Date.now()
   task.revision++
 }
-export function addTask(title: string, patch: Partial<Task> = {}) {
+export function addTask(title: string, patch: Partial<Task> = {}, options: { enableReminders?: boolean } = {}) {
   return changeTasks((data) => {
     const parent = patch.parentId ? requireTask(data, patch.parentId) : undefined
     const task = defaultTask(title, {
@@ -148,6 +148,7 @@ export function addTask(title: string, patch: Partial<Task> = {}) {
       order: nextOrder(data.tasks),
     })
     data.tasks.push(task)
+    if (options.enableReminders) setSetting(data, 'reminders:enabled', 'true')
     return task
   })
 }
@@ -609,12 +610,13 @@ export function saveLabel(value: Partial<TaskLabel> & { name: string }) {
       })
   })
 }
+function setSetting(data: TaskData, id: string, value: string) {
+  const old = data.taskSettings.find((s) => s.id === id)
+  if (old) old.value = value
+  else data.taskSettings.push({ id, value })
+}
 export function saveTaskSetting(id: string, value: string) {
-  return changeTasks((data) => {
-    const old = data.taskSettings.find((s) => s.id === id)
-    if (old) old.value = value
-    else data.taskSettings.push({ id, value })
-  }, false)
+  return changeTasks((data) => setSetting(data, id, value), false)
 }
 export function saveFilter(value: TaskFilter) {
   return changeTasks((data) => {

@@ -246,14 +246,14 @@ test('分批列表不截断数据，连续搜索保留焦点，快捷添加与�
   await expect(search).toHaveValue('批量任务')
   expect((await state(page)).tasks).toHaveLength(205)
   await search.fill('')
-  await page.getByRole('heading', { name: '任务管理', exact: true }).click()
+  await page.getByRole('heading', { name: '灵感与任务', exact: true }).click()
   await page.keyboard.press('n')
   const quick = page.getByLabel('快速添加任务', { exact: true })
   await expect(quick).toBeFocused()
   await quick.fill('快捷新任务')
   await quick.press('Enter')
   await expect.poll(async () => (await state(page)).tasks.length).toBe(206)
-  await page.getByRole('heading', { name: '任务管理', exact: true }).click()
+  await page.getByRole('heading', { name: '灵感与任务', exact: true }).click()
   await page.keyboard.press('Control+z')
   await expect.poll(async () => (await state(page)).tasks.length).toBe(205)
 })
@@ -430,7 +430,7 @@ test('连续完成历史使用真实时间，逆序 UUID 下正确恢复最新�
   page,
 }) => {
   await page.goto('/#/tasks/completed')
-  await expect(page.getByRole('heading', { name: '任务管理', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '灵感与任务', exact: true })).toBeVisible()
   const ids = await page.evaluate(async () => {
     const repeat = crypto.randomUUID(),
       plain = crypto.randomUUID(),

@@ -9,6 +9,8 @@ const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
 const backups = require('./backup.cjs')
 const capture = require('./capture.cjs')
+const { loginItems, backgroundFlag } = require('./login-item.cjs')
+const login = loginItems(app, process.platform)
 const projectFiles = require('./project-files.cjs')
 const { createAiStore } = require('./ai-store.cjs')
 const { createAiBridge } = require('./ai-bridge.cjs')
@@ -263,6 +265,15 @@ ipcMain.handle('new-world:set-close-behavior', (event, mode) => {
   return behavior
 })
 
+ipcMain.handle('new-world:get-login-item', (event) => {
+  if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
+  return login.get()
+})
+ipcMain.handle('new-world:set-login-item', (event, enabled) => {
+  if (!trustedMainRenderer(event) || typeof enabled !== 'boolean') throw new Error(t('main.invalidSettingsRequest'))
+  return login.set(enabled)
+})
+
 // The page reports its theme so the next window opens with the same background.
 ipcMain.handle('new-world:set-window-theme', (event, next) => {
   if (!trustedMainRenderer(event) || !windowTheme.isTheme(next)) throw new Error(t('main.invalidSettingsRequest'))
@@ -515,11 +526,13 @@ let recentWorks = []
 let pendingCommands = []
 
 const quickNoteFlag = '--quick-note'
+let pendingCapture = process.argv.includes(quickNoteFlag)
+let requestedMainWindow = false
 
 function openCapture() {
   if (!captureWindow || captureWindow.isDestroyed()) {
     captureWindow = new BrowserWindow({
-      width: 520, height: 360, show: false, frame: false, resizable: false, minimizable: false, maximizable: false,
+      width: 520, height: 390, show: false, frame: false, resizable: false, minimizable: false, maximizable: false,
       fullscreenable: false, alwaysOnTop: true, skipTaskbar: true, backgroundColor: windowBackground(),
       icon: join(__dirname, 'icon.png'),
       webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: true },
@@ -617,12 +630,16 @@ let forceQuit = false
 let tray
 
 function showWindow() {
+  if (process.platform === 'darwin' && !app.dock.isVisible()) void app.dock.show()
   if (!mainWindow) {
     void openWindow().catch(() => {})
     return
   }
   if (mainWindow.isMinimized()) mainWindow.restore()
-  if (!mainWindow.isVisible()) mainWindow.show()
+  if (!mainWindow.isVisible()) {
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.show()
+  }
   mainWindow.focus()
 }
 
@@ -667,20 +684,21 @@ function refreshMenus() {
   if (process.platform === 'win32') {
     app.setUserTasks([{
       program: process.execPath, arguments: app.isPackaged ? quickNoteFlag : `"${app.getAppPath()}" ${quickNoteFlag}`,
-      iconPath: process.execPath, iconIndex: 0, title: t('ideas.capture'), description: t('ideas.shortcutHint'),
+      iconPath: process.execPath, iconIndex: 0, title: t('capture.title'), description: t('ideas.shortcutHint'),
     }])
   } else if (process.platform === 'darwin' && app.dock) {
     app.dock.setMenu(Menu.buildFromTemplate([
-      { label: t('ideas.capture'), click: openCapture },
+      { label: t('capture.title'), click: openCapture },
       { label: t('shelf.newNovel'), click: () => command({ type: 'new-novel' }) },
       { label: t('ideas.title'), click: () => command({ type: 'ideas' }) },
     ]))
   }
 }
 
-function openWindow() {
+function openWindow(visible = true) {
   nativeTheme.themeSource = windowTheme.themeSource(theme)
   mainWindow = new BrowserWindow({
+    show: visible, skipTaskbar: !visible,
     width: 1220, height: 850, minWidth: 480, minHeight: 420,
     backgroundColor: windowBackground(),
     icon: join(__dirname, 'icon.png'),
@@ -831,13 +849,18 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   // Starting New World again shows the open window; the taskbar's quick note task opens the note window.
   app.on('second-instance', (_event, argv, cwd) => {
+    if (argv.includes(backgroundFlag)) return
     queueProjects(projectFiles.projectPaths(argv, cwd))
-    if (argv.includes(quickNoteFlag)) openCapture(); else if (desktopStarted) showWindow()
+    if (argv.includes(quickNoteFlag)) {
+      if (desktopStarted) openCapture()
+      else pendingCapture = true
+    } else if (desktopStarted) showWindow()
+    else requestedMainWindow = true
   })
   // macOS delivers open-file before ready as well as to an already-running app.
   app.on('open-file', (event, path) => { event.preventDefault(); queueProjects(projectFiles.projectPaths([path])) })
   queueProjects(projectFiles.projectPaths(process.argv))
-  app.on('activate', showWindow)
+  app.on('activate', () => { if (desktopStarted) showWindow() })
   app.on('before-quit', () => {
     forceQuit = true
     void aiBridge?.stop()
@@ -938,8 +961,10 @@ if (!app.requestSingleInstanceLock()) {
     refreshMenus()
     try { createTray() } catch { /* tray is unavailable on some desktop environments */ }
     desktopStarted = true
-    const opened = openWindow()
-    if (process.argv.includes(quickNoteFlag)) openCapture()
+    const background = login.backgroundLaunch() && tray && !requestedMainWindow && !pendingProjectPaths.size
+    if (background && process.platform === 'darwin') app.dock.hide()
+    const opened = openWindow(!background)
+    if (pendingCapture) openCapture()
     return opened
   }).catch(() => {
     dialog.showErrorBox('New World', t('main.theLocalApplicationFilesCouldNotBeOpened'))

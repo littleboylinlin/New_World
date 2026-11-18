@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   getStorageLocation: () => ipcRenderer.invoke('new-world:get-storage-location'),
   setStorageLocation: () => ipcRenderer.invoke('new-world:set-storage-location'),
   resetStorageLocation: () => ipcRenderer.invoke('new-world:reset-storage-location'),
+  getLoginItem: () => ipcRenderer.invoke('new-world:get-login-item'),
+  setLoginItem: (enabled) => ipcRenderer.invoke('new-world:set-login-item', enabled),
   getCloseBehavior: () => ipcRenderer.invoke('new-world:get-close-behavior'),
   setCloseBehavior: (mode) => ipcRenderer.invoke('new-world:set-close-behavior', mode),
   setWindowTheme: (theme) => ipcRenderer.invoke('new-world:set-window-theme', theme),

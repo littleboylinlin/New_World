@@ -1,7 +1,7 @@
 import { recordExport } from '../web-storage'
 import { t } from '../i18n'
 import { formDialog } from '../dialogs'
-import { bookPath, button, downloadFile, element, libraries } from '../ui'
+import { bookPath, downloadFile, element, libraries } from '../ui'
 import { showNotice } from '../undo'
 import { storageError } from '../library'
 import type { ProjectRoot } from './model'
@@ -95,18 +95,4 @@ export function enqueueProject(file: () => Promise<Blob | null>) {
     catch (error) { showNotice(projectMessage(error)) }
   })
   return pending
-}
-export function projectImportButton() {
-  const choose = button(t('project.import'), 'button button-quiet', 'file')
-  choose.addEventListener('click', () => {
-    if (window.newWorldDesktop?.openProject) {
-      void enqueueProject(async () => { const file = await window.newWorldDesktop!.openProject!(); return file ? new Blob([Uint8Array.from(file.bytes)]) : null })
-      return
-    }
-    const input = element('input'); input.type = 'file'; input.accept = '.newworld'; input.hidden = true
-    input.addEventListener('change', () => { const file = input.files?.[0]; input.remove(); if (file) void enqueueProject(async () => file) }, { once: true })
-    input.addEventListener('cancel', () => input.remove(), { once: true })
-    document.body.append(input); input.click()
-  })
-  return choose
 }

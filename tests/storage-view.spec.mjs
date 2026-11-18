@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 
 const desktopState = () => {
@@ -122,7 +123,7 @@ test('更改路径前检查正文保存，失败不调用目录选择且保留�
     }
   })
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill('更改路径前的稿件')
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })

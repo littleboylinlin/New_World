@@ -10,7 +10,7 @@ import { choices } from './forms'
 import type { TaskWorkLink, Task } from './model'
 
 const key = (name: string) => t('tasks.' + name)
-export const workTaskPath = (library: string, id: string) => `#/tasks/work/${library}/${id}`
+export const workTaskPath = (library: string, id: string) => `#/notes/tasks/work/${library}/${id}`
 let pending: { link: TaskWorkLink; at: number } | undefined
 export function takeTaskJump(edition: Edition) {
   const request = pending

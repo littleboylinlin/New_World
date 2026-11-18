@@ -2,7 +2,7 @@ import { expect, test } from './app-test.mjs'
 
 async function seedHomeWorkspace(page) {
   await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
-  await expect(page.locator('.card-count').first()).not.toContainText(/载入中|Loading/)
+  await expect(page.locator('.recent-projects > div')).not.toBeEmpty()
   await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open('new-world-library')
@@ -21,6 +21,9 @@ async function seedHomeWorkspace(page) {
     books.put({ id: 'ref-1', library: 'reference', title: '雾海航行记', format: 'draft', importedAt: now - 3000 })
     books.put({ id: 'arch-1', library: 'original', title: '归档旧稿', format: 'draft', importedAt: now - 9000, archivedAt: now - 500 })
 
+    localStorage.setItem('new-world:recent-works', JSON.stringify([
+      { library: 'original', bookId: 'orig-1', openedAt: now }, { library: 'reference', bookId: 'ref-1', openedAt: now - 1000 },
+    ]))
     ideas.put({ id: 'idea-1', text: '凌晨四点钟楼停摆时的港口声音', createdAt: now - 2000 })
     ideas.put({ id: 'idea-2', text: '船长日志里被撕掉的一页', createdAt: now - 1000 })
 
@@ -40,8 +43,8 @@ async function seedHomeWorkspace(page) {
     db.close()
   })
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await expect(page.locator('.home-entry-ideas .list-count')).toHaveText('2')
-  await expect(page.locator('.home-entry-archive .list-count')).toHaveText('1')
+  await expect(page.locator('.recent-list strong')).toHaveText(['海港灯塔', '雾海航行记'])
+  await expect(page.locator('.home > section')).toHaveCount(2)
   await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
 }
 
@@ -50,10 +53,10 @@ function inspectHomeGeometry(page) {
     const doc = document.documentElement
     const scrollContainer = document.querySelector('.page')
     const home = document.querySelector('.home')
-    const head = document.querySelector('.home-head')
-    const intro = document.querySelector('.home-intro')
-    const entries = document.querySelector('.home-entries')
-    const cards = [...document.querySelectorAll('.shelf-card')]
+    const head = document.querySelector('.stats-top')
+    const intro = document.querySelector('.stats-heading')
+    const entries = document.querySelector('.stats-numbers')
+    const cards = [...document.querySelectorAll('.recent-link')]
     const stats = document.querySelector('.writing-stats')
     const heatWrap = document.querySelector('.heatmap-grid-wrap')
     const header = document.querySelector('.site-header')
@@ -157,7 +160,7 @@ test('英文桌面首页在标准窗口下同样保持单屏与无挤压', async
   const page = await context.newPage()
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'My novel library' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Writing stats' })).toBeVisible()
   await page.evaluate(() => document.documentElement.classList.add('desktop'))
   await seedHomeWorkspace(page)
 

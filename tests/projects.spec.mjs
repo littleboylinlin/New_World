@@ -1,3 +1,4 @@
+import { createLegacyDatabase } from './legacy-database.mjs'
 import { readFile, writeFile, open } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -11,7 +12,7 @@ test.setTimeout(90_000)
 
 test.beforeEach(async ({ page }) => { await page.addInitScript(() => { window.showSaveFilePicker = undefined }) })
 
-const importLabel = '导入 New_World 工程（.newworld）'
+const importLabel = '导入'
 const exportLabel = '导出 New_World 工程（.newworld）'
 const dialog = (page) => page.getByRole('dialog', { name: '导入工程预览' })
 async function choose(page, path) {
@@ -55,13 +56,13 @@ function changeJson(entries, name, mutate) {
 }
 async function freshPage(browser) {
   const context = await withoutRelease(await browser.newContext({ locale: 'zh-CN' }))
-  const page = await context.newPage(); await page.addInitScript(() => { window.showSaveFilePicker = undefined }); await page.goto('/#/')
+  const page = await context.newPage(); await page.addInitScript(() => { window.showSaveFilePicker = undefined }); await page.goto('/#/writing')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   return { context, page }
 }
 
 for (const library of ['original', 'reference']) test(`${library} 工程跨干净书库往返，保留原字节、关系、历史及可编辑性`, async ({ page, browser }, info) => {
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   const seeded = await page.evaluate(seedProject, projectFixture(library, pixel.toString('base64')))
   const before = await page.evaluate(databaseSnapshot)
@@ -87,7 +88,9 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   // The published Schema 1 fixture is immutable; new task samples use their own generator.
   const clean = await freshPage(browser)
   try {
+    await clean.page.locator('[data-filter="' + (library === 'original' ? 'reference' : 'original') + '"]').click()
     await choose(clean.page, path)
+    await expect(clean.page.locator('.type-options')).toHaveCount(0)
     await expect(dialog(clean.page)).toContainText('3 个章节 · 2 个编辑版本')
     expect((await clean.page.evaluate(databaseSnapshot)).books).toEqual([]) // preview has no writes
     await dialog(clean.page).getByRole('button', { name: '确认导入' }).click()
@@ -157,10 +160,10 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
 })
 
 test('重复导入可跳过或创建独立副本，原文件可重复且所有内部引用随 ID 迁移', async ({ page }, info) => {
-  await page.goto('/#/'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   await choose(page, resolve('docs/examples/雾港.newworld'))
   await dialog(page).getByRole('button', { name: '确认导入' }).click(); await expect(dialog(page)).toBeHidden()
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   const before = await page.evaluate(databaseSnapshot)
   await choose(page, resolve('docs/examples/雾港.newworld'))
   await expect(dialog(page)).toContainText('ID 冲突')
@@ -188,7 +191,7 @@ test('重复导入可跳过或创建独立副本，原文件可重复且所有�
 })
 
 test('损坏、路径攻击、错误版本、缺失/危险资源及异常 ZIP 均不写库，写入故障整体回滚', async ({ page }, info) => {
-  await page.goto('/#/'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   const before = await page.evaluate(databaseSnapshot)
   const original = await unpack(resolve('docs/examples/雾港.newworld'))
   const cases = [
@@ -245,7 +248,7 @@ test('损坏、路径攻击、错误版本、缺失/危险资源及异常 ZIP �
 
 
 test('预览后出现 ID 冲突时原子拒绝，重新选择副本后可以导入', async ({ page }) => {
-  await page.goto('/#/'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   await choose(page, resolve('docs/examples/雾港.newworld')); await expect(dialog(page)).toBeVisible()
   await page.evaluate(async () => {
     const db = await new Promise((r) => { const q = indexedDB.open('new-world-library'); q.onsuccess = () => r(q.result) })
@@ -266,7 +269,7 @@ test('预览后出现 ID 冲突时原子拒绝，重新选择副本后可以导�
 
 
 test('ZIP 重复路径、异常压缩率和超过 10000 条目被拒绝', async ({ page }, info) => {
-  await page.goto('/#/'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   const before = await page.evaluate(databaseSnapshot)
   const entries = await unpack(resolve('docs/examples/雾港.newworld'))
   entries.set('qqqqq.json', Buffer.from('[]'))
@@ -292,29 +295,10 @@ test('ZIP 重复路径、异常压缩率和超过 10000 条目被拒绝', async 
 
 test('现有 v7 书库升级到 v10 后完整保留数据和索引主键', async ({ page }) => {
   await page.goto('/appearance.js')
-  await page.evaluate(async () => {
-    const q = indexedDB.open('new-world-library', 7)
-    q.onupgradeneeded = () => {
-      const db = q.result
-      const books = db.createObjectStore('books', { keyPath: ['library', 'id'] })
-      books.createIndex('byLibrary', 'library'); books.createIndex('byLibraryDigest', ['library', 'digest'], { unique: true })
-      db.createObjectStore('files', { keyPath: ['library', 'id'] })
-      const editions = db.createObjectStore('editions', { keyPath: ['library', 'bookId', 'id'] })
-      editions.createIndex('byBook', ['library', 'bookId']); editions.createIndex('byName', ['library', 'bookId', 'name'], { unique: true })
-      const chapters = db.createObjectStore('chapters', { keyPath: ['library', 'bookId', 'editionId', 'id'] })
-      chapters.createIndex('byBook', ['library', 'bookId']); chapters.createIndex('byEdition', ['library', 'bookId', 'editionId'])
-      for (const [name, keyPath] of [['trash','id'], ['ideas','id'], ['writingDays','date'], ['revisionBlobs','hash']]) db.createObjectStore(name, { keyPath })
-      const revisions = db.createObjectStore('revisions', { keyPath: 'id' })
-      revisions.createIndex('byChapter', ['library', 'bookId', 'editionId', 'chapterId']); revisions.createIndex('byEdition', ['library', 'bookId', 'editionId']); revisions.createIndex('byBook', ['library', 'bookId'])
-      const baselines = db.createObjectStore('aiBaselines', { keyPath: ['clientId', 'library', 'bookId', 'editionId', 'chapterId'] })
-      baselines.createIndex('byEdition', ['library', 'bookId', 'editionId']); baselines.createIndex('byBook', ['library', 'bookId'])
-      const ideas = db.createObjectStore('ideaRevisions', { keyPath: 'id' }); ideas.createIndex('byIdea', 'ideaId'); ideas.createIndex('byBook', ['library', 'bookId'])
-    }
-    await new Promise((r, j) => { q.onsuccess = r; q.onerror = () => j(q.error) }); q.result.close()
-  })
+  await page.evaluate(createLegacyDatabase, 7)
   const seeded = await page.evaluate(seedProject, projectFixture('reference', pixel.toString('base64')))
   const before = await page.evaluate(databaseSnapshot)
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   await expect(page.locator('#trash-unread')).toBeVisible()
   const version = await page.evaluate(async () => {
@@ -330,12 +314,12 @@ test('现有 v7 书库升级到 v10 后完整保留数据和索引主键', async
 })
 
 test('续写副本同步映射附属原文关联的灵感、历史与回收记录', async ({ page }, info) => {
-  await page.goto('/#/'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
+  await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
   const seeded = await page.evaluate(seedProject, projectFixture('reference', pixel.toString('base64')))
   await page.goto('/#/reference')
   const path = info.outputPath('原文灵感工程.newworld')
   await exportWork(page, info, '雾港 · 续写验收', path)
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await choose(page, path)
   await expect(dialog(page)).toContainText('ID 冲突')
   await dialog(page).getByLabel('导入方式').selectOption('copy')

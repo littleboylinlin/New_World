@@ -15,9 +15,9 @@ async function snapshot(page) {
   return page.evaluate(databaseSnapshot)
 }
 async function seed(page) {
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await expect(
-    page.getByRole('button', { name: '导入 New_World 工程（.newworld）', exact: true }),
+    page.getByRole('button', { name: '导入', exact: true }),
   ).toBeVisible()
   const fixture = projectFixture('original', pixel.toString('base64')),
     work = await page.evaluate(seedProject, fixture)
@@ -119,9 +119,9 @@ test('任务 JSON 真正跨书库导入与副本、模板和过滤器引用映�
 test('章节位置联动、评论/附件、复制、模板、真实统计及灵感转换不互相改状态', async ({
   page,
 }, info) => {
-  await page.goto('/#/')
+  await page.goto('/#/writing')
   await expect(
-    page.getByRole('button', { name: '导入 New_World 工程（.newworld）', exact: true }),
+    page.getByRole('button', { name: '导入', exact: true }),
   ).toBeVisible()
   const work = await page.evaluate(
     seedProject,

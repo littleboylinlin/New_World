@@ -1,3 +1,4 @@
+import { openDrawer } from './navigation-helpers.mjs'
 import { expect } from '@playwright/test'
 
 export function headerProblems(page) {
@@ -9,7 +10,7 @@ export function headerProblems(page) {
     const right = bounds.right - parseFloat(style.paddingRight)
     const problems = []
     let previousRight = left
-    for (const selector of ['.brand', '.local-label', '#trash-link']) {
+    for (const selector of ['#drawer-toggle', '.brand', '.local-label']) {
       const node = header.querySelector(selector)
       if (!node.getClientRects().length) continue
       const box = node.getBoundingClientRect()
@@ -20,15 +21,18 @@ export function headerProblems(page) {
       if (textBox.width && (textBox.left < box.left - 1 || textBox.right > box.right + 1)) problems.push(`${selector} text overflows`)
       previousRight = box.right
     }
-    const footer = document.querySelector('.footer-inner')
-    const settings = footer.querySelector('#settings')
-    const meta = footer.querySelector('.footer-meta')
-    if (!settings) problems.push('#settings missing in footer')
-    else {
+    const sidebar = document.querySelector('#app-sidebar')
+    const settings = sidebar.querySelector('#settings')
+    const links = [...sidebar.querySelectorAll('nav a')]
+    if (links.length !== 6 || links.at(-1) !== settings) problems.push('The sidebar is missing an entry')
+    if (sidebar.getClientRects().length) {
       const sBox = settings.getBoundingClientRect()
-      const fBox = footer.getBoundingClientRect()
-      if (sBox.left < fBox.left - 1 || sBox.top < 0 || sBox.bottom > innerHeight + 1) problems.push('#settings out of footer bounds')
-      if (meta && sBox.right > meta.getBoundingClientRect().left + 1) problems.push('#settings overlaps footer metadata')
+      const rail = sidebar.getBoundingClientRect()
+      if (sBox.left < rail.left || sBox.right > rail.right || sBox.bottom > innerHeight + 1) problems.push('Settings out of sidebar bounds')
+      if (sBox.top < links.at(-2).getBoundingClientRect().bottom) problems.push('Settings overlaps Trash')
+      for (const link of links) {
+        if (link.scrollWidth > link.clientWidth + 1) problems.push(link.textContent + ' overflows')
+      }
     }
     if (document.documentElement.classList.contains('desktop') && bounds.height > 47) problems.push('The title bar wraps')
     if (document.documentElement.scrollWidth > innerWidth) problems.push('The page overflows horizontally')
@@ -63,12 +67,14 @@ export async function checkNativeHeader(app, page, info, prefix) {
         return window.getContentSize()
       }, width)
       await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([contentWidth, contentHeight])
+      await openDrawer(page)
       await expectHeaderLayout(page)
       await expect(page.getByRole('link', { name: locale === 'en' ? 'Trash' : '回收站', exact: true })).toBeVisible()
       if ([1024, 641, 480].includes(width)) {
         await page.screenshot({ path: info.outputPath(`${prefix}-header-${locale}-${width}.png`), animations: 'disabled' })
       }
       if (width === 480) await checkSettingsLayout(page)
+      else if (width <= 640) await page.keyboard.press('Escape')
     }
   } finally {
     await app.evaluate(({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds), original)

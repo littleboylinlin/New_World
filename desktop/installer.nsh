@@ -182,6 +182,10 @@ FunctionEnd
 !macroend
 
 !macro customUnInstall
+  ${IfNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "NewWorldBackground"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "NewWorldBackground"
+  ${EndIf}
   ${IfNot} ${isKeepShortcuts}
     WinShell::UninstShortcut "$oldDesktopLink"
     Delete "$oldDesktopLink"

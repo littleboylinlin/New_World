@@ -1,3 +1,4 @@
+import { chooseImportType } from './navigation-helpers.mjs'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import os from 'node:os'
@@ -178,13 +179,14 @@ async function gotoReady(page, url = '/') {
 async function createReferenceWorkViaUi(page, title, content) {
   await page.goto('/#/reference')
   const fileChooserPromise = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: '导入原作建立项目' }).click()
+  await page.getByRole('button', { name: '导入', exact: true }).click()
   const fileChooser = await fileChooserPromise
   await fileChooser.setFiles({
     name: `${title}.txt`,
     mimeType: 'text/plain',
     buffer: Buffer.from(content, 'utf-8'),
   })
+  await chooseImportType(page, 'reference')
   await expect(page.locator('.book-title', { hasText: title })).toBeVisible()
 }
 

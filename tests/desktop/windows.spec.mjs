@@ -1,3 +1,4 @@
+import { startWork, chooseImportType } from '../navigation-helpers.mjs'
 import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { execFile } from 'node:child_process'
@@ -125,6 +126,10 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (!uninstaller || !await stat(uninstaller).catch(() => false)) return
   expect(await runSetup(uninstaller)).toBe(0)
+  for (const key of ['Run', 'Explorer\\StartupApproved\\Run']) {
+    await expect(setup('reg.exe', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\' + key, '/v', 'NewWorldBackground']))
+      .rejects.toHaveProperty('code', 1)
+  }
   await expect(stat(installedApp)).rejects.toHaveProperty('code', 'ENOENT')
   expect((await stat(join(process.env.APPDATA, 'NewWorld', 'IndexedDB'))).isDirectory()).toBe(true)
 })
@@ -168,7 +173,7 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       const inner = document.querySelector('.header-inner')
       const trash = document.querySelector('#trash-link').getBoundingClientRect()
       const settings = document.querySelector('#settings').getBoundingClientRect()
-      const footer = document.querySelector('.footer-inner').getBoundingClientRect()
+      const sidebar = document.querySelector('#app-sidebar').getBoundingClientRect()
       const controls = document.querySelector('.window-controls').getBoundingClientRect()
       const buttons = [...document.querySelectorAll('.window-controls button')].map((node) => ({
         label: node.getAttribute('aria-label'), title: node.getAttribute('title'),
@@ -176,13 +181,13 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       return {
         top: inner.getBoundingClientRect().top, reserved: parseFloat(getComputedStyle(inner).paddingRight),
         gap: innerWidth - trash.right, viewport: innerWidth, buttons, right: controls.right, height: controls.height,
-        settingsLeft: settings.left, footerLeft: footer.left, settingsBottom: settings.bottom, viewportHeight: innerHeight,
+        settingsLeft: settings.left, sidebarLeft: sidebar.left, settingsBottom: settings.bottom, viewportHeight: innerHeight,
       }
     })
     expect(header.top).toBe(0)
     expect(header.reserved).toBeGreaterThan(90)
     expect(header.gap).toBeGreaterThan(90)
-    expect(header.settingsLeft).toBeGreaterThanOrEqual(header.footerLeft - 1)
+    expect(header.settingsLeft).toBeGreaterThanOrEqual(header.sidebarLeft - 1)
     expect(header.settingsBottom).toBeLessThanOrEqual(header.viewportHeight + 1)
     expect(header.buttons).toEqual((english
       ? ['Minimize', 'Maximize', 'Close window']
@@ -192,8 +197,10 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await page.screenshot({ path: testInfo.outputPath('windows-home.png') })
     await checkNativeHeader(app, page, testInfo, 'windows')
     const controls = page.locator('.window-controls')
-    await page.locator('a[href="#/reference"]').first().click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="reference"]').click()
     await page.locator('input[type=file]').setInputFiles(original)
+    await chooseImportType(page, 'reference')
     await page.getByRole('link', { name: '查看 桌面续写原文', exact: true }).click()
     const projectUrl = page.url()
     await page.getByRole('button', { name: '新建续写' }).click()
@@ -242,9 +249,11 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await expect.poll(async () => readFile(originalPath).catch(() => null)).toEqual(original.buffer)
 
     await page.getByRole('link', { name: 'New World 书库首页' }).click()
-    await page.getByRole('link', { name: '进入原创库' }).click()
+    await page.getByRole('link', { name: '写作', exact: true }).click()
+    await page.locator('[data-filter="original"]').click()
     await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
     await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', exportedPdf))
+    await chooseImportType(page, 'original')
     await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
     const canvas = page.getByRole('img', { name: 'PDF 第 1 页' })
     await expect(canvas).toBeVisible()
@@ -267,8 +276,9 @@ test('阅读批注在安装版中可选区创建、悬停固定、切换形式�
   let app = await launch(testInfo)
   try {
     let page = await app.firstWindow()
-    await page.locator('a[href="#/original"]').first().click()
-    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('桌面批注')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('桌面正文。\n第二段，English!')
@@ -441,8 +451,9 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     expect(requests).toBe(7)
     await page.locator('.settings-back').click()
 
-    await page.locator('a[href="#/original"]').first().click()
-    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('检查更新时的稿件')
     await page.getByRole('button', { name: '创建小说' }).click()
     await expect(editor(page)).toBeVisible()
@@ -556,8 +567,9 @@ test('应用内下载校验、原目录覆盖安装和自动重启后保留下�
     await page.reload()
     await expect(page.locator('#app-version')).toHaveText('v' + previous)
     await expect(page.locator('#update-banner')).toContainText(versionTag)
-    await page.locator('a[href="#/original"]').first().click()
-    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('应用内更新前的稿件')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('更新前已写好的正文。')
@@ -649,7 +661,7 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
     await stop(app)
     app = await launch(testInfo)
     page = await app.firstWindow()
-    await expect(page.getByRole('heading', { name: 'My novel library' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Writing stats' })).toBeVisible()
     settings = await openSettingsCategory(page, 'general', 'en')
     await expect(settings.getByRole('combobox', { name: 'Language', exact: true })).toHaveValue('en')
     await settings.getByRole('combobox', { name: 'Language', exact: true }).selectOption('zh-CN')
@@ -716,8 +728,9 @@ test('拼写检查使用随应用安装的英文词典，不需要联网下载',
       })
     })
 
-    await page.locator('a[href="#/original"]').first().click()
-    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('Spelling')
     await page.getByRole('button', { name: '创建小说' }).click()
     await expect(editor(page)).toBeVisible()
@@ -816,8 +829,9 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
       })
     }, folder)
 
-    await page.locator('a[href="#/original"]').first().click()
-    await page.getByRole('button', { name: '新建小说' }).click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
+    await startWork(page)
     await page.getByRole('textbox', { name: '作品名' }).fill('备份的灯塔')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('守夜人把灯点亮。')
@@ -866,7 +880,8 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
     await expect(page.getByText(/已从备份恢复 \d+ 部作品。/)).toBeVisible()
     expect((await backups()).some((name) => name.startsWith('New-World-before-restore-'))).toBe(true)
-    await page.locator('a[href="#/original"]').first().click()
+    await page.locator('#writing-link').click()
+    await page.locator('[data-filter="original"]').click()
     await page.getByRole('link', { name: '查看 备份的灯塔', exact: true }).click()
     await expect(editor(page)).toHaveText('守夜人把灯点亮。')
 
@@ -1191,5 +1206,47 @@ test('.newworld 冷启动导入、中文路径导出与系统关联热打开保�
     await reopened.goto(url)
     await expectDesktopWorkInformation(reopened)
     await expect(editor(reopened)).toHaveText('文件关联打开时仍在编辑的正文。')
+  } finally { await stop(app) }
+})
+
+
+if (process.platform === 'win32') test('Windows 登录项控制注册表，后台登录只显示速记，普通启动唤回主窗口', async ({}, info) => {
+  const app = await launch(info, ['--background-login'])
+  try {
+    const page = await app.firstWindow()
+    await expect(page.locator('#app-version')).toHaveText(versionTag)
+    const mainVisible = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .find((window) => !window.webContents.getURL().endsWith('#/capture')).isVisible())
+    expect(await mainVisible()).toBe(false)
+    expect(await app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('Control+Alt+N'))).toBe(true)
+    const opened = app.waitForEvent('window')
+    await app.evaluate(({ app }) => app.emit('second-instance', {}, [process.execPath, '--quick-note'], process.cwd()))
+    const capture = await opened
+    await expect(capture.locator('.capture-text')).toBeFocused()
+    await capture.keyboard.press('Tab')
+    await capture.locator('.capture-task-title').fill('后台登录后记下的提醒')
+    await capture.locator('.capture-task-title').press('Enter')
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().endsWith('#/capture')).isVisible())).toBe(false)
+    expect(await mainVisible()).toBe(false)
+    await app.evaluate(({ app }) => app.emit('second-instance', {}, [process.execPath], process.cwd()))
+    await expect.poll(mainVisible).toBe(true)
+    await page.evaluate(() => { location.hash = '#/notes/tasks' })
+    await expect(page.getByRole('button', { name: '后台登录后记下的提醒', exact: true })).toBeVisible()
+
+    const general = await openSettingsCategory(page, 'general')
+    const toggle = general.getByRole('switch')
+    await expect(toggle).toBeEnabled()
+    await expect(toggle).not.toBeChecked()
+    const runKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+    await toggle.check()
+    const registered = () => setup('reg.exe', ['query', runKey, '/v', 'NewWorldBackground']).then(({ stdout }) => stdout, () => '')
+    await expect.poll(registered).toContain('--background-login')
+    await toggle.uncheck()
+    await expect.poll(registered).toBe('')
+    if (uninstaller) {
+      await toggle.check()
+      await expect.poll(registered).toContain('--background-login')
+    }
   } finally { await stop(app) }
 })

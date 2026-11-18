@@ -150,7 +150,7 @@
 /* Focus mode: only the chapter text and a faded toolbar stay on the page. */
 .focus-toggle { flex: none; border-color: var(--ink); background: var(--sheet); }
 .focus-writing body { background-image: none; }
-.focus-writing :is(.breadcrumbs, .page-heading, .version-navigation, .edition-header, .conversion-info, .edition-side, .ideas-toggle, .site-footer, .update-banner) { display: none; }
+.focus-writing :is(.app-sidebar, #drawer-toggle, .breadcrumbs, .page-heading, .version-navigation, .edition-header, .conversion-info, .edition-side, .ideas-toggle, .site-footer, .update-banner) { display: none; }
 .focus-writing .main-content { padding-block: 14px 40px; }
 .focus-writing .edition-layout { grid-template-columns: minmax(0, 1fr); }
 .focus-writing .writing-panel { border-color: transparent; background: transparent; box-shadow: none; }

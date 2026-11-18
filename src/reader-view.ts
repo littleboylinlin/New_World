@@ -1,3 +1,4 @@
+import { rememberWork } from './ideas'
 import { workTaskControls } from './tasks/links'
 import { t } from './i18n'
 import { workInformationPanel } from './work-information-view'
@@ -173,6 +174,7 @@ export async function renderReader(
     const { book, blob } = stored
     const reference = library === 'reference'
     const workId = book.workId ?? id
+    rememberWork({ library, bookId: workId })
     if (reference && !editionId && !blob) {
       content.replaceChildren(link(bookPath(library, workId), t('reader.backToContinuationProject')), notice(t('reader.thisSourceFileHasBeenRemoved'), true))
       return

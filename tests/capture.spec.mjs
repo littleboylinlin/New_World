@@ -172,18 +172,18 @@ test('托盘菜单列出速记、最近作品和备份，动作交回主进程',
   }
   const menu = capture.trayTemplate(options)
   const labels = menu.filter((item) => item.label).map((item) => item.label)
-  expect(labels[0]).toMatch(/^\[ideas\.capture\]\t/)
+  expect(labels[0]).toMatch(/^\[capture\.title\]\t/)
   expect(labels).toContain('[tray.recent]')
   expect(labels).toContain('[backup.now]')
   menu[0].click()
-  menu.find((item) => item.label === '[shelf.newNovel]').click()
+  menu.find((item) => item.label === '[writing.create]').click()
   menu.find((item) => item.label === '[tray.recent]').submenu[0].click()
   menu.find((item) => item.label === '[ideas.title]').click()
   menu.find((item) => item.label === '[backup.now]').click()
   expect(calls).toEqual(['capture', { type: 'new-novel' }, { type: 'open', hash: `#/original/${id}` }, { type: 'ideas' }, { type: 'backup' }])
 
   const empty = capture.trayTemplate({ ...options, recent: [], shortcut: 'off' })
-  expect(empty[0].label).toBe('[ideas.capture]')
+  expect(empty[0].label).toBe('[capture.title]')
   expect(empty.find((item) => item.label === '[tray.recent]').submenu).toEqual([{ label: '[tray.noRecent]', enabled: false }])
 })
 

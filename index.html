@@ -13,37 +13,41 @@
     <a class="skip-link" href="#main" data-i18n="header.skip"></a>
     <header class="site-header">
       <div class="shell header-inner">
+        <button disabled id="drawer-toggle" class="button button-small" type="button" aria-controls="app-sidebar" aria-expanded="false" data-i18n-label="navigation.openMenu"></button>
         <a class="brand" href="#/" data-i18n-label="header.home">
           <img src="./app-icon.png" width="36" height="36" alt="">
           <span class="brand-name">New World</span>
         </a>
         <div class="header-actions">
           <span class="local-label"><span aria-hidden="true"></span><span data-i18n="header.local"></span></span>
-          <a id="trash-link" class="button button-quiet button-small" href="#/trash" data-i18n-label="trash.title">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13m-7 4v6m4-6v6"/></svg>
-            <span class="trash-label" data-i18n="trash.title"></span><span id="trash-unread" class="trash-dot" hidden><span class="visually-hidden" data-i18n="trash.newItems"></span></span>
-          </a>
         </div>
       </div>
     </header>
-    <div id="page" class="page">
-    <section id="update-banner" class="shell update-banner" aria-label="版本更新提示" hidden></section>
-    <main id="main" class="shell main-content" tabindex="-1"></main>
-    </div>
-    <footer class="site-footer">
-      <div class="shell footer-inner">
-        <div class="footer-nav">
-          <a id="settings" class="settings-entry" href="#/settings">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-1.5a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V20a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H4a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H10a1.65 1.65 0 0 0 1-1.51V4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V10a1.65 1.65 0 0 0 1.51 1H20a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-            <span data-i18n="settings.title"></span>
-          </a>
+    <div class="workspace">
+      <aside id="app-sidebar" class="app-sidebar">
+        <div class="sidebar-top">
+          <img src="./app-icon.png" width="32" height="32" alt="">
+          <span class="brand-name">New World</span>
+          <button disabled id="sidebar-toggle" class="sidebar-toggle" type="button" aria-controls="app-nav"></button>
         </div>
-        <div class="footer-meta">
-          <span>New World <span id="app-version" class="version"></span></span>
-          <p id="storage-location" class="storage-location"></p>
+        <nav id="app-nav" data-i18n-label="navigation.main"></nav>
+      </aside>
+      <div id="drawer-backdrop" hidden></div>
+      <div class="app-column">
+        <div id="page" class="page">
+          <section id="update-banner" class="shell update-banner" aria-label="版本更新提示" hidden></section>
+          <main id="main" class="shell main-content" tabindex="-1"></main>
         </div>
+        <footer class="site-footer">
+          <div class="shell footer-inner">
+            <div class="footer-meta">
+              <span>New World <span id="app-version" class="version"></span></span>
+              <p id="storage-location" class="storage-location"></p>
+            </div>
+          </div>
+        </footer>
       </div>
-    </footer>
+    </div>
     <noscript>Please enable JavaScript to use New World.</noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>

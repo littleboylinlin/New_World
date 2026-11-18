@@ -1,3 +1,4 @@
+import { startWork } from './navigation-helpers.mjs'
 import { readFileSync } from 'node:fs'
 import { expect, test } from './app-test.mjs'
 
@@ -25,9 +26,14 @@ test('网页版不请求 GitHub，也没有手动检查更新按钮', async ({ p
 
 test('打开页面和切回标签页时静默比对 version.json，同一构建不提示', async ({ page, context }) => {
   const seen = await serveVersion(context, () => deployed.build)
+  const firstCheck = page.waitForResponse((response) => new URL(response.url()).pathname === '/version.json')
   await page.goto('/')
+  await (await firstCheck).finished()
   await expect.poll(() => seen.count).toBe(1)
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => {
+    document.dispatchEvent(new Event('visibilitychange'))
+    done()
+  })))
   await expect.poll(() => seen.count).toBe(2)
   await page.waitForTimeout(200)
   await expect(tip(page)).toHaveCount(0)
@@ -59,7 +65,7 @@ test('刷新前先确认正文已保存：保存失败不刷新，保存后刷�
     }
   })
   await page.goto('/#/original')
-  await page.getByRole('button', { name: '新建小说' }).click()
+  await startWork(page)
   await page.getByRole('textbox', { name: '作品名' }).fill('更新前的稿件')
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })

@@ -278,12 +278,21 @@ export interface WorkRef {
   bookId: string
 }
 
+const openedKey = (library: LibraryId, id: string) => 'new-world:opened:' + library + ':' + id
+
+export function lastOpened(library: LibraryId, id: string) {
+  try { return Number(localStorage.getItem(openedKey(library, id))) || 0 } catch { return 0 }
+}
+
 /** Remembers the work last opened, which new ideas belong to by default, and the recent works. */
 export function rememberWork(work: WorkRef) {
   try {
+    const openedAt = Date.now()
+    localStorage.setItem(openedKey(work.library, work.bookId), String(openedAt))
     localStorage.setItem(lastWorkKey, JSON.stringify(work))
     const recent = recentWorks().filter((item) => item.library !== work.library || item.bookId !== work.bookId)
-    localStorage.setItem(recentKey, JSON.stringify([work, ...recent].slice(0, 5)))
+    localStorage.setItem(recentKey, JSON.stringify([{ ...work, openedAt }, ...recent].slice(0, 8)))
+    window.dispatchEvent(new Event('new-world:work-opened'))
   } catch { /* Only the default choice is lost. */ }
 }
 
@@ -296,7 +305,7 @@ export function lastWork(): WorkRef | undefined {
   }
 }
 
-export function recentWorks(): WorkRef[] {
+export function recentWorks(): (WorkRef & { openedAt?: number })[] {
   try {
     const value = JSON.parse(localStorage.getItem(recentKey) ?? '[]')
     return Array.isArray(value) ? value.filter((item) => typeof item?.bookId === 'string' && (item.library === 'original' || item.library === 'reference')) : []

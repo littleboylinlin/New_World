@@ -50,7 +50,7 @@ export function taskTransferControls() {
             await importTasks(data, mode.input.value as 'preserve' | 'copy' | 'skip')
             if (mode.input.value !== 'skip') {
               showNotice(t('tasks.imported'))
-              location.hash = '#/tasks/all'
+              location.hash = '#/notes/tasks/all'
             }
           },
         )

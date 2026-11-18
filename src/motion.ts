@@ -7,72 +7,16 @@ function depth(hash: string) {
   return hash.replace(/^#\/?/, '').split('/').filter(Boolean).length
 }
 
-function shelfOf(hash: string) {
-  return hash.match(/^#\/(original|reference)\/?$/)?.[1]
-}
-
-function libraryName(view: HTMLElement, library: string) {
-  return view.querySelector<HTMLElement>(`.shelf-${library} .card-copy h2, .shelf-page .page-heading h1`)
-}
-
-function fly(from: DOMRect, target: HTMLElement) {
-  const to = target.getBoundingClientRect()
-  if (!to.height || from.bottom < 0 || from.top > innerHeight) return
-  // The travelling name is drawn by CSS from an attribute, so the page text stays single.
-  const ghost = document.createElement('span')
-  ghost.className = 'name-ghost'
-  ghost.setAttribute('aria-hidden', 'true')
-  ghost.dataset.text = target.textContent ?? ''
-  const style = getComputedStyle(target)
-  Object.assign(ghost.style, {
-    left: `${to.left}px`, top: `${to.top}px`, font: style.font, letterSpacing: style.letterSpacing, color: style.color,
-  })
-  document.body.append(ghost)
-  target.classList.add('name-landing')
-  const scale = from.height / to.height
-  const flight = ghost.animate([
-    { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${scale})` },
-    { transform: 'none' },
-  ], { duration: 380, easing: 'cubic-bezier(.2, .75, .25, 1)' })
-  const land = () => {
-    ghost.remove()
-    target.classList.remove('name-landing')
-    if (cancelFlight === cancel) cancelFlight = undefined
-  }
-  const cancel = () => { flight.cancel(); land() }
-  cancelFlight = cancel
-  flight.finished.then(land, land)
-}
-
-let cancelFlight: (() => void) | undefined
-let travelling = false
-
-reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) cancelFlight?.() })
-
-// Swap the page at once, then let the new page animate in. Nothing waits on the animation.
+// Swap synchronously so an interrupted animation never leaves the previous page or title on screen.
 export function changeView(view: HTMLElement, from: string, to: string, render: () => void) {
-  cancelFlight?.()
-  const direction = depth(to) > depth(from) ? 'forward' : depth(to) < depth(from) ? 'back' : 'level'
-  const library = depth(from) === 0 ? shelfOf(to) : undefined
-  const start = !reducedMotion.matches && library ? libraryName(view, library)?.getBoundingClientRect() : undefined
   delete view.dataset.enter
-  travelling = !!start
-  try {
-    render()
-  } finally {
-    travelling = false
-  }
+  render()
   if (reducedMotion.matches) return
-  // The landing place is measured before the page starts to move.
-  const target = start && library ? libraryName(view, library) : null
-  if (start && target) fly(start, target)
-  view.dataset.enter = direction
+  view.dataset.enter = depth(to) > depth(from) ? 'forward' : depth(to) < depth(from) ? 'back' : 'level'
 }
 
 // Children of a list rise one after another the first time it is shown.
 export function stagger(list: HTMLElement) {
-  // A list that arrives while a name is travelling comes in with the page instead.
-  if (travelling) return list
   list.classList.add('stagger')
   Array.from(list.children).forEach((item, index) => (item as HTMLElement).style.setProperty('--order', String(Math.min(index, 10))))
   return list

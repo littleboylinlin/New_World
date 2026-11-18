@@ -58,7 +58,7 @@ const b = (key: string, action: () => unknown, cls = 'button button-quiet button
   })
   return node
 }
-export async function taskDialog(data: TaskData, task?: Task, patch: Partial<Task> = {}) {
+export async function taskDialog(data: TaskData, task?: Task, patch: Partial<Task> = {}, onCreated?: (task: Task) => void) {
   const initial = task ?? {
     title: '',
     description: '',
@@ -193,7 +193,10 @@ export async function taskDialog(data: TaskData, task?: Task, patch: Partial<Tas
       }
       const schedule = { ...scheduling.read(), link: association.read() }
       if (task) await editTask(task.id, task.revision, { ...value, ...schedule })
-      else await addTask(value.title, { ...value, ...schedule })
+      else {
+        const created = await addTask(value.title, { ...value, ...schedule })
+        onCreated?.(created)
+      }
     },
   )
 }
@@ -347,20 +350,13 @@ function sectionDialog(data: TaskData, projectId: string) {
   )
 }
 
-export function renderTasks(root: HTMLElement, signal: AbortSignal) {
+export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute: string) {
   const page = element('section', 'task-workspace'),
-    heading = element('header', 'page-heading'),
     nav = element('nav', 'task-nav'),
     content = element('div', 'task-content')
-  heading.append(
-    element('div', '', labelKey('intro')),
-    link('#/', t('navigation.home'), 'button button-quiet'),
-  )
-  const title = element('h1', '', labelKey('workspace'))
-  heading.prepend(title)
   const layout = element('div', 'task-layout')
   layout.append(nav, content)
-  page.append(heading, layout)
+  page.append(layout)
   root.append(page)
   let data = emptyTasks(),
     request = 0,
@@ -375,7 +371,6 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
     siblingIndex = new Map<string, Task[]>()
   const locationKey = (task: Task) => [task.projectId, task.sectionId, task.parentId].join(':')
   const selected = new Set<string>()
-  const route = () => decodeURIComponent(location.hash.replace(/^#\/tasks\/?/, '') || 'inbox')
   const query = field(labelKey('search'), 'search')
   query.input.placeholder = labelKey('searchHint')
   query.input.addEventListener('input', () => paintContent())
@@ -392,7 +387,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
     event.preventDefault()
     add.disabled = true
     void addTask(input.value, {
-      projectId: route().startsWith('project/') ? route().slice(8) : null,
+      projectId: currentRoute.startsWith('project/') ? currentRoute.slice(8) : null,
       ...(contextLink ? { link: contextLink } : {}),
     })
       .then(
@@ -420,8 +415,8 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
       'templates',
       'statistics',
     ]) {
-      const item = link('#/tasks/' + key, labelKey(key), 'task-nav-item')
-      if (route() === key) item.setAttribute('aria-current', 'page')
+      const item = link('#/notes/tasks/' + key, labelKey(key), 'task-nav-item')
+      if (currentRoute === key) item.setAttribute('aria-current', 'page')
       nav.append(item)
     }
     nav.append(
@@ -432,7 +427,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
     for (const filter of data.taskFilters)
       nav.append(
         link(
-          '#/tasks/filter/' + filter.id,
+          '#/notes/tasks/filter/' + filter.id,
           (filter.favorite ? '★ ' : '') + filter.name,
           'task-nav-item',
         ),
@@ -442,13 +437,13 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
       .sort((a, b) => a.order - b.order)
     const appendProject = (p: TaskProject, depth: number) => {
       const item = link(
-        '#/tasks/project/' + p.id,
+        '#/notes/tasks/project/' + p.id,
         (p.favorite ? '★ ' : '') + p.icon + ' ' + p.name,
         'task-nav-item',
       )
       item.style.borderInlineStartColor = p.color
       item.style.paddingInlineStart = 10 + Math.min(depth, 8) * 10 + 'px'
-      if (route() === 'project/' + p.id) item.setAttribute('aria-current', 'page')
+      if (currentRoute === 'project/' + p.id) item.setAttribute('aria-current', 'page')
       nav.append(item)
       projects
         .filter((c) => c.parentId === p.id && (c.archivedAt !== null) === (p.archivedAt !== null))
@@ -473,10 +468,10 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
         .forEach((p) => appendProject(p, 0))
     }
     for (const label of data.taskLabels.filter((l) => l.deletedAt === null && l.favorite))
-      nav.append(link('#/tasks/label/' + label.id, '# ' + label.name, 'task-nav-item'))
+      nav.append(link('#/notes/tasks/label/' + label.id, '# ' + label.name, 'task-nav-item'))
   }
   function visibleTasks() {
-    const current = route(),
+    const current = currentRoute,
       today = dateKey(),
       projectId = current.startsWith('project/') ? current.slice(8) : null
     const archived = new Set(
@@ -487,6 +482,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
     return data.tasks
       .filter((task) => {
         if (!taskMatches(task, query.input.value)) return false
+        if (current.startsWith('item/')) return task.id === current.slice(5)
         if (current.startsWith('filter/')) {
           const filter = data.taskFilters.find((f) => f.id === current.slice(7))
           return Boolean(filter && matchesFilter(task, filter.group))
@@ -637,7 +633,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
     }
     for (const id of task.labelIds) {
       const label = data.taskLabels.find((l) => l.id === id && l.deletedAt === null)
-      if (label) meta.append(link('#/tasks/label/' + id, '#' + label.name))
+      if (label) meta.append(link('#/notes/tasks/label/' + id, '#' + label.name))
     }
     copy.append(meta)
     const actions = element('div', 'task-actions')
@@ -728,7 +724,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
         focused instanceof HTMLInputElement && (focused === query.input || focused === input)
           ? [focused.selectionStart, focused.selectionEnd]
           : undefined
-    const current = route(),
+    const current = currentRoute,
       project = current.startsWith('project/')
         ? data.taskProjects.find((p) => p.id === current.slice(8))
         : undefined
@@ -769,7 +765,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
             },
             async () => {
               await deleteProject(project.id)
-              location.hash = '#/tasks/trash'
+              location.hash = '#/notes/tasks/trash'
             },
           ),
         ),
@@ -1001,8 +997,8 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
       if (signal.aborted || turn !== request) return
       data = next
       contextLink = undefined
-      if (route().startsWith('work/')) {
-        const [, library, id] = route().split('/')
+      if (currentRoute.startsWith('work/')) {
+        const [, library, id] = currentRoute.split('/')
         if (library === 'original' || library === 'reference') {
           const stored = await readBook(library, id)
           if (signal.aborted || turn !== request) return
@@ -1055,7 +1051,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal) {
     'keydown',
     (event) => {
       if (
-        document.querySelector('dialog[open]') ||
+        root.hidden || document.querySelector('dialog[open]') ||
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLTextAreaElement ||
         event.target instanceof HTMLSelectElement ||
