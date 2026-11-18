@@ -26,9 +26,14 @@ test('网页版不请求 GitHub，也没有手动检查更新按钮', async ({ p
 
 test('打开页面和切回标签页时静默比对 version.json，同一构建不提示', async ({ page, context }) => {
   const seen = await serveVersion(context, () => deployed.build)
+  const firstCheck = page.waitForResponse((response) => new URL(response.url()).pathname === '/version.json')
   await page.goto('/')
+  await (await firstCheck).finished()
   await expect.poll(() => seen.count).toBe(1)
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => {
+    document.dispatchEvent(new Event('visibilitychange'))
+    done()
+  })))
   await expect.poll(() => seen.count).toBe(2)
   await page.waitForTimeout(200)
   await expect(tip(page)).toHaveCount(0)
