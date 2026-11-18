@@ -384,7 +384,7 @@
   "updates.seeTheGithubReleasePageForTheFull": "{0}\n\n完整说明见 GitHub 发布页。",
   "updates.theRunningVersionCouldNotBeIdentified": "无法识别当前运行版本。",
   "updates.youAreOfflineConnectToTheInternetAnd": "当前处于离线状态。联网后可以重试。",
-  "updates.theGithubUpdateApiRateLimitHasBeen": "GitHub 更新接口达到请求限额。请稍后重试。",
+  "updates.theGithubUpdateApiRateLimitHasBeen": "更新服务器暂时繁忙，请稍后重试或切换网络。",
   "updates.githubCouldNotReturnReleaseInformationHttpTry": "GitHub 暂时无法返回版本信息（HTTP {0}）。请稍后重试。",
   "updates.theUpdateCheckTimedOutTryAgainLater": "检查更新超时。请稍后重试。",
   "updates.githubCouldNotBeReachedCheckYourConnection": "无法连接 GitHub 检查更新。请检查网络后重试。",

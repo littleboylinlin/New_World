@@ -1,11 +1,10 @@
 const { spawn } = require('node:child_process')
 const { createHash } = require('node:crypto')
-const { createReadStream, createWriteStream } = require('node:fs')
+const { createReadStream } = require('node:fs')
 const { mkdir, mkdtemp, stat } = require('node:fs/promises')
 const { join } = require('node:path')
-const { Readable, Transform } = require('node:stream')
-const { pipeline } = require('node:stream/promises')
-const { isNewerWindowsTag, isUpdateUrl, readWindowsInstaller, releaseEndpoint } = require('./windows-release.mjs')
+const { findInstaller, isNewerWindowsTag, isUpdateUrl } = require('./windows-release.mjs')
+const { downloadVerified } = require('./update-download.cjs')
 const { cleanDownloads, remove: removeDownload } = require('./cleanup.cjs')
 
 class UpdateError extends Error {}
@@ -15,55 +14,16 @@ const downloadFailed = "windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour"
 const installFailed = "windowsUpdate.theUpdateInstallerCouldNotBeStartedMake"
 
 async function officialInstaller(request, tag) {
-  const release = await request(releaseEndpoint + '/tags/' + tag, {
-    headers: { Accept: 'application/vnd.github+json' },
-    redirect: 'error',
-    signal: AbortSignal.timeout(8000),
-  })
-  const metadata = release.ok && await release.json()
-  const installer = metadata?.tag_name === tag && metadata.draft === false && metadata.prerelease === false
-    && readWindowsInstaller(tag, metadata.assets)
+  const installer = await findInstaller(request, tag, 'win32', 'x64')
   if (!installer) throw new UpdateError("windowsUpdate.noVerifiableWindowsInstallerIsAvailableForThis")
   return installer
 }
 
 async function saveVerifiedInstaller(request, installer, path, progress) {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 45_000)
-  const { signal } = controller
-  const hash = createHash('sha256')
-  let received = 0
-  let reportedAt = 0
   try {
-    const response = await request(installer.url, { redirect: 'follow', signal })
-    if (!response.ok || !response.body) throw new UpdateError(downloadFailed)
-    const declaredLength = response.headers?.get?.('content-length')
-    if (declaredLength !== null && declaredLength !== undefined && declaredLength !== '' && Number(declaredLength) !== installer.size) {
-      throw new UpdateError(invalidPackage)
-    }
-    timeout.refresh()
-    progress(0, installer.size)
-    const count = new Transform({
-      transform(chunk, _encoding, done) {
-        timeout.refresh()
-        received += chunk.length
-        if (received > installer.size) {
-          done(new UpdateError(invalidPackage))
-          return
-        }
-        hash.update(chunk)
-        const now = Date.now()
-        if (received === installer.size || now - reportedAt >= 150) {
-          reportedAt = now
-          progress(received, installer.size)
-        }
-        done(null, chunk)
-      },
-    })
-    await pipeline(Readable.fromWeb(response.body), count, createWriteStream(path, { flags: 'wx' }), { signal })
-    if (received !== installer.size || hash.digest('hex') !== installer.sha256) throw new UpdateError(invalidPackage)
-  } finally {
-    clearTimeout(timeout)
+    await downloadVerified({ request, sources: [installer.url, installer.mirror], size: installer.size, sha256: installer.sha256, path, progress })
+  } catch (error) {
+    throw new UpdateError(error?.kind === 'invalid' ? invalidPackage : downloadFailed)
   }
 }
 

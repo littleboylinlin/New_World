@@ -158,7 +158,7 @@ test('离线、连接失败、限流、服务异常和无效版本可手动重�
   await expect(state).toContainText('当前处于离线状态')
   expect(requests).toBe(1)
   await context.setOffline(false)
-  const messages = ['请求限额', '请求限额', 'HTTP 503', '版本信息不完整或格式异常', '版本信息不完整或格式异常', '版本信息不完整或格式异常', '当前已是最新版本']
+  const messages = ['更新服务器暂时繁忙', '更新服务器暂时繁忙', 'HTTP 503', '版本信息不完整或格式异常', '版本信息不完整或格式异常', '版本信息不完整或格式异常', '当前已是最新版本']
   for (const message of messages) {
     const response = page.waitForResponse(releaseEndpoint)
     await check.click()

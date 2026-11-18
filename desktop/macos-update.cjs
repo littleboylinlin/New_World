@@ -1,10 +1,9 @@
 const { createHash } = require('node:crypto')
-const { createReadStream, createWriteStream } = require('node:fs')
-const { mkdir, mkdtemp, rename, stat } = require('node:fs/promises')
+const { createReadStream } = require('node:fs')
+const { mkdir, mkdtemp, stat } = require('node:fs/promises')
 const { join } = require('node:path')
-const { Readable, Transform } = require('node:stream')
-const { pipeline } = require('node:stream/promises')
 const { cleanDownloads, cleanLegacyMacDownloads, remove } = require('./cleanup.cjs')
+const { downloadVerified } = require('./update-download.cjs')
 
 class MacUpdateError extends Error {}
 
@@ -16,7 +15,7 @@ async function verify(installer) {
 }
 
 async function createMacUpdater({ network, version, arch, cache, legacyDownloads, installer }) {
-  const { isNewerTag, readMacInstaller, releaseEndpoint, isInstallerUrl } = await import('./release.mjs')
+  const { isNewerTag, findInstaller, isInstallerUrl } = await import('./release.mjs')
   let ready
   let busy = false
   const cleanup = Promise.all([cleanDownloads(cache), legacyDownloads && cleanLegacyMacDownloads(legacyDownloads)])
@@ -34,48 +33,18 @@ async function createMacUpdater({ network, version, arch, cache, legacyDownloads
     try {
       await cleanup
       if (ready) { await remove(ready.directory); ready = undefined }
-      const metadata = await request(releaseEndpoint + '/tags/' + tag, {
-        headers: { Accept: 'application/vnd.github+json' }, redirect: 'error', signal: AbortSignal.timeout(8000),
-      })
-      const release = metadata.ok && await metadata.json()
-      const installer = release?.tag_name === tag && release.draft === false && release.prerelease === false
-        && readMacInstaller(tag, release.assets, arch)
+      const installer = await findInstaller(request, tag, 'darwin', arch)
       if (!installer) throw new MacUpdateError('macUpdate.unavailable')
       await mkdir(cache, { recursive: true, mode: 0o700 })
       directory = await mkdtemp(join(cache, 'download-'))
       const destination = join(directory, installer.name)
-      const temporary = destination + '.download'
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 45_000)
-      let received = 0
-      let reportedAt = 0
-      const hash = createHash('sha256')
       try {
-        const response = await request(installer.url, { redirect: 'follow', signal: controller.signal })
-        if (!response.ok || !response.body) throw new MacUpdateError('windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour')
-        const declaredLength = response.headers?.get?.('content-length')
-        if (declaredLength !== null && declaredLength !== undefined && declaredLength !== '' && Number(declaredLength) !== installer.size) {
-          throw new MacUpdateError('windowsUpdate.theInstallerSizeOrSha256ChecksumDoes')
-        }
-        timer.refresh()
-        progress(0, installer.size)
-        const count = new Transform({ transform(chunk, _encoding, done) {
-          timer.refresh()
-          received += chunk.length
-          if (received > installer.size) return done(new MacUpdateError('windowsUpdate.theInstallerSizeOrSha256ChecksumDoes'))
-          hash.update(chunk)
-          if (received === installer.size || Date.now() - reportedAt >= 150) {
-            reportedAt = Date.now()
-            progress(received, installer.size)
-          }
-          done(null, chunk)
-        } })
-        await pipeline(Readable.fromWeb(response.body), count, createWriteStream(temporary, { flags: 'wx' }), { signal: controller.signal })
-        if (received !== installer.size || hash.digest('hex') !== installer.sha256) throw new MacUpdateError('windowsUpdate.theInstallerSizeOrSha256ChecksumDoes')
-        await rename(temporary, destination)
-        ready = { ...installer, path: destination, directory }
-        directory = undefined
-      } finally { clearTimeout(timer) }
+        await downloadVerified({ request, sources: [installer.url, installer.mirror], size: installer.size, sha256: installer.sha256, path: destination, progress })
+      } catch (error) {
+        throw new MacUpdateError(error?.kind === 'invalid' ? 'windowsUpdate.theInstallerSizeOrSha256ChecksumDoes' : 'windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour')
+      }
+      ready = { ...installer, path: destination, directory }
+      directory = undefined
     } catch (error) {
       if (directory) await remove(directory)
       throw error instanceof MacUpdateError ? error : new MacUpdateError('windowsUpdate.theInstallerCouldNotBeDownloadedCheckYour')
