@@ -530,7 +530,7 @@ const quickNoteFlag = '--quick-note'
 function openCapture() {
   if (!captureWindow || captureWindow.isDestroyed()) {
     captureWindow = new BrowserWindow({
-      width: 520, height: 360, show: false, frame: false, resizable: false, minimizable: false, maximizable: false,
+      width: 520, height: 390, show: false, frame: false, resizable: false, minimizable: false, maximizable: false,
       fullscreenable: false, alwaysOnTop: true, skipTaskbar: true, backgroundColor: windowBackground(),
       icon: join(__dirname, 'icon.png'),
       webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: true },
@@ -682,11 +682,11 @@ function refreshMenus() {
   if (process.platform === 'win32') {
     app.setUserTasks([{
       program: process.execPath, arguments: app.isPackaged ? quickNoteFlag : `"${app.getAppPath()}" ${quickNoteFlag}`,
-      iconPath: process.execPath, iconIndex: 0, title: t('ideas.capture'), description: t('ideas.shortcutHint'),
+      iconPath: process.execPath, iconIndex: 0, title: t('capture.title'), description: t('ideas.shortcutHint'),
     }])
   } else if (process.platform === 'darwin' && app.dock) {
     app.dock.setMenu(Menu.buildFromTemplate([
-      { label: t('ideas.capture'), click: openCapture },
+      { label: t('capture.title'), click: openCapture },
       { label: t('shelf.newNovel'), click: () => command({ type: 'new-novel' }) },
       { label: t('ideas.title'), click: () => command({ type: 'ideas' }) },
     ]))

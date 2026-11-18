@@ -638,3 +638,11 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 @media print { .app-sidebar, #drawer-toggle, #drawer-backdrop { display: none !important; } }
 
 .idea-search { width: min(100%, 28rem); margin-block: 18px; }
+
+.capture-panel { overflow: auto; }
+.capture-panel .segment-switch { justify-self: start; -webkit-app-region: no-drag; }
+.capture-panel .capture-text { height: 100px; }
+.capture-panel input { -webkit-app-region: no-drag; }
+.capture-schedule { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px 12px; }
+.capture-schedule .dialog-help { grid-column: 1 / -1; margin: 0; }
+.capture-panel :is(.field-error, .dialog-help):empty { display: none; }

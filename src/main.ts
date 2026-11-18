@@ -21,7 +21,7 @@ async function start() {
     return
   }
   // The desktop quick note window loads the same page with its own route and nothing else.
-  if (location.hash.startsWith('#/capture')) await import('./capture-app')
+  if (window.newWorldDesktop && location.hash === '#/capture') await import('./capture-app')
   else await import('./app')
 }
 
