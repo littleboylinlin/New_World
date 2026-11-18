@@ -285,7 +285,7 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
   search.type = 'search'
   search.placeholder = t('notes.search')
   search.setAttribute('aria-label', search.placeholder)
-  const capture = captureForm(() => {})
+  const capture = captureForm()
   capture.form.classList.add('ideas-capture')
   const message = element('div', 'version-message')
   const content = element('div')
@@ -297,6 +297,29 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
   const report = (text: string) => message.replaceChildren(notice(text, true))
   let request = 0
   let arriving = true
+  let records: { ideas: Idea[], books: Book[], revCounts: Map<string, number> } | undefined
+  function paint() {
+    if (!records) return
+    const { ideas, books, revCounts } = records
+    const query = search.value.trim().toLocaleLowerCase(locale)
+    const matching = ideas.filter((idea) => idea.text.toLocaleLowerCase(locale).includes(query))
+    if (matching.length) {
+      const list = element('ul', 'book-list idea-list')
+      list.setAttribute('aria-label', t('ideas.list'))
+      // Ideas not used yet come first; used ones stay below for reference.
+      const ordered = [...matching.filter((idea) => !idea.usedAt), ...matching.filter((idea) => idea.usedAt)]
+      list.append(...ordered.map((idea) => ideaRow(idea, books, report, revCounts.get(idea.id) ?? 0)))
+      content.replaceChildren(arriving ? stagger(list) : list)
+    } else {
+      const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
+      const emptyIcon = element('div', 'empty-icon')
+      emptyIcon.append(icon('idea'))
+      empty.append(emptyIcon, element('h3', '', t(ideas.length ? 'notes.noMatch' : 'ideas.none')))
+      if (!ideas.length) empty.append(element('p', '', t('ideas.noneHint')))
+      content.replaceChildren(empty)
+    }
+    arriving = false
+  }
   async function refresh() {
     const turn = ++request
     try {
@@ -307,29 +330,13 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
         listIdeaRevisionCounts(),
       ])
       if (signal.aborted || turn !== request) return
-      const books = [...original, ...reference]
-      const matching = ideas.filter((idea) => idea.text.toLocaleLowerCase(locale).includes(search.value.trim().toLocaleLowerCase(locale)))
-      if (matching.length) {
-        const list = element('ul', 'book-list idea-list')
-        list.setAttribute('aria-label', t('ideas.list'))
-        // Ideas not used yet come first; used ones stay below for reference.
-        const ordered = [...matching.filter((idea) => !idea.usedAt), ...matching.filter((idea) => idea.usedAt)]
-        list.append(...ordered.map((idea) => ideaRow(idea, books, report, revCounts.get(idea.id) ?? 0)))
-        content.replaceChildren(arriving ? stagger(list) : list)
-      } else {
-        const empty = element('div', arriving ? 'empty-shelf arrive' : 'empty-shelf')
-        const emptyIcon = element('div', 'empty-icon')
-        emptyIcon.append(icon('idea'))
-        empty.append(emptyIcon, element('h3', '', t(ideas.length ? 'notes.noMatch' : 'ideas.none')))
-        if (!ideas.length) empty.append(element('p', '', t('ideas.noneHint')))
-        content.replaceChildren(empty)
-      }
+      records = { ideas, books: [...original, ...reference], revCounts }
+      paint()
     } catch (error) {
       if (!signal.aborted && turn === request) content.replaceChildren(notice(storageError(error), true))
     }
-    if (!signal.aborted && turn === request) arriving = false
   }
-  search.addEventListener('input', refresh)
+  search.addEventListener('input', paint)
   libraryChanges.addEventListener('update', refresh, { signal })
   window.addEventListener('focus', () => { void refresh() }, { signal })
   void refresh()

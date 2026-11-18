@@ -276,7 +276,7 @@ export function mountSettingsView(
     void refresh()
     void refreshStorage()
     void refreshBackups()
-    void refreshCapture()
+    void refreshCapture?.()
     void refreshLogin?.()
     void refreshAi()
   }

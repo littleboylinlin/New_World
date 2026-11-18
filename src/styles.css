@@ -598,8 +598,10 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 }
 
 .workspace, .app-column { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.workspace { --sidebar-width: 210px; }
+.sidebar-collapsed .workspace { --sidebar-width: 72px; }
 .app-column { flex-direction: column; }
-.app-sidebar { position: sticky; top: 0; z-index: 4; display: flex; flex-direction: column; flex: none; align-self: flex-start; width: 210px; height: 100dvh; padding: 16px 12px; border-inline-end: 3px solid var(--ink); background: var(--sheet); }
+.app-sidebar { position: sticky; top: 0; z-index: 4; display: flex; flex-direction: column; flex: none; align-self: flex-start; width: var(--sidebar-width); height: 100dvh; padding: 16px 12px; border-inline-end: 3px solid var(--ink); background: var(--sheet); }
 .desktop .app-sidebar { position: relative; align-self: stretch; height: auto; }
 .sidebar-top { display: flex; align-items: center; gap: 8px; min-height: 40px; margin-bottom: 20px; }
 .sidebar-top img { border-radius: 7px; }
@@ -613,7 +615,7 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 .sidebar-link .trash-dot { outline: 1px solid var(--edge); }
 #app-nav #settings { margin-top: auto; }
 #drawer-toggle { display: none; }
-.sidebar-collapsed .app-sidebar { width: 72px; padding-inline: 6px; }
+.sidebar-collapsed .app-sidebar { padding-inline: 6px; }
 .sidebar-collapsed .sidebar-label, .sidebar-collapsed .sidebar-top :is(img, .brand-name) { display: none; }
 .sidebar-collapsed .sidebar-toggle { margin-inline: auto; }
 .sidebar-collapsed .sidebar-link { justify-content: center; }
@@ -621,9 +623,12 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 .desktop .sidebar-top :is(img, .brand-name) { display: none; }
 @media screen and (min-width: 641px) {
   html:not(.desktop) .site-header { display: none; }
+  html:not(.desktop) .app-sidebar { position: fixed; inset-inline-start: 0; }
+  html:not(.desktop, .focus-writing) .workspace { padding-inline-start: var(--sidebar-width); }
 }
 @media (prefers-reduced-motion: no-preference) and (min-width: 641px) {
   .app-sidebar { transition: width 180ms var(--ease-out); }
+  html:not(.desktop) .workspace { transition: padding-inline-start 180ms var(--ease-out); }
 }
 @media screen and (max-width: 640px) {
   #drawer-toggle { display: grid; place-items: center; padding: 6px; }
