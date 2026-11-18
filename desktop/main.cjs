@@ -21,11 +21,11 @@ const {
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
-const { releasePages, windowsReleaseList } = require('./windows-release.mjs')
+const { releasePages, windowsReleaseList, mirrorLatest } = require('./windows-release.mjs')
 
 const appId = 'com.littleboylinlin.newworld'
 const appUrl = 'new-world://app/'
-const policy = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+const policy = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' https://dl.writenewworld.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 const types = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -878,7 +878,7 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     local.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (request, done) => {
-      done({ cancel: request.url !== windowsReleaseList || request.method !== 'GET' })
+      done({ cancel: request.method !== 'GET' || (request.url !== windowsReleaseList && request.url !== mirrorLatest) })
     })
     if (app.isPackaged && process.platform === 'win32' && process.arch === 'x64') {
       desktopUpdater = createWindowsUpdater({

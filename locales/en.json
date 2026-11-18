@@ -384,7 +384,7 @@
   "updates.seeTheGithubReleasePageForTheFull": "{0}\n\nSee the GitHub release page for the full notes.",
   "updates.theRunningVersionCouldNotBeIdentified": "The running version could not be identified.",
   "updates.youAreOfflineConnectToTheInternetAnd": "You are offline. Connect to the internet and try again.",
-  "updates.theGithubUpdateApiRateLimitHasBeen": "The GitHub update API rate limit has been reached. Try again later.",
+  "updates.theGithubUpdateApiRateLimitHasBeen": "The update server is busy right now. Try again later or switch networks.",
   "updates.githubCouldNotReturnReleaseInformationHttpTry": "GitHub could not return release information (HTTP {0}). Try again later.",
   "updates.theUpdateCheckTimedOutTryAgainLater": "The update check timed out. Try again later.",
   "updates.githubCouldNotBeReachedCheckYourConnection": "GitHub could not be reached. Check your connection and try again.",

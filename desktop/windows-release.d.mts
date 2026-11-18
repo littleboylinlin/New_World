@@ -1,6 +1,7 @@
 export const releaseEndpoint: string
 export const releasePages: string
 export const windowsReleaseList: string
+export const mirrorLatest: string
 export function isWindowsTag(tag: unknown): tag is string
 export function isNewerWindowsTag(tag: unknown, currentVersion: string): boolean
 export function readWindowsInstaller(tag: string, assets: unknown): {
