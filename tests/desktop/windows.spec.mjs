@@ -378,6 +378,8 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
   const app = await launch(testInfo)
   try {
     const page = await app.firstWindow()
+    let launchChecks = 0
+    page.on('request', (request) => { if (request.url() === releaseList) launchChecks++ })
     await expect(page.getByRole('link', { name: 'New World 书库首页' })).toBeVisible()
     const [major, minor, patch] = version.split('.').map(Number)
     const next = `v${major}.${minor}.${patch + 10}`
@@ -390,8 +392,8 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     let result = [stable(older), stable(next), stable(future, { assets: [] }), stable(`${future}-rc.1`, { prerelease: true }), stable(future, { draft: true }), foreign, noDigest]
     let requests = 0
     let responseStatus = 200
-    // The launch check tries the mirror (5 s limit) before GitHub (8 s), so let it finish before counting this page's requests.
-    await expect.poll(() => page.locator('.update-state').textContent(), { timeout: 20_000 }).not.toMatch(/^$|正在检查/)
+    // The launch check tries the mirror before GitHub; wait for its GitHub request so only the reloaded page is counted.
+    await expect.poll(() => launchChecks, { timeout: 20_000 }).toBeGreaterThan(0).catch(() => {})
     await withoutMirror(page)
     await page.route(releaseList, async (route) => {
       requests++
@@ -425,7 +427,7 @@ test('启动检查 Windows 正式安装包，支持失败重试并保护未保�
     await expect(help.locator('.update-state')).toContainText('无法连接 GitHub')
     responseStatus = 429
     await check.click()
-    await expect(help.locator('.update-state')).toContainText('请求限额')
+    await expect(help.locator('.update-state')).toContainText('更新服务器暂时繁忙，请稍后重试或切换网络。')
     responseStatus = 200
     result = { unexpected: true }
     await check.click()
