@@ -150,8 +150,8 @@ async function downloadWhole({ request, size, sha256, path, timeoutMs }, sources
   const problems = raced.flatMap((result) => result.status === 'rejected' && result.reason.kind !== 'aborted' ? [result.reason] : [])
 
   if (!used && winner) {
-    for (const attempt of attempts) {
-      if (attempt === winner) continue
+    const alternatives = attempts.filter((attempt) => attempt !== winner)
+    for (const attempt of alternatives) {
       attempt.controller = new AbortController()
       winner = attempt
       shown = 0

@@ -88,6 +88,18 @@ test('a winner that fails midway falls back to the other source', async () => {
   assert.ok(result.bytes.equals(payload))
 })
 
+test('a corrupt whole-file winner is not retried when the earlier source is unavailable', async () => {
+  const corrupt = Buffer.from(payload)
+  corrupt[0] ^= 1
+  const missing = source({ status: 404 })
+  const winner = source({ bytes: corrupt })
+  const result = await run({ [mirror]: missing, [github]: winner }, { sources: [mirror, github] })
+  assert.equal(result.error.kind, 'invalid')
+  assert.deepEqual(result.files, [])
+  assert.equal(missing.seen.started, 2)
+  assert.equal(winner.seen.started, 1)
+})
+
 test('one source missing is not an error while the other works', async () => {
   const result = await run({ [github]: source({ status: 404 }), [mirror]: source({ wait: 1 }) })
   assert.equal(result.used, mirror)
