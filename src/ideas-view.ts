@@ -1,3 +1,6 @@
+import { linkedText } from './documents/web-keep'
+import { canBrowse } from './documents/web-pane'
+import { lastEdition, requestOpen } from './documents/compare'
 import { readTasks } from './tasks/store'
 import { taskDialog } from './tasks/view'
 import { locale, t } from './i18n'
@@ -249,7 +252,9 @@ export function ideaActions(idea: Idea, books: Book[], report: (message: string)
 
 function ideaRow(idea: Idea, books: Book[], report: (message: string) => void, revisionCount: number) {
   const row = element('li', idea.usedAt ? 'idea-row idea-used' : 'idea-row')
-  const text = element('p', 'idea-text', idea.text)
+  const text = element('p', 'idea-text')
+  // Web addresses are links: a new tab in a browser, a web pane beside the last manuscript on the desktop.
+  text.append(linkedText(idea.text, canBrowse() ? openOutsideEditor : undefined))
   const meta = element('div', 'file-details idea-meta')
   meta.append(element('span', 'file-size', when(idea.createdAt)))
   const book = idea.bookId ? books.find((item) => item.library === idea.library && item.id === idea.bookId) : undefined
@@ -340,4 +345,12 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
   libraryChanges.addEventListener('update', refresh, { signal })
   window.addEventListener('focus', () => { void refresh() }, { signal })
   void refresh()
+}
+
+/** Away from the editor, a link opens the last manuscript with the page in a web pane beside it. */
+function openOutsideEditor(url: string) {
+  const target = lastEdition()
+  if (!target) { showNotice(t('compare.noEdition')); return }
+  requestOpen({ kind: 'web', url }, 'right')
+  location.hash = bookPath(target.library, target.bookId, target.id)
 }

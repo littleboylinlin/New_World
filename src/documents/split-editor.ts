@@ -11,11 +11,17 @@ import type { SplitTree, Zone } from '../shell/split-tree'
 import { button, element, icon } from '../ui'
 import { showNotice } from '../undo'
 import { canOpenWindow, defaultSource, mainPane, openWindow, readCatalog, readLayout, readSource, saveLayout, sameSource } from './compare'
-import type { CatalogWork, OpenPlacement, ReferenceSource } from './compare'
+import type { CatalogWork, OpenPlacement, PaneSource, ReferenceSource } from './compare'
 import { lastChapter } from './editor-prefs'
 import type { Edition } from './model'
 import { referencePane } from './reference-pane'
 import type { ReferencePane } from './reference-pane'
+import { canBrowse, webPane } from './web-pane'
+import type { WebPane } from './web-pane'
+
+/** Any pane beside the text: a read-only reference or a private web page. */
+export type SidePane = ReferencePane | WebPane
+export const isWebPane = (pane: SidePane | undefined): pane is WebPane => (pane as WebPane | undefined)?.kind === 'web'
 
 export const paneMinWidth = 260
 export const paneMinHeight = 160
@@ -32,14 +38,16 @@ interface SplitEditorOptions {
   switchMain: (id: string) => Promise<boolean>
   onFocusChange: () => void
   /** A reference pane loaded, or now shows another chapter. */
-  onReferenceChange: (pane: ReferencePane) => void
+  onReferenceChange: (pane: SidePane) => void
+  /** Text selected in a web page, to keep as an idea or a task. */
+  onKeep: (kind: 'idea' | 'task', entry: { text: string; title: string; url: string }) => void
   /** Before something opens: drawers over the text (chapter list, side panel) step aside. */
   beforeOpen: () => void
   signal: AbortSignal
 }
 
 /** A dragged entry: what to open, or a work whose default source is decided on drop. */
-export type ComparePayload = { source: ReferenceSource } | { work: CatalogWork }
+export type ComparePayload = { source: PaneSource } | { work: CatalogWork }
 
 /**
  * The editor's split view: the editable chapter plus read-only reference panes. Where the window
@@ -47,7 +55,7 @@ export type ComparePayload = { source: ReferenceSource } | { work: CatalogWork }
  */
 export function mountSplitEditor(options: SplitEditorOptions) {
   const { host, signal } = options
-  const refs = new Map<string, ReferencePane>()
+  const refs = new Map<string, SidePane>()
   let layout: SplitTree = { pane: mainPane }
   let focused = mainPane
   let narrow = false
@@ -176,7 +184,8 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     const width = host.clientWidth
     const height = host.clientHeight
     if (!width || !height) return
-    setNarrow(refs.size ? !fits(layout, width, height, paneMinWidth, paneMinHeight) : width < paneMinWidth * 2)
+    // Too narrow for two panes side by side means no splitting at all, not even one above another.
+    setNarrow(width < paneMinWidth * 2 || (refs.size > 0 && !fits(layout, width, height, paneMinWidth, paneMinHeight)))
   }
   const observer = new ResizeObserver(evaluate)
   observer.observe(host)
@@ -192,19 +201,37 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   }
 
   // ——— Remembered layout ———
+  // Web panes are private: neither where they were nor that they were there is remembered.
+  // The next time the layout comes back without them, and the other panes share their room.
   function persist() {
     if (signal.aborted) return
     const edition = options.edition()
-    if (!refs.size) { saveLayout(edition, undefined); return }
+    const kept = [...refs].filter((entry): entry is [string, ReferencePane] => !isWebPane(entry[1]))
+    let tree: SplitTree = layout
+    for (const [id, pane] of refs) if (isWebPane(pane)) tree = removePane(tree, id) ?? { pane: mainPane }
+    if (!kept.length) { saveLayout(edition, undefined); return }
     saveLayout(edition, {
-      tree: layout,
-      panes: Object.fromEntries([...refs].map(([id, pane]) => [id, pane.source()])),
-      focused,
+      tree,
+      panes: Object.fromEntries(kept.map(([id, pane]) => [id, pane.source() as ReferenceSource])),
+      focused: kept.some(([id]) => id === focused) ? focused : mainPane,
     })
   }
 
   // ——— Reference panes ———
-  function createPane(id: string, source: ReferenceSource) {
+  function createPane(id: string, source: PaneSource): SidePane {
+    if (source.kind === 'web') {
+      const page = webPane({
+        id, url: source.url, signal,
+        menu: () => paneMenu(id),
+        onClose: () => close(id),
+        onChange: () => { options.onReferenceChange(page); paintDots() },
+        onFocus: () => { if (!narrow) split.focus(id); setFocused(id) },
+        onKeep: options.onKeep,
+      })
+      refs.set(id, page)
+      paintToggle()
+      return page
+    }
     const pane = referencePane({
       source, signal,
       menu: () => paneMenu(id),
@@ -250,7 +277,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     }
   }
 
-  function open(source: ReferenceSource, where: OpenPlacement | Zone) {
+  function open(source: PaneSource, where: OpenPlacement | Zone) {
     if (refs.size >= maxReferences) { showNotice(t('compare.tooMany', [maxReferences])); return }
     options.beforeOpen()
     const id = `ref-${Date.now().toString(36)}-${++serial}`
@@ -261,7 +288,10 @@ export function mountSplitEditor(options: SplitEditorOptions) {
       persist()
       paintDots()
       setDrawer(true)
-      requestAnimationFrame(() => showSlide(refs.size - 1, false))
+      requestAnimationFrame(() => {
+        showSlide(refs.size - 1, false)
+        if (isWebPane(pane) && source.kind === 'web' && !source.url) pane.focusAddress()
+      })
       return
     }
     const zone = typeof where === 'string' ? placementZone(where) : where
@@ -274,10 +304,13 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     // The new pane fades in where the drop preview was, while the others glide aside.
     requestAnimationFrame(() => requestAnimationFrame(() => delete pane.element.dataset.entering))
     persist()
-    requestAnimationFrame(() => pane.scroller.focus({ preventScroll: true }))
+    requestAnimationFrame(() => {
+      if (isWebPane(pane) && source.kind === 'web' && !source.url) pane.focusAddress()
+      else pane.scroller.focus({ preventScroll: true })
+    })
   }
 
-  function resolve(payload: DragPayload): ReferenceSource | undefined {
+  function resolve(payload: DragPayload): PaneSource | undefined {
     const value = payload as ComparePayload
     if ('source' in value) return value.source
     return defaultSource(value.work, (edition) => lastChapter(edition))
@@ -303,7 +336,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   }, signal)
 
   // ——— Menus ———
-  function sameEdition(source: ReferenceSource) {
+  function sameEdition(source: PaneSource) {
     const edition = options.edition()
     return source.kind === 'chapter' && source.library === edition.library && source.bookId === edition.bookId && source.editionId === edition.id
   }
@@ -311,7 +344,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   async function swap(id: string) {
     const pane = refs.get(id)
     const source = pane?.source()
-    if (!pane || !source || source.kind !== 'chapter' || !sameEdition(source)) return
+    if (!pane || isWebPane(pane) || !source || source.kind !== 'chapter' || !sameEdition(source)) return
     const previous = options.chapterId()
     if (source.chapterId === previous) return
     if (!await options.switchMain(source.chapterId)) return
@@ -325,6 +358,12 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   function paneMenu(id: string): ShellMenuItem[] {
     const pane = refs.get(id)
     if (!pane) return []
+    if (isWebPane(pane)) {
+      return [
+        { label: t('web.openOutside'), icon: 'window', disabled: !pane.url(), action: () => { void window.newWorldDesktop?.web?.('openOutside', id) } },
+        { label: t('web.close'), icon: 'close', action: () => close(id) },
+      ]
+    }
     const source = pane.source()
     const items: ShellMenuItem[] = []
     if (source.kind === 'chapter' && sameEdition(source) && source.chapterId !== options.chapterId()) {
@@ -343,7 +382,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   }
 
   /** "Open on the right / below / in a new window" for anything that can be shown beside the text. */
-  function openItems(source: () => ReferenceSource | undefined): ShellMenuItem[] {
+  function openItems(source: () => PaneSource | undefined): ShellMenuItem[] {
     const run = (placement: OpenPlacement) => () => {
       const value = source()
       if (value) open(value, placement)
@@ -507,11 +546,13 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     open,
     openItems,
     compareMenu,
-    paneMenu: (pane: ReferencePane) => {
+    paneMenu: (pane: SidePane) => {
       const id = [...refs].find(([, value]) => value === pane)?.[0]
       return id ? paneMenu(id) : []
     },
-    hasSource: (source: ReferenceSource) => [...refs.values()].some((pane) => sameSource(pane.source(), source)),
+    /** Opens a private web page beside the text, blank (the address bar takes the caret) or at an address. */
+    openWeb(url?: string, where: OpenPlacement | Zone = 'right') { if (canBrowse()) open({ kind: 'web', url }, where) },
+    hasSource: (source: PaneSource) => [...refs.values()].some((pane) => sameSource(pane.source(), source)),
     focusMain() { if (narrow) setDrawer(false, false); split.focus(mainPane); setFocused(mainPane) },
     /** Another drawer (chapter list, side panel) is opening over the text; this one steps aside. */
     closeDrawer() { setDrawer(false, false) },

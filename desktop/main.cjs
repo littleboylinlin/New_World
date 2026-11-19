@@ -9,6 +9,7 @@ const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
 const backups = require('./backup.cjs')
 const capture = require('./capture.cjs')
+const { createWebPanes } = require('./web-pane.cjs')
 const { loginItems, backgroundFlag } = require('./login-item.cjs')
 const login = loginItems(app, process.platform)
 const projectFiles = require('./project-files.cjs')
@@ -559,6 +560,21 @@ function openCapture() {
   captureWindow.webContents.send('new-world:capture-shown')
 }
 
+// Web panes: private web pages placed over their pane in the main window (see web-pane.cjs).
+const webPanes = createWebPanes({
+  electron: require('electron'),
+  window: () => mainWindow,
+  send: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('new-world:web-state', state) },
+  command: (entry) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('new-world:web-keep', entry) },
+  t: (key, values) => t(key, values),
+})
+const webActions = new Set(['create', 'navigate', 'back', 'forward', 'reload', 'stop', 'place', 'capture', 'selection', 'keep', 'focus', 'openOutside', 'state', 'close'])
+
+ipcMain.handle('new-world:web', (event, action, id, ...args) => {
+  if (!trustedMainRenderer(event) || !webActions.has(action)) throw new Error(t('main.invalidSettingsRequest'))
+  return webPanes[action](id, ...args)
+})
+
 // Reading windows: one chapter or original file each, read-only, opened from the editor's split view.
 const readingWindows = new Set()
 
@@ -758,9 +774,12 @@ function openWindow(visible = true) {
     // A hidden quick note window must not keep the app running once the main window is gone.
     if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
     for (const reading of readingWindows) if (!reading.isDestroyed()) reading.destroy()
+    void webPanes.closeAll()
   })
   contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
+      // The page that placed the web panes is going away; so do they.
+      void webPanes.closeAll()
       aiRendererReady = false
       rejectPendingAiDispatches('Application window reloaded.')
     }
@@ -887,9 +906,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('open-file', (event, path) => { event.preventDefault(); queueProjects(projectFiles.projectPaths([path])) })
   queueProjects(projectFiles.projectPaths(process.argv))
   app.on('activate', () => { if (desktopStarted) showWindow() })
-  app.on('before-quit', () => {
+  let webCleared = false
+  app.on('before-quit', (event) => {
     forceQuit = true
     void aiBridge?.stop()
+    // Empty every private web session before the app goes.
+    if (!webCleared && webPanes.size()) {
+      event.preventDefault()
+      void webPanes.closeAll().finally(() => { webCleared = true; app.quit() })
+    }
   })
   app.on('window-all-closed', () => app.quit())
   app.on('will-quit', () => {

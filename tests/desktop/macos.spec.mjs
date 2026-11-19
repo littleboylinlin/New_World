@@ -10,6 +10,7 @@ import { promisify } from 'node:util'
 import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
 import { checkNativeHeader } from '../header-layout.mjs'
+import { privateWebSmoke } from './web-helpers.mjs'
 import { editorAction, historyCount } from '../editor-helpers.mjs'
 
 const command = promisify(execFile)
@@ -562,5 +563,13 @@ test('Mac 安装包通过系统登录项 API 注册与注销后台启动', async
     await expect.poll(status).toMatch(/^(enabled|requires-approval)$/)
     await toggle.uncheck()
     await expect.poll(status).toBe('not-registered')
+  } finally { await stop(app) }
+})
+
+test('网页块永远无痕：Mac 安装版关闭网页块后读不到 Cookie，配置目录里没有这个会话的文件', async () => {
+  const app = await launch()
+  try {
+    const page = await app.firstWindow()
+    await privateWebSmoke(app, page, startWork)
   } finally { await stop(app) }
 })
