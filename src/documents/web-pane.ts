@@ -1,7 +1,7 @@
 import { t } from '../i18n'
 import { button, element, icon } from '../ui'
 import type { IconName } from '../ui'
-import { showNotice } from '../undo'
+import { dismissNotice, showNotice } from '../undo'
 import { addressFor } from '../web-search'
 import type { ShellMenuItem } from '../shell/popover'
 import type { ChapterInfo, Edition } from './model'
@@ -15,9 +15,12 @@ import './web-pane.css'
 const desktop = () => window.newWorldDesktop
 export const canBrowse = () => Boolean(desktop()?.web)
 
-/** What may draw over a web page. A native view always paints on top, so these swap it for a picture. */
+/**
+ * What may draw over a web page. A native view always paints on top, so these swap it for a picture.
+ * Notices are not among them: they move out of the page's way instead, so the page stays usable.
+ */
 const overlaySelector = [
-  '.shell-layer', '.popup-menu', 'dialog[open]', '.selection-toolbar:not([hidden])', '.undo-toast',
+  '.shell-layer', '.popup-menu', 'dialog[open]', '.selection-toolbar:not([hidden])',
   '.workbench-panel[data-mode="overlay"][data-state="open"]', '.workbench-scrim[data-state="open"]',
   '.compare-scrim[data-state="open"]', '.compare-drawer[data-state="open"]',
 ].join(',')
@@ -270,7 +273,8 @@ export function webPane(options: WebPaneOptions) {
 
   function update(next: WebPaneState) {
     if (next.closed) return
-    if (next.focused) { setFocused(true); options.onFocus() }
+    // A click inside the page never reaches this document, so it takes a plain notice away here.
+    if (next.focused) { setFocused(true); dismissNotice(); options.onFocus() }
     if (next.blocked) showNotice(t('web.blocked'))
     state = { ...state, ...next, focused: undefined, blocked: undefined }
     if (state.url) start.hidden = true
