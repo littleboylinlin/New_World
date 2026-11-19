@@ -82,6 +82,41 @@ export function reachable(locator) {
   })
 }
 
+/** Adds another editable version, with its own chapters, to the work open in the editor. */
+export async function seedEdition(page, name, entries) {
+  const baseId = await page.evaluate(async ({ name, entries }) => {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('new-world-library')
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    const transaction = db.transaction(['editions', 'chapters'], 'readwrite')
+    const editions = transaction.objectStore('editions')
+    const records = transaction.objectStore('chapters')
+    const bookId = location.hash.split('/')[2]
+    const request = editions.getAll()
+    let base
+    request.onsuccess = () => {
+      base = request.result.find((item) => item.bookId === bookId)
+      const edition = { ...base, id: crypto.randomUUID(), name, source: 'copy', createdAt: base.createdAt + 1000, revision: 0 }
+      edition.chapters = entries.map(([title, paragraphs]) => {
+        const id = crypto.randomUUID()
+        records.put({ library: edition.library, bookId: edition.bookId, editionId: edition.id, id, content: { type: 'doc', content: paragraphs }, revision: 0 })
+        return { id, title }
+      })
+      editions.put(edition)
+    }
+    await new Promise((resolve, reject) => { transaction.oncomplete = resolve; transaction.onabort = () => reject(transaction.error) })
+    db.close()
+    return base.id
+  }, { name, entries })
+  // Back on the version that was open, with the new one now on the shelves.
+  const [, library, bookId] = new URL(page.url()).hash.split('/')
+  await page.goto(`/#/${library}/${bookId}/${baseId}`)
+  await page.reload()
+  await expect(chapterText(page)).toBeVisible()
+}
+
 /** Adds an imported plain-text work (only its original file, no editable version) to a library. */
 export async function seedTextWork(page, title, text, library = 'original') {
   return page.evaluate(async ({ title, text, library }) => {

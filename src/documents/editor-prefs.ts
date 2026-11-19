@@ -10,6 +10,10 @@ export interface EditorPreferences {
   /** null until chosen: then the side panel opens where there is room for it. */
   sideOpen: boolean | null
   sideTab: string
+  /** Which half of the 灵感与待办 tab shows. */
+  ideasPart: 'ideas' | 'tasks'
+  /** Whether that tab's tasks are this work's or every task. */
+  taskScope: 'work' | 'all'
   sideWidth: number
   formatCollapsed: boolean
   find: { scope: FindScope; matchCase: boolean; wholeWord: boolean; replaceOpen: boolean }
@@ -58,6 +62,8 @@ export function readEditorPreferences(): EditorPreferences {
     navOpen: typeof record.navOpen === 'boolean' ? record.navOpen : null,
     sideOpen: typeof record.sideOpen === 'boolean' ? record.sideOpen : legacySideOpen(),
     sideTab: typeof record.sideTab === 'string' ? record.sideTab : 'ideas',
+    ideasPart: record.ideasPart === 'tasks' ? 'tasks' : 'ideas',
+    taskScope: record.taskScope === 'all' ? 'all' : 'work',
     sideWidth: Math.round(Math.max(240, Math.min(640, width))),
     formatCollapsed: record.formatCollapsed === true,
     find: {

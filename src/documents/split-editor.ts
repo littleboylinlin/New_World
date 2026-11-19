@@ -10,6 +10,8 @@ import { fits, insertPane, paneIds, removePane } from '../shell/split-tree'
 import type { SplitTree, Zone } from '../shell/split-tree'
 import { button, element, icon } from '../ui'
 import { showNotice } from '../undo'
+import { chapterNumber, isOwnWork, readableEditions, readableWorks, sourceMenu } from './compare-menu'
+import type { CompareHere } from './compare-menu'
 import { canOpenWindow, defaultSource, mainPane, openWindow, readCatalog, readLayout, readSource, saveLayout, sameSource } from './compare'
 import type { CatalogWork, OpenPlacement, PaneSource, ReferenceSource } from './compare'
 import { lastChapter } from './editor-prefs'
@@ -46,8 +48,8 @@ interface SplitEditorOptions {
   signal: AbortSignal
 }
 
-/** A dragged entry: what to open, or a work whose default source is decided on drop. */
-export type ComparePayload = { source: PaneSource } | { work: CatalogWork }
+/** A dragged entry: what to open, or a work (or one of its versions) whose source is decided on drop. */
+export type ComparePayload = { source: PaneSource } | { work: CatalogWork; editionId?: string }
 
 /**
  * The editor's split view: the editable chapter plus read-only reference panes. Where the window
@@ -313,7 +315,15 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   function resolve(payload: DragPayload): PaneSource | undefined {
     const value = payload as ComparePayload
     if ('source' in value) return value.source
-    return defaultSource(value.work, (edition) => lastChapter(edition))
+    const source = defaultSource(value.work, (edition) => lastChapter(edition), value.editionId)
+    // The version being edited opens to a chapter beside the one in the editable pane, never to it.
+    if (source?.kind !== 'chapter' || !sameEdition(source) || source.chapterId !== options.chapterId()) return source
+    const chapters = options.edition().chapters
+    const index = chapters.findIndex(({ id }) => id === source.chapterId)
+    const other = chapters[index + 1] ?? chapters[index - 1]
+    if (other) return { ...source, chapterId: other.id }
+    const file = value.editionId ? undefined : value.work.files[0]
+    return file && { kind: 'file', library: file.library, bookId: file.id }
   }
 
   setDropHost({
@@ -395,38 +405,14 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     ]
   }
 
-  function editionSources(work: CatalogWork): ShellMenuItem[] {
-    const chapterItems = (edition: Edition) => edition.chapters.map(({ id, title }, index) => ({
-      label: `${String(index + 1).padStart(2, '0')}  ${title}`,
-      action: () => open({ kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: id }, 'right'),
-    }))
-    const items: ShellMenuItem[] = work.editions.length === 1
-      ? chapterItems(work.editions[0])
-      : work.editions.map((edition) => ({ label: edition.name, icon: 'copy' as const, children: () => chapterItems(edition) }))
-    for (const file of work.files) {
-      items.push({ label: file === work.book ? t('compare.originalFile') : file.title, icon: 'file', action: () => open({ kind: 'file', library: file.library, bookId: file.id }, 'right') })
-    }
-    return items
+  function here(): CompareHere {
+    const edition = options.edition()
+    return { library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: options.chapterId() }
   }
 
-  /** The work menu's "read beside": this work's other chapters first, then every other work. */
+  /** The work menu's "read beside": the whole library, this work first, by work → version → chapter. */
   function compareMenu(): ShellMenuItem[] {
-    const edition = options.edition()
-    const own = catalog.find((work) => work.book.library === edition.library && work.book.id === edition.bookId)
-    const others = catalog.filter((work) => work !== own && (work.editions.some((item) => item.chapters.length) || work.files.length))
-    const children = (): ShellMenuItem[] => [
-      { label: t('compare.thisWork'), icon: 'book', children: () => {
-        const current = options.chapterId()
-        const items: ShellMenuItem[] = edition.chapters.filter(({ id }) => id !== current).map(({ id, title }) => ({
-          label: title, action: () => open({ kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: id }, 'right'),
-        }))
-        for (const file of own?.files ?? []) items.push({ label: file === own?.book ? t('compare.originalFile') : file.title, icon: 'file', action: () => open({ kind: 'file', library: file.library, bookId: file.id }, 'right') })
-        return items.length ? items : [{ label: t('compare.noOtherChapters'), disabled: true }]
-      } },
-      ...(others.length ? [{ separator: true, label: '' }] : []),
-      ...others.map((work) => ({ label: work.book.title, icon: 'book' as const, children: () => editionSources(work) })),
-    ]
-    return [{ label: t('compare.readBeside'), icon: 'compare', children }]
+    return [{ label: t('compare.readBeside'), icon: 'compare', children: () => sourceMenu(catalog, here(), (source) => open(source, 'right')) }]
   }
 
   // ——— The side panel's tab ———
@@ -439,7 +425,9 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   const hint = element('p', 'dialog-help compare-hint', t('compare.hint'))
   const list = element('div', 'compare-list')
   panel.append(filter, hint, list)
-  filter.addEventListener('input', () => paintPanel())
+  // Repainting while an input method is still composing would end the word early.
+  filter.addEventListener('input', (event) => { if (!(event as InputEvent).isComposing) paintPanel() })
+  filter.addEventListener('compositionend', () => paintPanel())
 
   // Each drawing of the list owns its entries' listeners; the next drawing releases them.
   let listing = new AbortController()
@@ -465,38 +453,88 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     return row
   }
 
+  // Which works and versions are unfolded, remembered on this device. Searching unfolds what it
+  // finds without changing what is remembered.
+  const expandedKey = 'new-world:compare-expanded'
+  let expanded: Record<string, boolean> = {}
+  try {
+    const raw = JSON.parse(localStorage.getItem(expandedKey) ?? 'null')
+    if (raw && typeof raw === 'object') expanded = Object.fromEntries(Object.entries(raw).filter(([, value]) => typeof value === 'boolean')) as Record<string, boolean>
+  } catch { /* Every branch starts at its default. */ }
+  function remember(key: string, open: boolean) {
+    expanded[key] = open
+    const entries = Object.entries(expanded)
+    if (entries.length > 400) expanded = Object.fromEntries(entries.slice(-400))
+    try { localStorage.setItem(expandedKey, JSON.stringify(expanded)) } catch { /* Only a convenience. */ }
+  }
+
+  /** A foldable level of the list (a work or a version) whose own name can be clicked and dragged. */
+  function branch(key: string, head: HTMLElement, open: boolean, forced: boolean, className: string) {
+    const group = element('details', `compare-branch ${className}`)
+    group.dataset.key = key
+    group.open = open
+    const summary = element('summary', 'compare-branch-summary')
+    summary.append(icon('chevron'), head)
+    // The summary's own toggle stays on its arrow, so the name can be dragged and clicked.
+    head.addEventListener('click', (event) => event.preventDefault())
+    let byHand = false
+    summary.addEventListener('click', () => { byHand = true }, { signal: listing.signal })
+    group.addEventListener('toggle', () => {
+      if (byHand && !forced) remember(key, group.open)
+      byHand = false
+    }, { signal: listing.signal })
+    const body = element('div', 'compare-branch-body')
+    group.append(summary, body)
+    return { group, body }
+  }
+
   function paintPanel() {
     listing.abort()
     listing = new AbortController()
     const query = filter.value.trim().toLocaleLowerCase()
-    const edition = options.edition()
+    const matches = (text: string) => text.toLocaleLowerCase().includes(query)
+    const where = here()
     const groups: HTMLElement[] = []
-    for (const work of catalog) {
-      const readable = work.editions.some((item) => item.chapters.length) || work.files.length
-      if (!readable) continue
-      const own = work.book.library === edition.library && work.book.id === edition.bookId
-      if (query && !work.book.title.toLocaleLowerCase().includes(query)) continue
-      const group = element('details', 'compare-work')
-      group.open = own
-      const summary = element('summary', 'compare-work-summary')
-      summary.append(icon('chevron'))
+    for (const work of readableWorks(catalog, where)) {
+      const own = isOwnWork(work, where)
+      const workHit = !query || matches(work.book.title)
+      const editions = readableEditions(work, where).flatMap((edition) => {
+        if (workHit || matches(edition.name)) return [{ edition, chapters: edition.chapters.map((chapter, index) => ({ chapter, index })) }]
+        const found = edition.chapters.map((chapter, index) => ({ chapter, index })).filter(({ chapter }) => matches(chapter.title))
+        return found.length ? [{ edition, chapters: found }] : []
+      })
+      const files = work.files.filter((file) => workHit || matches(file === work.book ? t('compare.originalFile') : file.title))
+      if (query && !workHit && !editions.length && !files.length) continue
+      const workKey = `work:${work.book.library}/${work.book.id}`
+      // A search unfolds every work it found, and the versions where it found chapters.
+      const workForced = Boolean(query)
       const head = entry(work.book.title, own ? t('compare.thisWork') : '', () => ({ work }), 'compare-work-entry')
-      summary.append(head)
-      // The summary's own toggle stays on its arrow, so the work's name can be dragged and clicked.
-      head.addEventListener('click', (event) => event.preventDefault())
-      const body = element('div', 'compare-work-body')
-      for (const item of own ? work.editions.filter((version) => version.id === edition.id) : work.editions) {
-        if (work.editions.length > 1 && !own) body.append(element('p', 'compare-edition', item.name))
-        for (const [index, chapter] of item.chapters.entries()) {
-          const source: ReferenceSource = { kind: 'chapter', library: item.library, bookId: item.bookId, editionId: item.id, chapterId: chapter.id }
-          body.append(entry(chapter.title, String(index + 1).padStart(2, '0'), () => ({ source })))
+      const { group, body } = branch(workKey, head, workForced || (expanded[workKey] ?? own), workForced, 'compare-work')
+      if (own) group.classList.add('compare-own')
+      for (const { edition, chapters } of editions) {
+        const current = edition.id === where.editionId
+        const editionKey = `edition:${edition.id}`
+        const editionForced = Boolean(query) && !workHit
+        const versionHead = entry(edition.name, current ? t('compare.currentVersion') : t('compare.chapterCount', [edition.chapters.length]), () => ({ work, editionId: edition.id }), 'compare-edition-entry')
+        const version = branch(editionKey, versionHead, editionForced || (expanded[editionKey] ?? (current || readableEditions(work, where).length === 1)), editionForced, 'compare-edition')
+        for (const { chapter, index } of chapters) {
+          if (current && chapter.id === where.chapterId) {
+            const row = element('div', 'compare-entry compare-entry-current')
+            const label = element('div', 'compare-entry-open')
+            label.append(element('span', 'compare-entry-label', chapter.title), element('span', 'compare-entry-detail', chapterNumber(index)), element('span', 'compare-entry-tag', t('compare.editing')))
+            row.append(label)
+            version.body.append(row)
+            continue
+          }
+          const source: ReferenceSource = { kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: chapter.id }
+          version.body.append(entry(chapter.title, chapterNumber(index), () => ({ source })))
         }
+        body.append(version.group)
       }
-      for (const file of work.files) {
+      for (const file of files) {
         const source: ReferenceSource = { kind: 'file', library: file.library, bookId: file.id }
         body.append(entry(file === work.book ? t('compare.originalFile') : file.title, file.format.toUpperCase(), () => ({ source }), 'compare-file'))
       }
-      group.append(summary, body)
       groups.push(group)
     }
     list.replaceChildren(...(groups.length ? groups : [element('p', 'dialog-help', query ? t('writing.noMatch') : t('compare.empty'))]))

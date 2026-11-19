@@ -189,10 +189,10 @@ export async function taskLinkFields(initial: Task['link']) {
     },
   }
 }
-export async function createLinkedTask(value: TaskWorkLink, patch: Partial<Task> = {}) {
+export async function createLinkedTask(value: TaskWorkLink, patch: Partial<Task> = {}, onCreated?: (task: Task) => void) {
   const { readTasks } = await import('./store'),
     { taskDialog } = await import('./view')
-  await taskDialog(await readTasks(), undefined, { ...patch, link: value })
+  await taskDialog(await readTasks(), undefined, { ...patch, link: value }, onCreated)
 }
 export function workTaskControls(book: Book) {
   const controls = element('div', 'task-actions'),

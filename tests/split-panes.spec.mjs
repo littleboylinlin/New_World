@@ -3,7 +3,7 @@ import { chapterText } from './writing-motion-helpers.mjs'
 import { chapterHeading, chapterItem } from './editor-helpers.mjs'
 import {
   areaPoint, dragTo, editArea, longChapter, openCompareTab, openFromChapterMenu, paragraph, reachable, rectOf,
-  referencePanes, referenceText, seedChapters, seedTextWork, settle,
+  referencePanes, referenceText, seedChapters, seedEdition, seedTextWork, settle,
 } from './split-helpers.mjs'
 
 const three = [['第一章', [paragraph('灯塔下的第一章。')]], ['第二章', [paragraph('海雾里的第二章。')]], ['第三章', longChapter('潮')]]
@@ -15,6 +15,23 @@ async function closeAll(page) {
     await page.getByRole('button', { name: '关闭对照' }).first().click()
     await expect(referencePanes(page)).toHaveCount(before - 1)
   }
+}
+
+/** The menu open now; one closed a moment ago may still be fading out with the same items. */
+const openMenu = (page) => page.locator('.shell-layer[data-state="open"]')
+
+/**
+ * Waits until a reading place has been written down: panes note it a moment after scrolling stops,
+ * and how long that moment takes depends on how busy the machine is.
+ */
+async function placeSaved(page, { chapterScroll, filePlace }) {
+  await expect.poll(() => page.evaluate(({ chapterScroll, filePlace }) => {
+    try {
+      if (filePlace) return Object.values(JSON.parse(localStorage.getItem('new-world:reading-places') ?? '{}')).some((place) => place.section > 0 || place.fraction > 0)
+      const stored = JSON.parse(localStorage.getItem('new-world:editor-places') ?? '{}')
+      return Object.values(stored.chapters ?? {}).some((place) => place.scroll >= chapterScroll)
+    } catch { return false }
+  }, { chapterScroll, filePlace })).toBe(true)
 }
 
 /** Reachable once it has finished sliding or fading into place. */
@@ -114,6 +131,128 @@ test.describe('拖拽打开', () => {
     await dragTo(page, other.locator('.compare-work-entry .compare-entry-open'), await areaPoint(page, .5, .9))
     await expect(referencePanes(page)).toHaveCount(1)
     await expect(referenceText(page)).toContainText('别处的海图。')
+  })
+})
+
+test.describe('整个书库', () => {
+  test.beforeEach(async ({ page }) => { await page.setViewportSize({ width: 1400, height: 900 }) })
+
+  const draft = [['初稿开篇', [paragraph('初稿里的开篇。')]], ['初稿尾声', [paragraph('初稿里的尾声。')]]]
+  const branchOf = (panel, name) => panel.locator('details.compare-branch').filter({ has: panel.page().locator(':scope > summary', { hasText: name }) })
+
+  test('本作品排最前并展开，列出其他版本；正在编辑的一章标出且不能打开', async ({ page }) => {
+    await seedChapters(page, [['海图', [paragraph('别处的海图。')]]], '另一部')
+    await seedChapters(page, three, '分块样书', false)
+    await seedEdition(page, '初稿', draft)
+    const panel = await openCompareTab(page)
+    const works = panel.locator('.compare-list > details.compare-work')
+    await expect(works.first()).toContainText('分块样书')
+    await expect(works.first()).toHaveAttribute('open', '')
+    await expect(branchOf(panel, '另一部')).not.toHaveAttribute('open', '')
+    // The version being edited is unfolded and comes first; the other one waits folded.
+    const versions = works.first().locator('details.compare-edition')
+    await expect(versions).toHaveCount(2)
+    await expect(versions.first()).toHaveAttribute('open', '')
+    await expect(versions.nth(1)).toContainText('初稿')
+    await expect(versions.nth(1)).not.toHaveAttribute('open', '')
+    const editing = versions.first().locator('.compare-entry-current')
+    await expect(editing).toContainText('第一章')
+    await expect(editing).toContainText('编辑中')
+    await expect(editing.getByRole('button')).toHaveCount(0)
+
+    await versions.nth(1).locator(':scope > summary > svg').click()
+    await panel.getByRole('button', { name: /初稿尾声/ }).click()
+    await expect(referenceText(page)).toContainText('初稿里的尾声。')
+    // Switching chapters moves the mark.
+    await page.getByRole('list', { name: '章节' }).getByRole('button', { name: '第二章', exact: true }).click()
+    await expect(versions.first().locator('.compare-entry-current')).toContainText('第二章')
+  })
+
+  test('作品和版本的名字也能拖进编辑区：版本打开它的一章，不会是正在编辑的那章', async ({ page }) => {
+    await seedChapters(page, three)
+    await seedEdition(page, '初稿', draft)
+    const panel = await openCompareTab(page)
+    const draftVersion = branchOf(panel, '初稿')
+    await dragTo(page, draftVersion.locator('.compare-edition-entry .compare-entry-open'), await areaPoint(page, .9, .5))
+    await expect(referencePanes(page)).toHaveCount(1)
+    await expect(referenceText(page)).toContainText('初稿里的开篇。')
+    // The version being edited opens beside, on another chapter than the one in the editable pane.
+    const current = panel.locator('details.compare-edition').first()
+    await dragTo(page, current.locator('.compare-edition-entry .compare-entry-open'), await areaPoint(page, .25, .9))
+    await expect(referencePanes(page)).toHaveCount(2)
+    await expect(referencePanes(page).nth(1)).toContainText('海雾里的第二章。')
+    // A version's own menu opens it too.
+    await draftVersion.locator('.compare-edition-entry').click({ button: 'right' })
+    await expect(openMenu(page).getByRole('menuitem', { name: '在右侧打开' })).toBeVisible()
+  })
+
+  test('搜索作品名和章节名：命中时展开对应层级；清空后回到记住的展开状态', async ({ page }) => {
+    await seedChapters(page, [['海图', [paragraph('别处的海图。')]], ['灯塔守夜', [paragraph('守夜。')]]], '另一部')
+    await seedChapters(page, three, '分块样书', false)
+    await seedEdition(page, '初稿', draft)
+    const panel = await openCompareTab(page)
+    const search = panel.getByRole('searchbox', { name: '搜索作品、版本或章节' })
+    await search.fill('守夜')
+    const other = branchOf(panel, '另一部')
+    await expect(other).toHaveAttribute('open', '')
+    await expect(other.getByRole('button', { name: /灯塔守夜/ })).toBeVisible()
+    await expect(other.getByRole('button', { name: /海图/ })).toHaveCount(0)
+    await expect(branchOf(panel, '分块样书')).toHaveCount(0)
+
+    await search.fill('尾声')
+    const draftVersion = branchOf(panel, '初稿')
+    await expect(draftVersion).toHaveAttribute('open', '')
+    await expect(draftVersion.getByRole('button', { name: /初稿尾声/ })).toBeVisible()
+
+    await search.fill('另一部')
+    await expect(branchOf(panel, '另一部')).toHaveAttribute('open', '')
+    await expect(branchOf(panel, '另一部').getByRole('button', { name: /海图/ })).toBeVisible()
+
+    await search.fill('')
+    await expect(branchOf(panel, '另一部')).not.toHaveAttribute('open', '')
+    await expect(branchOf(panel, '初稿')).not.toHaveAttribute('open', '')
+    // Folding by hand is remembered, also across a reload.
+    await branchOf(panel, '另一部').locator(':scope > summary > svg').click()
+    await branchOf(panel, '分块样书').locator(':scope > summary > svg').click()
+    await expect(branchOf(panel, '另一部')).toHaveAttribute('open', '')
+    await expect(branchOf(panel, '分块样书')).not.toHaveAttribute('open', '')
+    await page.reload()
+    await expect(chapterText(page)).toBeVisible()
+    const again = await openCompareTab(page)
+    await expect(branchOf(again, '另一部')).toHaveAttribute('open', '')
+    await expect(branchOf(again, '分块样书')).not.toHaveAttribute('open', '')
+  })
+
+  test('「⋯」的对照阅读和新窗口都按作品 → 版本 → 章节列出整个书库', async ({ page, context }) => {
+    await seedChapters(page, [['海图', [paragraph('别处的海图。')]]], '另一部')
+    await seedChapters(page, three, '分块样书', false)
+    await seedEdition(page, '初稿', draft)
+    await chapterText(page).click()
+    await page.locator('.work-name').click()
+    await openMenu(page).getByRole('menuitem', { name: '对照阅读' }).click()
+    await expect(openMenu(page).getByRole('menuitem').nth(1)).toContainText('分块样书')
+    await openMenu(page).getByRole('menuitem', { name: /分块样书/ }).click()
+    await expect(openMenu(page).getByRole('menuitem', { name: /初稿/ })).toBeVisible()
+    await openMenu(page).getByRole('menuitem', { name: /初稿/ }).click()
+    await openMenu(page).getByRole('menuitem', { name: /初稿开篇/ }).click()
+    await expect(referenceText(page)).toContainText('初稿里的开篇。')
+
+    const route = await page.evaluate(() => {
+      const layouts = JSON.parse(localStorage.getItem('new-world:editor-split'))
+      const pane = Object.values(Object.values(layouts)[0].panes)[0]
+      return `#/compare/${pane.library}/${pane.bookId}/${pane.editionId}/${pane.chapterId}`
+    })
+    const reading = await context.newPage()
+    await reading.goto(`/${route}`)
+    await expect(reading.getByRole('document', { name: '对照正文' })).toContainText('初稿里的开篇。')
+    await reading.locator('.work-name').click()
+    await openMenu(reading).getByRole('menuitem', { name: /另一部/ }).click()
+    await openMenu(reading).getByRole('menuitemradio', { name: /海图/ }).click()
+    await expect(reading.getByRole('document', { name: '对照正文' })).toContainText('别处的海图。')
+    await expect(reading.locator('.work-name')).toContainText('另一部')
+    // Reloading the window comes back to what it shows now.
+    await reading.reload()
+    await expect(reading.getByRole('document', { name: '对照正文' })).toContainText('别处的海图。')
   })
 })
 
@@ -256,7 +395,7 @@ test.describe('记住与恢复', () => {
     const pane = referencePanes(page).first()
     await expect(pane).toContainText('潮第 1 段')
     await pane.locator('.reference-scroll').evaluate((node) => { node.scrollTop = 1500 })
-    await page.waitForTimeout(400)
+    await placeSaved(page, { chapterScroll: 1400 })
     await page.getByRole('button', { name: '关闭对照' }).click()
     await expect(referencePanes(page)).toHaveCount(0)
     await openFromChapterMenu(page, '第三章')
@@ -275,7 +414,7 @@ test.describe('记住与恢复', () => {
     await expect(chapterHeading(page)).toHaveText('原文件')
     await reading.locator('.reference-scroll').evaluate((node) => { node.scrollTop = node.scrollHeight / 2 })
     const half = await reading.locator('.reference-scroll').evaluate((node) => node.scrollTop)
-    await page.waitForTimeout(400)
+    await placeSaved(page, { filePlace: true })
     await page.reload()
     await expect(referencePanes(page).first()).toContainText('札记第 300 行')
     await expect.poll(() => referencePanes(page).first().locator('.reference-scroll').evaluate((node) => node.scrollTop)).toBeGreaterThan(half - 40)
@@ -285,7 +424,7 @@ test.describe('记住与恢复', () => {
     await seedChapters(page, three)
     await openFromChapterMenu(page, '第三章')
     await referencePanes(page).first().locator('.reference-scroll').evaluate((node) => { node.scrollTop = 1200 })
-    await page.waitForTimeout(400)
+    await placeSaved(page, { chapterScroll: 1100 })
     const route = await page.evaluate(() => {
       const layouts = JSON.parse(localStorage.getItem('new-world:editor-split'))
       const pane = Object.values(Object.values(layouts)[0].panes)[0]
@@ -308,7 +447,7 @@ test.describe('菜单与键盘', () => {
     await seedChapters(page, three)
     await page.getByRole('list', { name: '章节' }).getByRole('button', { name: '第二章', exact: true }).focus()
     await page.keyboard.press('Shift+F10')
-    const menu = page.getByRole('menu')
+    const menu = openMenu(page)
     await expect(menu.getByRole('menuitem').first()).toBeFocused()
     await page.keyboard.press('ArrowDown')
     await expect(menu.getByRole('menuitem', { name: '在下方打开' })).toBeFocused()
@@ -318,29 +457,30 @@ test.describe('菜单与键盘', () => {
 
     const panel = await openCompareTab(page)
     await panel.getByRole('button', { name: /第三章/ }).click({ button: 'right' })
-    await page.getByRole('menuitem', { name: '在右侧打开' }).click()
+    await openMenu(page).getByRole('menuitem', { name: '在右侧打开' }).click()
     await expect(referencePanes(page)).toHaveCount(2)
     await expect(referencePanes(page).nth(1)).toContainText('潮第 1 段')
     // "Right" splits the focused pane (the one below), so it takes the lower right quarter.
     await expectRect(referencePanes(page).nth(1), (area) => ({ left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right }))
     // The web version has no separate windows.
-    await panel.getByRole('button', { name: /第一章/ }).click({ button: 'right' })
-    await expect(page.getByRole('menuitem', { name: '在新窗口打开' })).toHaveCount(0)
+    await panel.getByRole('button', { name: /第二章/ }).click({ button: 'right' })
+    await expect(openMenu(page).getByRole('menuitem', { name: '在右侧打开' })).toBeVisible()
+    await expect(openMenu(page).getByRole('menuitem', { name: '在新窗口打开' })).toHaveCount(0)
   })
 
   test('作品名菜单的「对照阅读」打开本作品另一章；角上菜单「切到这一章编辑」交换两块内容', async ({ page }) => {
     await seedChapters(page, three)
     await chapterText(page).click()
     await page.locator('.work-name').click()
-    await page.getByRole('menuitem', { name: '对照阅读' }).click()
-    await page.getByRole('menuitem', { name: '本作品' }).click()
-    await page.getByRole('menuitem', { name: '第二章' }).click()
+    await openMenu(page).getByRole('menuitem', { name: '对照阅读' }).click()
+    await openMenu(page).getByRole('menuitem', { name: /分块样书/ }).click()
+    await openMenu(page).getByRole('menuitem', { name: /第二章/ }).click()
     await expect(referenceText(page)).toContainText('海雾里的第二章。')
     await chapterText(page).click()
     await page.keyboard.press('End')
     await page.keyboard.type('又添一句。')
     await referencePanes(page).first().getByRole('button', { name: '对照块菜单' }).click()
-    await page.getByRole('menuitem', { name: '切到这一章编辑' }).click()
+    await openMenu(page).getByRole('menuitem', { name: '切到这一章编辑' }).click()
     await expect(chapterText(page)).toContainText('海雾里的第二章。')
     await expect(referenceText(page)).toContainText('灯塔下的第一章。又添一句。')
     await expect(chapterHeading(page)).toHaveText('第二章')
