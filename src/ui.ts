@@ -153,6 +153,21 @@ export function downloadFile(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
+/**
+ * A status line for work that takes a while, with a spinner. The spinner turns on the compositor,
+ * so it keeps moving even while the page is busy laying out a long chapter.
+ */
+export function progressNotice(message: string) {
+  const panel = element('p', 'notice progress-notice')
+  panel.setAttribute('role', 'status')
+  const text = element('span', 'progress-text', message)
+  panel.append(element('span', 'progress-spinner'), text)
+  return { element: panel, set(next: string) { text.textContent = next } }
+}
+
+/** Resolves once the browser has painted what is on screen now. */
+export const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve)))
+
 export function notice(message: string, error = false) {
   const panel = element('p', error ? 'notice notice-error' : 'notice', message)
   panel.setAttribute('role', error ? 'alert' : 'status')

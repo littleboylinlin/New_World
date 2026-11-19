@@ -38,10 +38,22 @@ async function openBook(page, title) {
   await expect(page.getByRole('heading', { level: 1, name: title, exact: true })).toBeVisible()
 }
 
-async function convert(page, isPdf = false) {
+async function convert(page, isPdf = false, timeout = undefined) {
   const reference = new URL(page.url()).hash.startsWith('#/reference/')
   await page.getByRole('button', { name: reference ? '以原文为底稿续写' : isPdf ? '提取文字为编辑稿' : '转换为编辑稿' }).click()
-  await expect(textArea(page)).toBeVisible()
+  await expect(textArea(page)).toBeVisible({ timeout })
+}
+
+/** Notes every progress message shown from now on, however briefly. */
+async function recordProgress(page) {
+  await page.evaluate(() => {
+    window.progressSeen = []
+    new MutationObserver(() => {
+      for (const node of document.querySelectorAll('.progress-text')) {
+        if (!window.progressSeen.includes(node.textContent)) window.progressSeen.push(node.textContent)
+      }
+    }).observe(document.body, { subtree: true, childList: true, characterData: true })
+  })
 }
 
 async function appendText(page, value) {
@@ -237,6 +249,8 @@ test('模拟存储空间不足，旧内容保留、当前输入可重试', async
 })
 
 test('TXT 长文分章，手动编码、重复导入及超限文件', async ({ page }, testInfo) => {
+  // Laying out the 520 KB chapter takes several seconds on a slower machine (about 11 s measured).
+  test.setTimeout(120_000)
   const long = file('长稿.txt', `第一章 灯塔\n${'雾🌫️'.repeat(52_000)}\n第二章 归途\n结尾在这里。`)
   const big5 = file('舊稿.txt', Buffer.from('a4a4a4e5', 'hex'))
   await shelf(page)
@@ -250,8 +264,11 @@ test('TXT 长文分章，手动编码、重复导入及超限文件', async ({ p
   await upload(page, [path], 0)
   await expect(page.getByText(/单个文件不能超过 128 MiB/)).toBeVisible()
   await openBook(page, '长稿')
-  await convert(page)
+  await recordProgress(page)
+  await convert(page, false, 60_000)
   await expect(page.getByRole('button', { name: '第一章 灯塔（续 1）' })).toBeVisible()
+  // Each step says what is happening, through to laying out the long chapter.
+  expect(await page.evaluate(() => window.progressSeen)).toEqual(['正在转换并保留原文件…', '已分成 3 章，正在保存编辑稿…', '正在打开编辑稿…', '这一章很长，正在排版，可能需要几秒…'])
   await page.getByRole('button', { name: '第二章 归途' }).click()
   await expect(textArea(page)).toContainText('结尾在这里。')
   await appendText(page, '补上一句。')

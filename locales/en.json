@@ -1306,5 +1306,8 @@
   "editor.taskScopeAll": "All",
   "tasks.thisChapter": "This chapter",
   "tasks.otherInWork": "Rest of this work",
-  "tasks.addDetailed": "Add with details"
+  "tasks.addDetailed": "Add with details",
+  "reader.savingManuscript": "Split into {0} chapters, saving the manuscript…",
+  "reader.openingManuscript": "Opening the manuscript…",
+  "editor.openingLongChapter": "This chapter is long; laying it out may take a few seconds…"
 }

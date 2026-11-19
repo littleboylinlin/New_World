@@ -1306,5 +1306,8 @@
   "editor.taskScopeAll": "全部",
   "tasks.thisChapter": "本章",
   "tasks.otherInWork": "本作品其他",
-  "tasks.addDetailed": "详细添加"
+  "tasks.addDetailed": "详细添加",
+  "reader.savingManuscript": "已分成 {0} 章，正在保存编辑稿…",
+  "reader.openingManuscript": "正在打开编辑稿…",
+  "editor.openingLongChapter": "这一章很长，正在排版，可能需要几秒…"
 }
