@@ -15,6 +15,10 @@ import { lastOpened, recentWorks } from './ideas'
 import { writingFilter, writingSort } from './navigation-preferences'
 import { chooseWorkType, workType } from './work-type'
 import type { MenuItem } from './menu'
+import { canOpenWindow, defaultSource, lastEdition, openWindow, readCatalog, requestOpen } from './documents/compare'
+import type { OpenPlacement } from './documents/compare'
+import { lastChapter } from './documents/editor-prefs'
+import { showNotice } from './undo'
 
 const changes = libraryChanges
 const libraryIds: LibraryId[] = ['original', 'reference']
@@ -210,8 +214,28 @@ function bookCard(root: HTMLElement, book: Book, covers: string[], report: (mess
   }
   open.append(cover)
 
+  // Opens this work read-only beside the version written last, or in a reading window of its own.
+  const beside = async (placement: OpenPlacement | 'window') => {
+    try {
+      const catalog = await readCatalog()
+      const work = catalog.find((item) => item.book.library === book.library && item.book.id === book.id)
+      const source = work && defaultSource(work, (edition) => lastChapter(edition))
+      if (!source) { showNotice(t('compare.nothingToOpen')); return }
+      if (placement === 'window') { openWindow(source); return }
+      const target = lastEdition()
+      const written = target && catalog.some((item) => item.editions.some((edition) => edition.library === target.library && edition.bookId === target.bookId && edition.id === target.id))
+      if (!target || !written) { showNotice(t('compare.noEdition')); return }
+      requestOpen(source, placement)
+      location.hash = bookPath(target.library, target.bookId, target.id)
+    } catch (error) { report(storageError(error)) }
+  }
   const actions = (): MenuItem[] => [
     { label: t('shelf.openWork'), icon: 'book', action: () => { location.hash = bookPath(book.library, book.id) } },
+    ...(lastEdition() ? [
+      { label: t('compare.openRight'), icon: 'splitRight' as const, action: () => { void beside('right') } },
+      { label: t('compare.openBelow'), icon: 'splitDown' as const, action: () => { void beside('bottom') } },
+    ] : []),
+    ...(canOpenWindow() ? [{ label: t('compare.openWindow'), icon: 'window' as const, action: () => { void beside('window') } }] : []),
     { label: t('project.export'), icon: 'download', action: () => showProjectExport({ library: book.library, id: book.id }, book.title) },
     { label: t('shelf.rename'), icon: 'edit', action: () => manageBook(root, book, 'rename') },
     { label: t('work.edit'), icon: 'edit', action: () => showWorkInformation(book) },

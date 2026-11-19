@@ -9,11 +9,23 @@ import type { IconName } from '../ui'
 /** How long a finished selection waits before its tools appear. */
 export const selectionDelay = 200
 
-interface SelectionToolbarOptions {
-  getEditor: () => Editor
-  isEditing: () => boolean
+export type SelectionToolKind = 'bold' | 'italic' | 'idea' | 'task' | 'annotate'
+
+/** A block of text the tools work on, such as the editable chapter or a read-only pane beside it. */
+export interface SelectionTarget {
+  /** The element that holds the text. */
+  root: HTMLElement
   /** The pane that scrolls the text; the tools never sit outside it. */
   scroller: HTMLElement
+  editor?: Editor
+  editing: boolean
+  /** Which tools this text offers. */
+  kinds: SelectionToolKind[]
+}
+
+interface SelectionToolbarOptions {
+  /** Every block of text on the page; the selection's own block decides the tools. */
+  targets: () => SelectionTarget[]
   /** On touch screens the tools slide out of this block under the top toolbar instead. */
   strip: HTMLElement
   actions: {
@@ -26,6 +38,8 @@ interface SelectionToolbarOptions {
   signal: AbortSignal
 }
 
+type Key = { root: HTMLElement; start: Node | null; end: Node | null; from: number; to: number }
+
 const navigation = /^(Arrow(Left|Right|Up|Down)|Home|End|Page(Up|Down))$/
 
 /**
@@ -34,7 +48,7 @@ const navigation = /^(Arrow(Left|Right|Up|Down)|Home|End|Page(Up|Down))$/
  * On a mouse it sits beside the selection, flipping to the other side when there is no room; on
  * touch screens it slides out under the top toolbar, clear of the system's own selection menu.
  */
-export function selectionToolbar({ getEditor, isEditing, scroller, strip, actions, signal }: SelectionToolbarOptions) {
+export function selectionToolbar({ targets, strip, actions, signal }: SelectionToolbarOptions) {
   const floating = element('div', 'selection-toolbar')
   floating.setAttribute('role', 'toolbar')
   floating.setAttribute('aria-label', t('editor.selectionTools'))
@@ -76,44 +90,51 @@ export function selectionToolbar({ getEditor, isEditing, scroller, strip, action
   let keyboardSelecting = false
   let lastPointer = matchMedia('(hover: none) and (pointer: coarse)').matches ? 'touch' : 'mouse'
   let timer = 0
-  let shown: { from: number; to: number } | undefined
+  let shown: Key | undefined
+  let current: SelectionTarget | undefined
   let place: 'floating' | 'strip' | undefined
   let frame = 0
   let settle: (() => void) | undefined
 
+  const targetOf = (node: Node | null | undefined) => node ? targets().find((item) => item.root.isConnected && item.root.contains(node) && !item.editor?.isDestroyed) : undefined
+
   function range() {
     const selection = document.getSelection()
-    const editor = getEditor()
-    if (!selection?.rangeCount || selection.isCollapsed || editor.isDestroyed) return
-    const dom = editor.view.dom
-    const current = selection.getRangeAt(0)
-    if (!dom.contains(current.startContainer) || !dom.contains(current.endContainer)) return
-    if (!current.toString().trim()) return
-    return current
+    if (!selection?.rangeCount || selection.isCollapsed) return
+    const selected = selection.getRangeAt(0)
+    const owner = targetOf(selected.startContainer)
+    if (!owner || !owner.root.contains(selected.endContainer)) return
+    if (!selected.toString().trim()) return
+    current = owner
+    return selected
   }
   function currentText() {
     return range()?.toString().trim().slice(0, 4000) ?? ''
   }
-  function key() {
-    const { from, to } = getEditor().state.selection
-    return { from, to }
+  function key(): Key | undefined {
+    const selected = range()
+    if (!selected || !current) return undefined
+    if (current.editor) {
+      const { from, to } = current.editor.state.selection
+      return { root: current.root, start: null, end: null, from, to }
+    }
+    return { root: current.root, start: selected.startContainer, end: selected.endContainer, from: selected.startOffset, to: selected.endOffset }
   }
+  const sameKey = (a: Key, b: Key) => a.root === b.root && a.start === b.start && a.end === b.end && a.from === b.from && a.to === b.to
 
   function paintPressed() {
-    const editor = getEditor()
+    const target = current
+    if (!target) return
     for (const node of [...floatingTools, ...stripTools]) {
-      const kind = node.dataset.kind
-      if (kind === 'bold' || kind === 'italic') {
-        node.hidden = !isEditing()
-        node.setAttribute('aria-pressed', String(editor.isActive(kind)))
-      }
-      if (kind === 'annotate') node.hidden = isEditing()
+      const kind = node.dataset.kind as SelectionToolKind
+      node.hidden = !target.kinds.includes(kind)
+      if ((kind === 'bold' || kind === 'italic') && target.editor) node.setAttribute('aria-pressed', String(target.editor.isActive(kind)))
     }
   }
 
   function bounds() {
     const area = visibleArea()
-    const pane = scroller.getBoundingClientRect()
+    const pane = (current?.scroller ?? document.body).getBoundingClientRect()
     return {
       top: Math.max(area.top, pane.top), bottom: Math.min(area.bottom, pane.bottom),
       left: Math.max(area.left, pane.left), right: Math.min(area.right, pane.right),
@@ -152,9 +173,9 @@ export function selectionToolbar({ getEditor, isEditing, scroller, strip, action
 
   function show() {
     timer = 0
-    if (pointerDown || keyboardSelecting || document.querySelector('dialog[open]') || getEditor().view.composing) return
+    if (pointerDown || keyboardSelecting || document.querySelector('dialog[open]')) return
     const selected = range()
-    if (!selected) { hide(); return }
+    if (!selected || current?.editor?.view.composing) { hide(); return }
     shown = key()
     paintPressed()
     const next = lastPointer === 'touch' ? 'strip' : 'floating'
@@ -200,7 +221,7 @@ export function selectionToolbar({ getEditor, isEditing, scroller, strip, action
     const target = event.target as Node
     if (floating.contains(target) || strip.contains(target)) return
     hide()
-    if (getEditor().view.dom.contains(target) && event.button === 0) pointerDown = true
+    if (targetOf(target) && event.button === 0) pointerDown = true
   }, { capture: true, signal })
   document.addEventListener('pointerup', () => {
     if (!pointerDown) return
@@ -221,7 +242,7 @@ export function selectionToolbar({ getEditor, isEditing, scroller, strip, action
     if (!selected) { if (shown || timer) hide(); return }
     if (shown) {
       const now = key()
-      if (now.from === shown.from && now.to === shown.to) { schedulePosition(); return }
+      if (now && sameKey(now, shown)) { schedulePosition(); return }
       hide()
     }
     schedule()
@@ -233,8 +254,8 @@ export function selectionToolbar({ getEditor, isEditing, scroller, strip, action
       event.stopPropagation()
       hide()
       // Escape cancels the selection itself; while writing the caret stays at its end.
-      const editor = getEditor()
-      if (isEditing()) editor.commands.setTextSelection(editor.state.selection.to)
+      const editor = current?.editor
+      if (current?.editing && editor) editor.commands.setTextSelection(editor.state.selection.to)
       else document.getSelection()?.removeAllRanges()
       return
     }
@@ -251,8 +272,8 @@ export function selectionToolbar({ getEditor, isEditing, scroller, strip, action
     if (range()) schedule()
   }, { signal })
   document.addEventListener('compositionstart', () => hide(), { capture: true, signal })
-  document.addEventListener('beforeinput', (event) => { if (getEditor().view.dom.contains(event.target as Node)) hide() }, { capture: true, signal })
-  scroller.addEventListener('scroll', schedulePosition, { passive: true, signal })
+  document.addEventListener('beforeinput', (event) => { if (targetOf(event.target as Node)) hide() }, { capture: true, signal })
+  document.addEventListener('scroll', (event) => { if (current && event.target === current.scroller) schedulePosition() }, { capture: true, passive: true, signal })
   window.addEventListener('resize', schedulePosition, { signal })
   window.visualViewport?.addEventListener('resize', schedulePosition, { signal })
   window.visualViewport?.addEventListener('scroll', schedulePosition, { signal })
