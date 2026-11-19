@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   hideCapture: () => ipcRenderer.invoke('new-world:hide-capture'),
   onCaptureShown: (listener) => { ipcRenderer.on('new-world:capture-shown', () => listener()) },
   setRecentWorks: (works) => ipcRenderer.invoke('new-world:set-recent-works', works),
+  openReadingWindow: (hash) => ipcRenderer.invoke('new-world:open-reading-window', hash),
   onCommand: (listener) => { ipcRenderer.on('new-world:command', (_event, command) => listener(command)) },
   getBackupState: () => ipcRenderer.invoke('new-world:backup-state'),
   setBackupFrequency: (frequency) => ipcRenderer.invoke('new-world:backup-set-frequency', frequency),

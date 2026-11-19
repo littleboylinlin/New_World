@@ -18,6 +18,8 @@ const {
   isTrustedMainRenderer,
   isTrustedTaskNotification,
   isTrustedAppRenderer,
+  isReadingRoute,
+  isTrustedReadingRenderer,
   shouldCancelClientConfirmations,
 } = require('./ipc-guard.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
@@ -90,6 +92,10 @@ function trustedMainRenderer(event) {
 
 function trustedAppRenderer(event) {
   return isTrustedAppRenderer(event, { appUrl, mainWindow, captureWindow })
+}
+
+function trustedReadingRenderer(event) {
+  return isTrustedReadingRenderer(event, { appUrl, readingWindows })
 }
 
 function rejectPendingAiDispatches(reason) {
@@ -233,7 +239,7 @@ ipcMain.handle('new-world:reset-storage-location', (event) => {
 })
 
 ipcMain.handle('new-world:get-language', (event) => {
-  if (!trustedAppRenderer(event) || !languages?.current) throw new Error('Invalid language request')
+  if (!(trustedAppRenderer(event) || trustedReadingRenderer(event)) || !languages?.current) throw new Error('Invalid language request')
   return languages.current
 })
 
@@ -553,6 +559,25 @@ function openCapture() {
   captureWindow.webContents.send('new-world:capture-shown')
 }
 
+// Reading windows: one chapter or original file each, read-only, opened from the editor's split view.
+const readingWindows = new Set()
+
+ipcMain.handle('new-world:open-reading-window', (event, hash) => {
+  if (!trustedMainRenderer(event) || !isReadingRoute(hash)) throw new Error(t('main.invalidSettingsRequest'))
+  const [x, y] = mainWindow.getPosition()
+  const offset = 36 * (readingWindows.size + 1)
+  const reading = new BrowserWindow({
+    width: 760, height: 820, minWidth: 360, minHeight: 320, x: x + offset, y: y + offset,
+    backgroundColor: windowBackground(), icon: join(__dirname, 'icon.png'),
+    webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false },
+  })
+  if (process.platform !== 'darwin') reading.setMenuBarVisibility(false)
+  harden(reading.webContents, reading, false)
+  readingWindows.add(reading)
+  reading.on('closed', () => readingWindows.delete(reading))
+  void reading.loadURL(`${appUrl}${hash}`).catch(() => {})
+})
+
 /** Runs a page command in the main window, opening it first when needed. */
 function command(value, show = true) {
   if (show || !mainWindow) showWindow()
@@ -732,6 +757,7 @@ function openWindow(visible = true) {
     rejectPendingAiDispatches('Application window closed.')
     // A hidden quick note window must not keep the app running once the main window is gone.
     if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
+    for (const reading of readingWindows) if (!reading.isDestroyed()) reading.destroy()
   })
   contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
