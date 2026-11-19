@@ -91,7 +91,8 @@ jobs:
         id: plan
         run: node desktop/release-plan.mjs --github-output
       - run: npm ci
-      - run: npm run build:windows
+      - id: package
+        run: npm run build:windows
       - name: Test the installed Windows app
         run: |
           $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
@@ -118,6 +119,17 @@ jobs:
           path: |
             dist-windows/New-World-Setup-*-x64.exe
             dist-windows/New-World-lang-*.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      # Pull requests into a branch other than main (an integration branch such as feat/ui-revamp)
+      # keep the installer for hand testing, whether or not the tests passed. Pull requests into
+      # main and the release flow are unchanged.
+      - uses: actions/upload-artifact@v6
+        if: always() && github.event_name == 'pull_request' && github.base_ref != 'main' && steps.package.outcome == 'success'
+        with:
+          name: windows-x64-installer-pr${{ github.event.pull_request.number }}
+          path: dist-windows/New-World-Setup-*-x64.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
