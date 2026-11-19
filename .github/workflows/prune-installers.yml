@@ -1,0 +1,66 @@
+name: Prune old installers
+
+# Run by hand: keeps only the latest stable release's files, on GitHub and on the R2 mirror.
+# Release pages, notes and tags stay; only the attached files of older releases go.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只列出要删的文件，不真的删'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency: mirror-release
+
+jobs:
+  prune:
+    if: github.repository == 'littleboylinlin/New_World'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+      AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+      R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      BUCKET: newworld-releases
+      MIRROR: https://dl.writenewworld.com
+    steps:
+      - name: Pick the latest release
+        id: latest
+        run: |
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          [[ -n "$tag" ]] || { echo 'No latest release.'; exit 1; }
+          echo "Keeping $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Prune GitHub release files
+        env:
+          KEEP: ${{ steps.latest.outputs.tag }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name != \"$KEEP\") | .assets[] | \"\(.id) \(.browser_download_url)\"" |
+          while read -r id url; do
+            echo "delete $url"
+            [[ "$DRY_RUN" == 'true' ]] || gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id" > /dev/null
+          done
+      - name: Prune the R2 mirror
+        env:
+          KEEP: ${{ steps.latest.outputs.tag }}
+        run: |
+          # Only prune once the mirror already serves the release we keep, so it is never left empty.
+          live=$(curl -fsS --max-time 20 --doh-url https://cloudflare-dns.com/dns-query "$MIRROR/latest.json?t=$GITHUB_RUN_ID" | jq -r .tag)
+          [[ "$live" == "$KEEP" ]] || { echo "Mirror serves ${live:-nothing}, not $KEEP; run Mirror release first."; exit 1; }
+          aws s3 ls "s3://$BUCKET/" --endpoint-url "$R2_ENDPOINT" | awk '$1 == "PRE" { print $2 }' |
+          while read -r prefix; do
+            [[ "$prefix" == "$KEEP/" ]] && continue
+            echo "delete s3://$BUCKET/$prefix"
+            [[ "$DRY_RUN" == 'true' ]] || aws s3 rm "s3://$BUCKET/$prefix" --recursive --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          done
+          aws s3 ls "s3://$BUCKET/" --endpoint-url "$R2_ENDPOINT"
