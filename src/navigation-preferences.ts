@@ -15,3 +15,5 @@ export function preference<T extends string>(key: string, values: readonly T[], 
 
 export const writingFilter = preference('writing-filter', ['all', 'original', 'reference'] as const, 'all')
 export const writingSort = preference('writing-sort', ['added', 'opened', 'title'] as const, 'added')
+/** How the home page shows recent projects: a list of rows or the library's covers. */
+export const recentStyle = preference('recent-style', ['list', 'cover'] as const, 'list')

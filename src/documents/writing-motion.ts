@@ -36,6 +36,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   // A held key or a jump stays in force until the key is released, however late its edit lands.
   let held = false
   let typewriter = appearance().typewriter
+  let smooth = appearance().smoothTyping
   let target: Point | undefined
   const follower = caretFollower((point) => { caret.style.transform = `translate(${point.x}px, ${point.y}px)` })
   const composition = editorComposition(editor, () => schedule())
@@ -184,7 +185,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     const element = focus instanceof Element ? focus : focus?.parentElement
     const text = element && body.contains(element) ? element : body
     const zoom = text.currentCSSZoom ?? 1
-    if (moved || !follower.position) {
+    if (smooth && (moved || !follower.position)) {
       const width = kind === 'glide' ? characterWidth(focus, nativeSelection?.focusOffset ?? 0, parseFloat(getComputedStyle(text).fontSize) * zoom) / scaleX : 0
       follower.move({ x, y }, kind, width)
     }
@@ -195,6 +196,8 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       revealInput(coords, margin, inComposition)
     }
     target = { x, y }
+    // With smooth typing off the text keeps the system caret; only the scrolling above still runs.
+    if (!smooth) { caret.hidden = true; follower.reset(); return }
     caret.style.height = `${height}px`
     caret.hidden = false
     if (moved) {
@@ -233,7 +236,10 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   }
   function preferences() {
     typewriter = appearance().typewriter
+    smooth = appearance().smoothTyping
     paper.classList.toggle('typewriter-writing', typewriter && editor.isEditable)
+    paper.classList.toggle('plain-caret', !smooth)
+    if (!smooth) hide()
     resize()
   }
   function motionPreference() {
@@ -316,7 +322,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       follower.destroy()
       composition.destroy()
       caret.remove()
-      paper.classList.remove('smooth-writing', 'typewriter-writing', 'native-caret')
+      paper.classList.remove('smooth-writing', 'typewriter-writing', 'native-caret', 'plain-caret')
       paper.style.removeProperty('--typewriter-space')
       paper.style.removeProperty('--writing-bottom-space')
     },

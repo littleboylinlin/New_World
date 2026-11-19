@@ -24,14 +24,15 @@ test('作品卡片书名在封面下方，箭头和右键都能打开操作菜�
   const menu = page.getByRole('menu', { name: '「灯塔与雾」的操作' })
   await expect(menu.getByRole('menuitem')).toHaveText(['打开', '在右侧打开', '在下方打开', '导出 New_World 工程（.newworld）', '重命名', '编辑作品信息', '更换封面…', '归档', '删除'])
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  // The list drops down from the arrow, even with little room below it. Both are measured in the
-  // same frame: the shelf can still shift a little while covers load, and the menu follows the arrow
-  // a frame later, so two separate measurements could be taken on either side of such a shift.
+  // The list sits right next to the arrow, below it or above it when there is more room there, and
+  // always inside the window. Both are measured in the same frame: the shelf can still shift a little
+  // while covers load, and the menu follows the arrow a frame later.
   await expect.poll(() => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
     const arrow = document.querySelector('[aria-label="「灯塔与雾」的操作"][aria-expanded]').getBoundingClientRect()
     const list = document.querySelector('[role="menu"][aria-label="「灯塔与雾」的操作"]').getBoundingClientRect()
-    resolve(list.top - arrow.bottom)
-  }))), { message: 'gap between the arrow and the list' }).toBeGreaterThan(-1)
+    const gap = list.top >= arrow.bottom ? list.top - arrow.bottom : arrow.top - list.bottom
+    resolve(gap >= 0 && gap <= 12 && list.top >= 0 && list.bottom <= innerHeight)
+  }))), { message: 'list beside the arrow and inside the window' }).toBe(true)
   await expect(menu.getByRole('menuitem', { name: '打开', exact: true })).toBeFocused()
   await page.keyboard.press('ArrowDown')
   await expect(menu.getByRole('menuitem', { name: '在右侧打开' })).toBeFocused()

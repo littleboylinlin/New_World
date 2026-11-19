@@ -10,9 +10,10 @@ import { bookPath, button, element, fileDetails, icon, libraries, link, notice }
 import { stagger } from './motion'
 import { offerArchiveUndo, offerUndo } from './undo'
 import { renderWritingStats } from './writing-stats'
+import { renderHomeTasks } from './home-tasks'
 import { openMenu } from './menu'
 import { lastOpened, recentWorks } from './ideas'
-import { writingFilter, writingSort } from './navigation-preferences'
+import { recentStyle, writingFilter, writingSort } from './navigation-preferences'
 import { chooseWorkType, workType } from './work-type'
 import type { MenuItem } from './menu'
 import { canOpenWindow, defaultSource, lastEdition, openWindow, readCatalog, requestOpen } from './documents/compare'
@@ -52,25 +53,59 @@ function createButton(root: HTMLElement, signal: AbortSignal) {
 export function renderHome(root: HTMLElement, signal: AbortSignal) {
   const home = element('section', 'home')
   renderWritingStats(home, signal)
+  home.append(renderHomeTasks(signal))
   const recent = element('section', 'recent-projects')
+  const head = element('div', 'recent-head')
   const heading = element('h2', '', t('writing.recent'))
-  const content = element('div')
-  recent.append(heading, content)
+  const styles = element('div', 'segment-switch recent-style')
+  styles.setAttribute('role', 'group')
+  styles.setAttribute('aria-label', t('writing.recentStyle'))
+  const styleButtons = (['list', 'cover'] as const).map((style) => {
+    const choice = button(t(style === 'list' ? 'writing.recentList' : 'writing.recentCovers'), 'segment')
+    choice.dataset.style = style
+    choice.addEventListener('click', () => {
+      if (recentStyle.get() === style) return
+      recentStyle.set(style)
+      showStyle()
+      void refresh(true)
+    })
+    return choice
+  })
+  styles.append(...styleButtons)
+  head.append(heading, styles)
+  const content = element('div', 'recent-content')
+  recent.append(head, content)
   home.append(recent)
   root.append(home)
+  const covers: string[] = []
+  const releaseCovers = () => { for (const url of covers.splice(0)) URL.revokeObjectURL(url) }
+  signal.addEventListener('abort', releaseCovers, { once: true })
+  function showStyle() {
+    for (const choice of styleButtons) choice.setAttribute('aria-pressed', String(choice.dataset.style === recentStyle.get()))
+  }
+  showStyle()
 
   let request = 0
-  async function refresh() {
+  async function refresh(switched = false) {
     const turn = ++request
     try {
       const books = (await Promise.all(libraryIds.map(listBooks))).flat().filter((book) => !book.workId)
       if (signal.aborted || turn !== request) return
-      const list = element('ul', 'recent-list')
+      const covered = recentStyle.get() === 'cover'
+      const used: string[] = []
+      const list = element('ul', covered ? 'recent-list recent-covers' : 'recent-list')
       for (const ref of recentWorks().slice(0, 8)) {
         const book = books.find((item) => item.id === ref.bookId && item.library === ref.library)
         if (!book) continue
         const entry = link(bookPath(book.library, book.id), '', 'recent-link')
-        entry.append(typeBadge(book.library), element('strong', '', book.title))
+        if (covered) {
+          entry.setAttribute('aria-label', book.title)
+          entry.title = book.title
+          entry.append(bookCover(book, used))
+          const caption = element('span', 'recent-caption')
+          caption.append(typeBadge(book.library), element('strong', '', book.title))
+          entry.append(caption)
+        } else entry.append(typeBadge(book.library), element('strong', '', book.title))
         if (ref.openedAt && Number.isFinite(new Date(ref.openedAt).getTime())) {
           const date = new Date(ref.openedAt)
           const time = element('time', '', t('writing.openedAt', [date.toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' })]))
@@ -81,16 +116,19 @@ export function renderHome(root: HTMLElement, signal: AbortSignal) {
         row.append(entry)
         list.append(row)
       }
-      if (list.childElementCount) content.replaceChildren(list)
+      releaseCovers()
+      covers.push(...used)
+      styles.hidden = !list.childElementCount
+      if (list.childElementCount) content.replaceChildren(switched ? stagger(list) : list)
       else if (books.length) content.replaceChildren(element('p', 'intro-copy', t('writing.noRecent')), link('#/writing', t('navigation.writing'), 'button button-quiet'))
       else content.replaceChildren(element('p', 'intro-copy', t('writing.empty')), createButton(root, signal))
     } catch (error) {
       if (!signal.aborted && turn === request) content.replaceChildren(notice(storageError(error), true))
     }
   }
-  changes.addEventListener('update', refresh, { signal })
-  window.addEventListener('focus', refresh, { signal })
-  window.addEventListener('storage', refresh, { signal })
+  changes.addEventListener('update', () => { void refresh() }, { signal })
+  window.addEventListener('focus', () => { void refresh() }, { signal })
+  window.addEventListener('storage', () => { showStyle(); void refresh() }, { signal })
   void refresh()
 }
 
@@ -192,12 +230,8 @@ function chooseCover(root: HTMLElement, book: Book, report: (message: string) =>
   input.click()
 }
 
-function bookCard(root: HTMLElement, book: Book, covers: string[], report: (message: string) => void) {
-  const row = element('li', 'book-card mode-' + book.library)
-  const open = element('a', 'book-link')
-  open.href = bookPath(book.library, book.id)
-  open.setAttribute('aria-label', t('shelf.view', [book.title]))
-  open.title = book.title
+/** The same cover the library draws: the chosen picture, or the coloured default with the title. */
+function bookCover(book: Book, covers: string[]) {
   const image = coverOf(book)
   const cover = element('span', image ? 'book-cover book-cover-image' : `book-cover cover-${coverVariant(book.id)}`)
   if (image) {
@@ -212,7 +246,17 @@ function bookCard(root: HTMLElement, book: Book, covers: string[], report: (mess
     const length = Array.from(book.title).length
     cover.append(element('strong', length > 14 ? 'book-title book-title-long' : length > 6 ? 'book-title book-title-medium' : 'book-title', book.title))
   }
-  open.append(cover)
+  return cover
+}
+
+function bookCard(root: HTMLElement, book: Book, covers: string[], report: (message: string) => void) {
+  const row = element('li', 'book-card mode-' + book.library)
+  const open = element('a', 'book-link')
+  open.href = bookPath(book.library, book.id)
+  open.setAttribute('aria-label', t('shelf.view', [book.title]))
+  open.title = book.title
+  const image = coverOf(book)
+  open.append(bookCover(book, covers))
 
   // Opens this work read-only beside the version written last, or in a reading window of its own.
   const beside = async (placement: OpenPlacement | 'window') => {

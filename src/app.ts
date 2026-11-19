@@ -6,7 +6,6 @@ import { t } from './i18n'
 import { renderContinuation } from './continuation-view'
 import { renderReader } from './reader-view'
 import { renderHome, renderShelf } from './shelf-view'
-import { hasTrashSince } from './trash'
 import { renderTrash } from './trash-view'
 import { renderArchive } from './archive-view'
 import { backUpToFolder, restoredNotice, startAutomaticBackups } from './backup-view'
@@ -33,10 +32,9 @@ document.querySelector('meta[name="description"]')?.setAttribute('content', t('a
 const main = document.querySelector<HTMLElement>('#main')!
 const page = document.querySelector<HTMLElement>('#page')!
 const sidebar = mountSidebar()
-const { settingsEntry, trashLink, trashDot } = sidebar
+const { settingsEntry } = sidebar
 let showNotes: ReturnType<typeof mountNotes> | undefined
 const trashRoute = /^#\/trash\/?$/
-const trashViewedKey = 'new-world:trash-last-viewed'
 // The desktop window has no system title bar. The app header takes its place and the page scrolls below it.
 if (window.newWorldDesktop) {
   document.documentElement.classList.add('desktop')
@@ -47,34 +45,6 @@ let view: AbortController | undefined
 let leaveGuard: (() => Promise<boolean>) | undefined
 let activeHash = location.hash
 let navigation = 0
-let trashViewedAt = 0
-let trashRequest = 0
-
-function lastTrashView() {
-  try {
-    const saved = Number(localStorage.getItem(trashViewedKey))
-    if (Number.isFinite(saved)) return Math.max(trashViewedAt, saved)
-  } catch { /* Fall back to the timestamp for this session. */ }
-  return trashViewedAt
-}
-
-function markTrashViewed(time: number) {
-  trashViewedAt = Math.max(time, lastTrashView())
-  try { localStorage.setItem(trashViewedKey, String(trashViewedAt)) } catch { /* The view is remembered for this session. */ }
-}
-
-function showTrashDot(unread: boolean) {
-  trashDot.hidden = !unread
-  if (unread) trashLink.setAttribute('aria-describedby', trashDot.id)
-  else trashLink.removeAttribute('aria-describedby')
-}
-
-async function refreshTrashIndicator() {
-  const request = ++trashRequest
-  if (trashRoute.test(activeHash)) { showTrashDot(false); return }
-  const unread = await hasTrashSince(lastTrashView()).catch(() => false)
-  if (request === trashRequest) showTrashDot(unread)
-}
 
 const saveBeforeLeaving = async () => !leaveGuard || await leaveGuard()
 if (window.newWorldDesktop) {
@@ -151,7 +121,7 @@ function render(moveFocus = false) {
   } else if (trashRoute.test(activeHash)) {
     sidebar.active('trash')
     document.title = t('main.trashNewWorld')
-    renderTrash(main, view.signal, markTrashViewed)
+    renderTrash(main, view.signal)
   } else {
     sidebar.active('home')
     main.classList.add('home-main')
@@ -163,7 +133,6 @@ function render(moveFocus = false) {
     page.scrollTo(0, 0)
     if (!handledFocus) main.focus({ preventScroll: true })
   }
-  void refreshTrashIndicator()
 }
 
 document.querySelector('.skip-link')?.addEventListener('click', (event) => {
@@ -211,9 +180,6 @@ window.addEventListener('hashchange', async () => {
 render()
 const restored = restoredNotice()
 if (restored && !parseSettingsCategory(activeHash)) main.prepend(notice(restored))
-libraryChanges.addEventListener('update', () => { void refreshTrashIndicator() })
-window.addEventListener('focus', () => { void refreshTrashIndicator() })
-window.addEventListener('storage', (event) => { if (event.key === trashViewedKey) void refreshTrashIndicator() })
 mountAiDesktopHost()
 mountTaskReminders()
 mountWebVersionCheck(saveBeforeLeaving)

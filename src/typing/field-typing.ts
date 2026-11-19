@@ -1,5 +1,6 @@
 import './typing.css'
 import { reducedMotion } from '../motion'
+import { appearance, onAppearanceChange } from '../appearance'
 import { caretFollower } from './caret-motion'
 import type { CaretMove } from './caret-motion'
 import './composition'
@@ -326,11 +327,19 @@ export function installFieldTyping(root: Document = document) {
   installed = true
   let active: { field: Field; stop: () => void } | undefined
   const stop = () => { active?.stop(); active = undefined }
+  let enabled = appearance().smoothTyping
   const start = (target: EventTarget | null) => {
     if (active?.field === target) return
     stop()
-    if (typingField(target)) active = { field: target, stop: session(target) }
+    if (enabled && typingField(target)) active = { field: target, stop: session(target) }
   }
+  // Turning smooth typing off hands the focused field straight back to the system caret, and on again takes it over.
+  onAppearanceChange((value) => {
+    if (value.smoothTyping === enabled) return
+    enabled = value.smoothTyping
+    if (!enabled) stop()
+    else start(root.activeElement)
+  })
   root.addEventListener('compositionstart', ({ target }) => {
     if (typingField(target)) readings.set(target, { start: Math.min(target.selectionStart ?? 0, target.selectionEnd ?? 0), text: '' })
   }, true)

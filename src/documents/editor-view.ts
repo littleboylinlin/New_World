@@ -27,7 +27,7 @@ import { SearchHighlight } from './search'
 import { mountFindPanel } from './find-panel'
 import { chapterDirectory } from './chapter-directory'
 import { selectionToolbar } from './selection-toolbar'
-import { lastChapter, readChapterPlace, readEditorPreferences, saveChapterPlace, updateEditorPreferences } from './editor-prefs'
+import { defaultSideWidth, lastChapter, readChapterPlace, readEditorPreferences, saveChapterPlace, updateEditorPreferences } from './editor-prefs'
 import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
 import { AnnotationDecorations, documentSurface } from '../annotations/surface'
 import { readingAnnotations } from '../annotations/view'
@@ -348,10 +348,12 @@ export async function renderEdition(
   notices.append(error, recover, information)
 
   // ——— Body: chapter list, text, side panel ———
+  // On very wide windows both panels start a little wider; a width the writer dragged to is kept.
+  const roomy = innerWidth >= 2200
   const wb = createWorkbench({
     signal,
     start: {
-      label: t('editor.chapterList'), width: 264, minWidth: 220, maxWidth: 320, inlineFrom: 720,
+      label: t('editor.chapterList'), width: roomy ? 300 : 264, minWidth: 220, maxWidth: 320, inlineFrom: 720,
       openWhenInline: () => readEditorPreferences().navOpen !== false,
       onToggle: (open, byUser) => {
         if (open && wb?.start?.mode() === 'overlay') splitEditor?.closeDrawer()
@@ -361,7 +363,7 @@ export async function renderEdition(
       },
     },
     end: {
-      label: t('editor.sidePanel'), width: preferences.sideWidth, minWidth: 260, maxWidth: 560, inlineFrom: 1000, resizable: true,
+      label: t('editor.sidePanel'), width: roomy && preferences.sideWidth === defaultSideWidth ? 380 : preferences.sideWidth, minWidth: 260, maxWidth: 560, inlineFrom: 1000, resizable: true,
       openWhenInline: () => readEditorPreferences().sideOpen !== false,
       onToggle: (open, byUser) => {
         if (open && wb?.end?.mode() === 'overlay') splitEditor?.closeDrawer()

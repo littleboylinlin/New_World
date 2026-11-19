@@ -189,6 +189,7 @@
 .choice-options .settings-option { min-height: 48px; }
 .appearance-check { display: flex; align-items: center; gap: 9px; font-size: .86rem; font-weight: 750; cursor: pointer; }
 .appearance-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.dialog-help + .appearance-check { margin-top: 14px; }
 
 .dictionary-box { display: grid; gap: 10px; margin-top: 4px; padding: 14px; border: 2px solid var(--ink); border-radius: 10px; background: var(--field); }
 .dictionary-box[hidden] { display: none; }

@@ -33,28 +33,42 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
     return entry
   })
   document.body.append(menu)
+  const anchored = at instanceof HTMLElement
+  if (anchored) menu.classList.add('popup-anchored')
 
-  const box = menu.getBoundingClientRect()
-  if (at instanceof HTMLElement) {
-    // A menu button's list always drops down, lined up with the button's right edge. It sits in the
-    // page, so it scrolls with it; when it would run past the bottom, the page scrolls to show it.
-    const anchor = at.getBoundingClientRect()
-    menu.classList.add('popup-anchored')
-    const left = Math.max(8, Math.min(anchor.right - box.width, innerWidth - box.width - 8))
-    menu.style.left = `${left + scrollX}px`
-    menu.style.top = `${anchor.bottom + 8 + scrollY}px`
-    const overflow = anchor.bottom + 8 + box.height + 12 - innerHeight
-    if (overflow > 0) {
-      const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-      window.scrollBy({ top: overflow, behavior: smooth ? 'smooth' : 'instant' })
+  // Every menu is fixed to the window: it never adds to the page's height or scrolls it. A menu
+  // button's list drops below the button, or above it when there is more room there; a right-click
+  // menu opens at the pointer and turns back at the window edges. When neither side fits the
+  // whole list, it takes the larger side and scrolls inside.
+  function place() {
+    const edge = 8, gap = 8
+    menu.style.maxHeight = 'none'
+    const natural = menu.scrollHeight + 4
+    const width = menu.getBoundingClientRect().width
+    let left: number, top: number, up: boolean
+    if (at instanceof HTMLElement) {
+      const anchor = at.getBoundingClientRect()
+      const below = innerHeight - anchor.bottom - gap - edge
+      const above = anchor.top - gap - edge
+      up = natural > below && above > below
+      const room = Math.max(96, up ? above : below)
+      const height = Math.min(natural, room)
+      menu.style.maxHeight = `${Math.floor(room)}px`
+      left = anchor.right - width
+      top = up ? anchor.top - gap - height : anchor.bottom + gap
+    } else {
+      const room = innerHeight - 2 * edge
+      const height = Math.min(natural, room)
+      menu.style.maxHeight = `${Math.floor(room)}px`
+      up = at.y + height > innerHeight - edge
+      left = at.x + width > innerWidth - edge ? at.x - width : at.x
+      top = up ? at.y - height : at.y
     }
-  } else {
-    // A right-click menu opens at the pointer and turns back at the window edges, like the system's.
-    const left = at.x + box.width > innerWidth - 8 ? at.x - box.width : at.x
-    const top = at.y + box.height > innerHeight - 8 ? at.y - box.height : at.y
-    menu.style.left = `${Math.max(8, Math.min(left, innerWidth - box.width - 8))}px`
-    menu.style.top = `${Math.max(8, Math.min(top, innerHeight - box.height - 8))}px`
+    menu.style.left = `${Math.round(Math.max(edge, Math.min(left, innerWidth - width - edge)))}px`
+    menu.style.top = `${Math.round(Math.max(edge, Math.min(top, innerHeight - edge - Math.min(natural, innerHeight - 2 * edge))))}px`
+    menu.dataset.side = up ? 'top' : 'bottom'
   }
+  place()
 
   const focus = (index: number) => buttons[(index + buttons.length) % buttons.length]?.focus({ preventScroll: true })
   menu.addEventListener('keydown', (event) => {
@@ -72,11 +86,31 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
   const outside = (event: Event) => { if (!menu.contains(event.target as Node)) close(false) }
   const dismiss = () => close(false)
   document.addEventListener('pointerdown', outside, true)
+  // A menu button's list follows its button when the page under it scrolls or shifts, and closes
+  // once the button has left the window. A right-click menu has nothing to follow and closes.
+  const scrolled = (event: Event) => { if (!menu.contains(event.target as Node)) close(false) }
+  let frame = 0
+  let last = ''
+  const follow = () => {
+    if (!(at instanceof HTMLElement)) return
+    frame = requestAnimationFrame(follow)
+    const box = at.getBoundingClientRect()
+    const key = `${box.left},${box.top},${box.right},${box.bottom},${innerWidth},${innerHeight}`
+    if (key === last) return
+    last = key
+    if (!at.isConnected || box.bottom < 0 || box.top > innerHeight || !box.width) { close(false); return }
+    place()
+  }
   window.addEventListener('blur', dismiss)
-  window.addEventListener('resize', dismiss)
-  // Close when the reader scrolls the page, but not when the page scrolls itself to show something.
-  window.addEventListener('wheel', dismiss, { passive: true })
-  window.addEventListener('touchmove', dismiss, { passive: true })
+  if (anchored) {
+    last = (() => { const box = at.getBoundingClientRect(); return `${box.left},${box.top},${box.right},${box.bottom},${innerWidth},${innerHeight}` })()
+    frame = requestAnimationFrame(follow)
+  } else {
+    window.addEventListener('resize', dismiss)
+    document.addEventListener('scroll', scrolled, { capture: true, passive: true })
+    window.addEventListener('wheel', scrolled, { passive: true })
+    window.addEventListener('touchmove', scrolled, { passive: true })
+  }
 
   function close(returnFocus = false) {
     if (current?.menu !== menu) return
@@ -84,10 +118,12 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
     menu.remove()
     opener?.setAttribute('aria-expanded', 'false')
     document.removeEventListener('pointerdown', outside, true)
+    cancelAnimationFrame(frame)
     window.removeEventListener('blur', dismiss)
     window.removeEventListener('resize', dismiss)
-    window.removeEventListener('wheel', dismiss)
-    window.removeEventListener('touchmove', dismiss)
+    document.removeEventListener('scroll', scrolled, { capture: true })
+    window.removeEventListener('wheel', scrolled)
+    window.removeEventListener('touchmove', scrolled)
     if (returnFocus) opener?.focus()
   }
   current = { menu, close }

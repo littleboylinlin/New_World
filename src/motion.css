@@ -25,6 +25,7 @@
 @keyframes drop-in { from { opacity: 0; transform: translateY(-10px); } }
 @keyframes tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 6px)); } }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
+@keyframes menu-in-up { from { opacity: 0; transform: translateY(6px) scale(.97); } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 22px); } }
 @keyframes toast-out { to { opacity: 0; transform: translate(-50%, 16px); } }
@@ -56,6 +57,7 @@
   .manage-dialog[open] { animation: 260ms var(--ease-pop) backwards dialog-in; }
   .manage-dialog[open]::backdrop { animation: 220ms ease-out backwards fade-in; }
   .popup-menu { animation: 150ms var(--ease-out) backwards menu-in; }
+  .popup-menu[data-side="top"] { animation-name: menu-in-up; }
   .undo-toast { animation: 320ms var(--ease-pop) backwards toast-in; }
   .undo-toast.leaving { animation: 200ms ease-in both toast-out; }
   .pop { animation: 360ms var(--ease-pop) pop; }

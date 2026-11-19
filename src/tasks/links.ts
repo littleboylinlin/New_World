@@ -27,10 +27,9 @@ export function takeTaskJump(edition: Edition) {
   pending = undefined
   return request.link
 }
-export function taskLinkButton(value: TaskWorkLink) {
-  const open = button(t('tasks.openWork', [value.title]), 'button button-quiet button-small')
-  open.onclick = () =>
-    void (async () => {
+/** Opens the linked work, at the linked chapter and passage when the task points at one. */
+export function openTaskLink(value: TaskWorkLink) {
+  return (async () => {
       if (value.unconfirmed) throw new Error(key('unconfirmedLink'))
       const stored = await readBook(value.library, value.bookId)
       if (!stored || stored.book.workId) throw new Error(key('missingWork'))
@@ -47,6 +46,10 @@ export function taskLinkButton(value: TaskWorkLink) {
       pending = { link: structuredClone(value), at: Date.now() }
       location.hash = bookPath(value.library, value.bookId, value.editionId)
     })().catch((e) => showNotice(storageError(e)))
+}
+export function taskLinkButton(value: TaskWorkLink) {
+  const open = button(t('tasks.openWork', [value.title]), 'button button-quiet button-small')
+  open.onclick = () => void openTaskLink(value)
   return open
 }
 export async function taskLinkFields(initial: Task['link']) {

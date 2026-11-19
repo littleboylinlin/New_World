@@ -29,6 +29,8 @@ export interface Appearance {
   spellcheck: boolean
   /** Keep the writing line near the middle of the editor viewport. */
   typewriter: boolean
+  /** Draw the gliding caret in the text and in every text field; off keeps the system caret. */
+  smoothTyping: boolean
   /** Play the opening animation when the desktop app starts. Read before the bundle by public/intro.js. */
   intro: boolean
 }
@@ -40,7 +42,7 @@ const key = 'new-world:appearance'
 const changed = 'new-world:appearance-change'
 export const defaults: Appearance = {
   theme: 'system', latin: 'times', cjk: 'auto', size: null,
-  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false, typewriter: false, intro: true,
+  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false, typewriter: false, smoothTyping: true, intro: true,
 }
 
 /** English names are the fonts' own names and are not translated. */
@@ -67,6 +69,7 @@ function normalize(value: unknown): Appearance {
     width: pick(record.width, textWidths, defaults.width),
     spellcheck: record.spellcheck === true,
     typewriter: record.typewriter === true,
+    smoothTyping: record.smoothTyping !== false,
     intro: record.intro !== false,
   }
 }
@@ -86,6 +89,7 @@ function apply(value: Appearance) {
   root.dataset.paragraph = value.paragraph
   root.dataset.indent = value.indent ? 'on' : 'off'
   root.dataset.width = value.width
+  root.dataset.smoothTyping = value.smoothTyping ? 'on' : 'off'
   // Only the chapter text is spell-checked, and only when asked for; titles and forms never are.
   root.spellcheck = false
   if (value.size === null) root.style.removeProperty('--reading-size')

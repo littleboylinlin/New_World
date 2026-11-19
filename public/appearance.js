@@ -12,6 +12,7 @@
   root.dataset.paragraph = pick(saved.paragraph, ['none', 'standard', 'wide'], 'standard')
   root.dataset.indent = saved.indent === true ? 'on' : 'off'
   root.dataset.width = pick(saved.width, ['narrow', 'standard', 'wide'], 'standard')
+  root.dataset.smoothTyping = saved.smoothTyping === false ? 'off' : 'on'
   root.spellcheck = false
   if (typeof saved.size === 'number' && saved.size >= 14 && saved.size <= 28) root.style.setProperty('--reading-size', Math.round(saved.size) + 'px')
 })()
