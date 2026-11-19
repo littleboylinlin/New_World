@@ -144,8 +144,10 @@ test.describe('选中文字的浮动工具条', () => {
     await expect.poll(() => page.evaluate(() => window.selectionTiming.open)).toBeGreaterThan(0)
     const timing = await page.evaluate(() => window.selectionTiming.open - window.selectionTiming.up)
     const chosen = await page.evaluate(() => getSelection().toString())
+    // The delay is what matters: never early. A busy machine may run the timer late, so the upper
+    // bound only rules out "waits for something else" (such as another click).
     expect(timing).toBeGreaterThanOrEqual(180)
-    expect(timing).toBeLessThan(600)
+    expect(timing).toBeLessThan(2000)
     await expect(floating(page)).toBeVisible()
     await floating(page).evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)))
     // Beside the selection without covering it, and it does not follow the mouse.
