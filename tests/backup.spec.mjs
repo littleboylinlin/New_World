@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import { expect, test } from './app-test.mjs'
 import { bookAction } from './fixtures.mjs'
+import { editWorkInformation, editorAction, historyCount, saveNow } from './editor-helpers.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const settings = (page) => page.locator('.settings-page')
@@ -25,7 +26,7 @@ async function newNovel(page, name, text) {
   await page.getByRole('button', { name: '创建小说' }).click()
   await expect(textArea(page)).toBeVisible()
   await textArea(page).fill(text)
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
 }
 
@@ -90,7 +91,7 @@ test('作品可以归档、撤销归档，在归档页打开和放回书库', as
 
 test('立即备份后可从备份恢复整个书库，包括归档和回收站', async ({ page }, testInfo) => {
   await newNovel(page, '雾中灯塔', 'The keeper climbed the stairs. 灯塔守望者。')
-  await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  await editWorkInformation(page)
   const information = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
   await information.getByLabel('作者', { exact: true }).fill('备份作者')
   await information.getByLabel('作品简介', { exact: true }).fill('第一段。\n\n第二段。')
@@ -128,8 +129,11 @@ test('立即备份后可从备份恢复整个书库，包括归档和回收站',
   await page.goto('/#/archive')
   await page.getByRole('link', { name: '雾中灯塔' }).click()
   await expect(textArea(page)).toHaveText('The keeper climbed the stairs. 灯塔守望者。')
-  await expect(page.getByRole('region', { name: '作品信息', exact: true })).toContainText('备份作者')
-  await expect(page.locator('.work-synopsis')).toHaveText('第一段。\n\n第二段。')
+  await editWorkInformation(page)
+  const restoredInformation = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
+  await expect(restoredInformation.getByLabel('作者', { exact: true })).toHaveValue('备份作者')
+  await expect(restoredInformation.getByLabel('作品简介', { exact: true })).toHaveValue('第一段。\n\n第二段。')
+  await restoredInformation.getByRole('button', { name: '取消', exact: true }).click()
   await page.goto('/#/ideas')
   await expect(page.getByRole('list', { name: '灵感列表' }).locator('.idea-text')).toHaveText(['灯塔下埋着一封信'])
 })
@@ -312,8 +316,8 @@ test('备份与恢复完整保留章节去重历史与灵感历史，并兼容�
 
   // Verify chapter history from restored v7 blob works cleanly
   await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
-  await expect(page.locator('button.history-toggle .history-count')).toHaveText('1')
-  await page.locator('button.history-toggle').click()
+  await expect.poll(() => historyCount(page)).toBe('1')
+  await editorAction(page, '历史版本')
   await expect(page.getByRole('dialog', { name: /历史版本/ }).locator('.revision-preview-text')).toHaveText('被去重压缩保存的旧章节内容。')
   await page.getByRole('dialog', { name: /历史版本/ }).getByRole('button', { name: '关闭' }).first().click()
 
@@ -355,6 +359,6 @@ test('备份与恢复完整保留章节去重历史与灵感历史，并兼容�
   await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
 
   await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
-  await page.locator('button.history-toggle').click()
+  await editorAction(page, '历史版本')
   await expect(page.getByRole('dialog', { name: /历史版本/ }).locator('.revision-preview-text')).toHaveText('来自旧版备份的内联正文。')
 })

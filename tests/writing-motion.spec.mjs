@@ -1,6 +1,7 @@
 import { expect, test } from './app-test.mjs'
 import { pixel } from './fixtures.mjs'
 import { caret, chapterText, expectCaretAligned, measureTyping, newWritingNovel, writingMotionFlow, setTypewriter, centerError, traceCaretMotion, expectBoundedTrace, expectSnapTrace } from './writing-motion-helpers.mjs'
+import { chapterHeading, editorAction, saveNow } from './editor-helpers.mjs'
 
 test.beforeEach(async ({ page }) => { await page.goto('/') })
 
@@ -53,20 +54,21 @@ for (const desktop of [false, true]) {
       const cursor = paper.querySelector('.writing-caret')
       const rect = cursor.getBoundingClientRect()
       const footerTop = document.querySelector('.site-footer').getBoundingClientRect().top
-      const toolbarBottom = document.querySelector('.editor-tools-row').getBoundingClientRect().bottom
+      const toolbarBottom = document.querySelector('.editor-toolbar').getBoundingClientRect().bottom
       const margin = 2 * parseFloat(getComputedStyle(node).lineHeight)
       return {
         gap: Math.hypot(rect.left - coords.left, rect.top - coords.top),
         below: Math.min(footerTop, paper.getBoundingClientRect().bottom) - rect.bottom - margin,
         above: rect.top - toolbarBottom,
-        scroll: document.scrollingElement.scrollTop + document.querySelector('#page').scrollTop,
+        scroll: document.scrollingElement.scrollTop + document.querySelector('#page').scrollTop + document.querySelector('.editor-scroll').scrollTop,
         head: node.editor.state.selection.head,
       }
     })
     const before = await sample()
     let last = before
     try {
-      for (let i = 0; i < 75; i++) {
+      // Enough characters to wrap at least twice at this width, whether or not a scrollbar takes room.
+      for (let i = 0; i < 110; i++) {
         await page.keyboard.down('w')
         last = await sample()
         expect(last.head).toBe(before.head + i + 1)
@@ -156,9 +158,9 @@ test('光标随字号、主题、窗口缩放、字体、滚动、图片和表�
   await page.getByRole('button', { name: '新建章节', exact: true }).click()
   await page.getByRole('textbox', { name: '章节名', exact: true }).fill('第二章')
   await page.getByRole('button', { name: '创建章节', exact: true }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(chapterHeading(page)).toHaveText('第二章')
   await expect(caret(page)).toHaveCount(1)
-  await page.getByRole('button', { name: '阅读模式', exact: true }).click()
+  await editorAction(page, '阅读模式')
   await expect(caret(page)).toBeHidden()
   await page.goto('/#/')
   await expect(caret(page)).toHaveCount(0)
@@ -190,7 +192,7 @@ test('连续输入时统计和保存等待停笔，输入法期间不计数也�
   await expect(page.locator('.word-count')).toHaveText('本章 5 字')
   await expect(page.locator('.save-status')).toHaveText('已保存')
   await page.keyboard.insertText('信')
-  await page.getByRole('button', { name: '手动保存', exact: true }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
   await expect(page.locator('.word-count')).toHaveText('本章 6 字')
   await expect(page.locator('.chapter-words').first()).toHaveText('6')
@@ -204,16 +206,16 @@ test('停笔统计执行前切章，保存后的章节字数和全书字数仍�
   await page.getByRole('button', { name: '新建章节', exact: true }).click()
   await page.getByRole('textbox', { name: '章节名', exact: true }).fill('第二章')
   await page.getByRole('button', { name: '创建章节', exact: true }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(chapterHeading(page)).toHaveText('第二章')
   await page.getByRole('button', { name: '第一章', exact: true }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第一章')
+  await expect(chapterHeading(page)).toHaveText('第一章')
   await page.clock.install()
   await page.clock.pauseAt(new Date(Date.now() + 1000))
   await chapterText(page).evaluate((node) => {
     node.editor.commands.insertContent('灯塔')
     document.querySelectorAll('.chapter-jump')[1].click()
   })
-  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(chapterHeading(page)).toHaveText('第二章')
   await expect(page.locator('.chapter-words')).toHaveText(['2', '0'])
   await expect(page.locator('.word-total')).toHaveText('全书 2 字')
 })

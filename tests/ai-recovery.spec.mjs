@@ -1,3 +1,4 @@
+import { chapterHeading, editorAction, historyCount } from './editor-helpers.mjs'
 import { chooseImportType } from './navigation-helpers.mjs'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
@@ -511,8 +512,8 @@ test('5-6. 4字短章清空拦截与恢复；同字数全文替换拦截（无-0
     await page.goto(`/#/original/${workId}/${editionId}`)
     const editor = page.locator('.novel-body[contenteditable="true"]')
     await expect(editor).toBeVisible()
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('1')
-    await page.locator('button.history-toggle').click()
+    await expect.poll(() => historyCount(page)).toBe('1')
+    await editorAction(page, '历史版本')
     const revDialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(revDialog.locator('.revision-preview-text')).toHaveText('四字短章')
     await revDialog.getByRole('button', { name: '恢复此版本' }).click()
@@ -548,8 +549,8 @@ test('5-6. 4字短章清空拦截与恢复；同字数全文替换拦截（无-0
     // Verify History has both passageA (before small edit) and minorEditOfA (before passageB), and restore passageA in UI
     await page.locator('.chapter-list button', { hasText: '灯塔夜班' }).click()
     await expect(editor).toContainText('北境星台静')
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('2')
-    await page.locator('button.history-toggle').click()
+    await expect.poll(() => historyCount(page)).toBe('2')
+    await editorAction(page, '历史版本')
     const proseDialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(proseDialog.locator('.revision-item')).toHaveCount(2)
     await expect(proseDialog.locator('.revision-preview-text')).toContainText('琥珀闪烁')
@@ -609,8 +610,8 @@ test('7. 多次连续 AI 修改与 chapters.replaceBatch 均独立保留版本�
     await page.goto(`/#/original/${workId}/${editionId}`)
     const editor = page.locator('.novel-body[contenteditable="true"]')
     await expect(editor).toHaveText(v3)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('3')
-    await page.locator('button.history-toggle').click()
+    await expect.poll(() => historyCount(page)).toBe('3')
+    await editorAction(page, '历史版本')
     const histDialog = page.getByRole('dialog', { name: /历史版本/ })
     const items = histDialog.locator('button.revision-item')
     await expect(items).toHaveCount(3)
@@ -625,16 +626,16 @@ test('7. 多次连续 AI 修改与 chapters.replaceBatch 均独立保留版本�
     // Restore v0 -> current v3 is automatically backed up BEFORE overwriting!
     await histDialog.getByRole('button', { name: '恢复此版本' }).click()
     await expect(editor).toHaveText(v0)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('4')
+    await expect.poll(() => historyCount(page)).toBe('4')
 
     // Open History again -> top entry is pre-restore backup of v3 and can itself be restored
-    await page.locator('button.history-toggle').click()
+    await editorAction(page, '历史版本')
     await expect(histDialog).toBeVisible()
     await expect(histDialog.locator('button.revision-item').first()).toContainText('恢复前自动备份')
     await expect(histDialog.locator('.revision-preview-text')).toHaveText(v3)
     await histDialog.getByRole('button', { name: '恢复此版本' }).click()
     await expect(editor).toHaveText(v3)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('5')
+    await expect.poll(() => historyCount(page)).toBe('5')
 
     // Confirm ch3 dropped in batch is recoverable in Trash
     await page.goto('/#/trash')
@@ -714,7 +715,7 @@ test('8. 页面刷新/应用重启后，回收站、历史版本以及持久化 
 
     // History survives restart
     await page.goto(`/#/original/${workId}/${editionId}`)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('1')
+    await expect.poll(() => historyCount(page)).toBe('1')
 
     // Step 2 AFTER restart: trim 145 -> 76 triggers cumulative_massive_loss,
     // AND replacing the remaining half of ch3 triggers cumulative_wholesale_replacement via persisted anchorText!
@@ -815,8 +816,7 @@ test('9. 保存恢复快照失败时原子中止修改：单章更新与批量�
 
     await page.goto(`/#/original/${workId}/${editionId}`)
     await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(originalOne)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('')
-    await expect(page.locator('button.history-toggle .history-count')).toBeHidden()
+    await expect.poll(() => historyCount(page)).toBe('')
     await page.goto('/#/trash')
     await expect(page.getByRole('heading', { name: '回收站是空的' })).toBeVisible()
   } finally {
@@ -958,27 +958,27 @@ test('11. restoreChapterRevision 在统一事务内完整恢复原章节标题�
     expect(updated.status).toBe(200)
 
     await page.goto(`/#/original/${workId}/${editionId}`)
-    await expect(page.locator('.writing-header h3')).toHaveText('AI 改写后的章名')
+    await expect(chapterHeading(page)).toHaveText('AI 改写后的章名')
     await expect(page.getByRole('list', { name: '章节' }).getByRole('button').first()).toContainText('AI 改写后的章名')
     await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(nextText)
 
-    await page.locator('button.history-toggle').click()
+    await editorAction(page, '历史版本')
     const dialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(dialog.locator('.revision-preview-text')).toHaveText(origText)
     await dialog.getByRole('button', { name: '恢复此版本' }).click()
 
     // Title in heading & sidebar AND body content AND backup snapshot all update cleanly
-    await expect(page.locator('.writing-header h3')).toHaveText('最初的序章标题')
+    await expect(chapterHeading(page)).toHaveText('最初的序章标题')
     await expect(page.getByRole('list', { name: '章节' }).getByRole('button').first()).toContainText('最初的序章标题')
     await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(origText)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('2')
+    await expect.poll(() => historyCount(page)).toBe('2')
 
     await page.reload()
     await page.waitForFunction(() => Boolean(window.__nwAiEvents?.dispatch))
-    await expect(page.locator('.writing-header h3')).toHaveText('最初的序章标题')
+    await expect(chapterHeading(page)).toHaveText('最初的序章标题')
     await expect(page.locator('.novel-body[contenteditable="true"]')).toHaveText(origText)
 
-    await page.locator('button.history-toggle').click()
+    await editorAction(page, '历史版本')
     await expect(dialog.locator('.revision-preview-text')).toHaveText(nextText)
   } finally {
     await harness.cleanup()
@@ -1122,7 +1122,7 @@ test('13. 章节历史去重压缩存储、空间统计与超阈值提示、用�
 
     // UI stats + cancel + confirmed pruning down to 5 -> then 1 -> button hides so >=1 stays protected
     await page.goto(`/#/original/${workId}/${editionId}`)
-    await page.locator('button.history-toggle').click()
+    await editorAction(page, '历史版本')
     const histDialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(histDialog.locator('.revision-storage-summary')).toContainText('本章 7 条 · 历史库共 7 条')
 
@@ -1180,7 +1180,7 @@ test('13. 章节历史去重压缩存储、空间统计与超阈值提示、用�
       db.close()
     }, [workId, editionId, chId])
 
-    await page.locator('button.history-toggle').click()
+    await editorAction(page, '历史版本')
     await expect(histDialog.getByRole('status')).toContainText('历史快照已累积 206 条')
   } finally {
     await harness.cleanup()
@@ -1387,7 +1387,7 @@ test('14. 事务级 TOCTOU 并发冲突拦截全部 5 类删除端点及 QuotaEx
     })
 
     await page.goto(`/#/original/${workId}/${editionId}`)
-    await page.locator('button.history-toggle').click()
+    await editorAction(page, '历史版本')
     const histDialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(histDialog.locator('button.revision-item')).toHaveCount(1)
     await page.evaluate(() => { window.__nwQuotaFailAdd = true })
@@ -1493,7 +1493,7 @@ test.describe('v0.15.3 英文文案与单复数语法验证', () => {
 
       // Verify chapter history prune dialog uses natural English without "(s)"
       await page.goto(`/#/original/${work2Id}/${editionId}`)
-      await page.locator('button.history-toggle').click()
+      await editorAction(page, 'History')
       const histDialog = page.getByRole('dialog', { name: /History/ })
       await histDialog.getByRole('button', { name: 'Prune older…' }).click()
       const pruneDialog = page.getByRole('dialog', { name: 'Prune older revisions?' })

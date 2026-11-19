@@ -1,6 +1,7 @@
 import { startWork } from './navigation-helpers.mjs'
 import { test as base } from '@playwright/test'
 import { expect, test, withoutRelease } from './app-test.mjs'
+import { saveNow } from './editor-helpers.mjs'
 
 const day = 24 * 60 * 60 * 1000
 
@@ -11,7 +12,7 @@ async function newNovel(page, title, text) {
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })
   await editor.fill(text)
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
   return editor
 }

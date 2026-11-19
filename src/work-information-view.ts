@@ -66,7 +66,11 @@ export function showWorkInformation(book: Book, changed?: (next: Book) => void) 
   formDialog(document.body, {
     title: t('work.edit'), action: t('work.save'), description: t('work.optional'),
     fields: [nameField(t('shelf.workTitle'), book.title), ...metadata.fields],
-  }, async (form) => { changed?.(await saveWorkInformation(book, String(form.get('name')), metadata.read())) })
+  }, async (form) => {
+    // Save first: an optional call skips its arguments when there is no listener, which used to skip the save.
+    const next = await saveWorkInformation(book, String(form.get('name')), metadata.read())
+    changed?.(next)
+  })
 }
 
 export function workInformationButton(book: Book, changed?: (next: Book) => void) {

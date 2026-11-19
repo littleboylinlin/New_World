@@ -1,6 +1,7 @@
 import { startWork, chooseImportType } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 import { bookAction, file } from './fixtures.mjs'
+import { chapterAction, chapterHeading, editorAction, saveNow } from './editor-helpers.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const chapters = (page) => page.getByRole('list', { name: '章节' }).getByRole('button')
@@ -17,7 +18,7 @@ async function newNovel(page, name) {
 }
 
 async function save(page) {
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
 }
 
@@ -25,7 +26,7 @@ async function addChapter(page, title, text) {
   await page.getByRole('button', { name: '新建章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill(title)
   await page.getByRole('button', { name: '创建章节' }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText(title)
+  await expect(chapterHeading(page)).toHaveText(title)
   await textArea(page).fill(text)
   await save(page)
 }
@@ -107,7 +108,7 @@ test('章节删除后恢复到原来的位置和正文', async ({ page }) => {
   await page.getByRole('button', { name: '第二章', exact: true }).click()
   await expect(textArea(page)).toHaveText('第二封写了很久。')
 
-  await page.getByRole('button', { name: '删除章节' }).click()
+  await chapterAction(page, '第二章', '删除章节')
   await page.getByRole('button', { name: '确认删除章节' }).click()
   await expect(chapters(page)).toHaveText(['第一章', '第三章'])
   await undo(page).click()
@@ -116,7 +117,7 @@ test('章节删除后恢复到原来的位置和正文', async ({ page }) => {
   await expect(textArea(page)).toHaveText('第二封写了很久。')
 
   const edition = page.url()
-  await page.getByRole('button', { name: '删除章节' }).click()
+  await chapterAction(page, '第二章', '删除章节')
   await page.getByRole('button', { name: '确认删除章节' }).click()
   await expect(chapters(page)).toHaveText(['第一章', '第三章'])
   await page.goto('/#/trash')
@@ -125,7 +126,7 @@ test('章节删除后恢复到原来的位置和正文', async ({ page }) => {
   await expect(page.getByText('回收站是空的')).toBeVisible()
   await page.goto(edition)
   await expect(chapters(page)).toHaveText(['第一章', '第二章', '第三章'])
-  await page.getByRole('button', { name: '重命名章节' }).click()
+  await chapterAction(page, '第一章', '重命名章节')
   await page.getByRole('textbox', { name: '章节名' }).fill('序')
   await page.getByRole('button', { name: '保存章节名' }).click()
   await expect(chapters(page)).toHaveText(['序', '第二章', '第三章'])
@@ -138,7 +139,7 @@ test('编辑版本和续写项目的原文删除后可以撤销', async ({ page 
   await page.getByRole('link', { name: '查看 海图', exact: true }).click()
   await page.getByRole('button', { name: '转换为编辑稿' }).click()
   await expect(textArea(page)).toHaveText('海图上的第一行。')
-  await page.getByRole('button', { name: '删除版本' }).click()
+  await editorAction(page, '删除版本')
   await page.getByRole('button', { name: '确认删除版本' }).click()
   await expect(page.getByRole('article')).toHaveText('海图上的第一行。')
   await undo(page).click()
@@ -208,10 +209,10 @@ test('永久删除作品、版本、章节、来源与灵感时级联清理专�
   await save(page)
   const workAUrl = page.url()
   await addChapter(page, '章节A2', '小说甲第二章正文。')
-  await page.getByRole('button', { name: '另存为独立版本' }).click()
+  await editorAction(page, '另存为独立版本')
   await page.getByRole('textbox', { name: '版本名' }).fill('版本甲二')
   await page.getByRole('button', { name: '保存独立版本' }).click()
-  await expect(page.getByRole('heading', { level: 2, name: '版本甲二' })).toBeVisible()
+  await expect.poll(() => page.url()).not.toBe(workAUrl)
 
   await newNovel(page, '小说乙')
   await textArea(page).fill('小说乙保留正文。')
@@ -332,7 +333,7 @@ test('永久删除作品、版本、章节、来源与灵感时级联清理专�
   // 2. Soft-delete Chapter A2 -> must keep its revisions/blobs/baselines intact while in Trash
   await page.goto(workAUrl)
   await page.getByRole('button', { name: '章节A2', exact: true }).click()
-  await page.getByRole('button', { name: '删除章节' }).click()
+  await chapterAction(page, '章节A2', '删除章节')
   await page.getByRole('button', { name: '确认删除章节' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '章节A2', exact: true })).toHaveCount(0)
@@ -356,7 +357,7 @@ test('永久删除作品、版本、章节、来源与灵感时级联清理专�
 
   // 3. Soft-delete Edition 2 -> permanently delete -> exclusive edition data gone, shared blob still kept for Work B
   await page.goto(`/#/original/${seeded.workAId}/${seeded.edA2Id}`)
-  await page.getByRole('button', { name: '删除版本' }).click()
+  await editorAction(page, '删除版本')
   await page.getByRole('button', { name: '确认删除版本' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('link', { name: '版本甲二' })).toHaveCount(0)

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { seedProject, projectFixture, databaseSnapshot } from './project-fixture.mjs'
 import { seedOwnedTasks } from './task-fixture.mjs'
 import { pixel } from './fixtures.mjs'
+import { editorAction } from './editor-helpers.mjs'
 test.setTimeout(90000)
 const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
 async function choose(page, label, path) {
@@ -132,7 +133,7 @@ test('章节位置联动、评论/附件、复制、模板、真实统计及灵�
   await editor.click()
   await page.keyboard.press('Control+Home')
   await page.keyboard.press('Control+Shift+ArrowRight')
-  await page.getByRole('button', { name: '从当前章节创建任务', exact: true }).click()
+  await editorAction(page, '从当前章节创建任务')
   let dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
   await dialog.getByLabel('任务标题', { exact: true }).fill('修订开篇')
   await dialog.getByRole('button', { name: '保存任务', exact: true }).click()

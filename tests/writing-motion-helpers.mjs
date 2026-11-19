@@ -123,8 +123,9 @@ export async function centerError(page) {
     let scroller = body.parentElement.parentElement
     while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement
     const rect = scroller?.getBoundingClientRect()
-    const toolbar = document.querySelector('.editor-tools-row')
-    const top = (rect ? rect.top + scroller.clientTop : 0) + toolbar.offsetHeight
+    // The toolbar sits above the text pane; it only covers text when it is inside the scroller.
+    const toolbar = document.querySelector('.editor-toolbar')
+    const top = (rect ? rect.top + scroller.clientTop : 0) + (toolbar && scroller?.contains(toolbar) ? toolbar.offsetHeight : 0)
     const footer = document.querySelector('.site-footer')
     const bottom = Math.min(rect ? rect.top + scroller.clientTop + scroller.clientHeight : innerHeight,
       footer.offsetHeight ? footer.getBoundingClientRect().top : innerHeight)
@@ -165,7 +166,7 @@ export async function writingMotionFlow(page) {
   await expect(caret(page)).toBeHidden()
   await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)
-  await page.getByRole('button', { name: '手动保存', exact: true }).focus()
+  await page.getByRole('button', { name: '撤销', exact: true }).focus()
   await expect(caret(page)).toBeHidden()
   await text.evaluate((node) => node.editor.commands.focus('end'))
   await expectCaretAligned(page)

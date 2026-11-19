@@ -1,6 +1,7 @@
 import { startWork } from './navigation-helpers.mjs'
 import { readFileSync } from 'node:fs'
 import { expect, test } from './app-test.mjs'
+import { saveNow } from './editor-helpers.mjs'
 
 const deployed = JSON.parse(readFileSync(new URL('../dist/version.json', import.meta.url), 'utf-8'))
 const tip = (page) => page.locator('.corner-tip[data-tip="version"]')
@@ -70,7 +71,7 @@ test('刷新前先确认正文已保存：保存失败不刷新，保存后刷�
   await page.getByRole('button', { name: '创建小说' }).click()
   const editor = page.getByRole('textbox', { name: '章节正文' })
   await editor.fill('已保存的段落。')
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
   const url = page.url()
   const timeOrigin = await page.evaluate(() => performance.timeOrigin)

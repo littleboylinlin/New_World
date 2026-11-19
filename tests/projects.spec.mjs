@@ -6,6 +6,7 @@ import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.j
 import { test, expect as baseExpect, withoutRelease } from './app-test.mjs'
 import { pixel } from './fixtures.mjs'
 import { seedProject, databaseSnapshot, projectFixture } from './project-fixture.mjs'
+import { editorAction } from './editor-helpers.mjs'
 
 const expect = baseExpect.configure({ timeout: 15_000 })
 test.setTimeout(90_000)
@@ -117,10 +118,10 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
     }
     await clean.page.goto(`/#/${library}/${seeded.root}/${seeded.firstEdition}`)
     await expect(clean.page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')
-    await clean.page.getByRole('button', { name: '阅读模式', exact: true }).click()
+    await editorAction(clean.page, '阅读模式')
     await expect(clean.page.locator('.annotation-inline')).toContainText('开篇的地点')
-    await clean.page.getByRole('button', { name: '编辑正文', exact: true }).click()
-    await clean.page.locator('button.history-toggle').click()
+    await editorAction(clean.page, '编辑正文')
+    await editorAction(clean.page, '历史版本')
     await expect(clean.page.locator('.revision-preview-text')).toHaveText('旧稿中的灯塔。')
     await clean.page.getByRole('button', { name: '恢复此版本', exact: true }).click()
     await expect(clean.page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('旧稿中的灯塔。')
@@ -130,7 +131,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
     await clean.page.reload()
     await expect(clean.page.getByRole('textbox', { name: '章节正文', exact: true })).toHaveText('导入后继续编辑。')
     const manuscript = clean.page.waitForEvent('download')
-    await clean.page.getByRole('button', { name: '导出', exact: true }).click()
+    await editorAction(clean.page, '导出')
     await clean.page.getByRole('button', { name: '开始导出', exact: true }).click()
     const textPath = info.outputPath('导入后正文.txt')
     await (await manuscript).saveAs(textPath)

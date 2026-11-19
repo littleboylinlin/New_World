@@ -1,0 +1,123 @@
+/* Reusable page shell: a fixed page with panes that scroll on their own, anchored layers,
+   side panels and tabs. Timing comes only from the shared motion tokens in motion.css. */
+
+/* ——— Fixed page ——— */
+html.fixed-page { overscroll-behavior: none; }
+html.fixed-page body {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--viewport-top, 0px);
+  height: var(--viewport-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+}
+@supports not (height: 100dvh) { html.fixed-page body { height: var(--viewport-height, 100svh); } }
+html.fixed-page .workspace { min-height: 0; overflow: hidden; }
+html.fixed-page .app-sidebar { height: 100%; }
+html.fixed-page .page { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+html.fixed-page .main-content.fixed-main {
+  flex: 1; display: flex; flex-direction: column; min-height: 0; width: 100%; max-width: none;
+  margin: 0; padding: 0; overflow: hidden;
+}
+html.fixed-page .main-content.fixed-main > * { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 640px) {
+  /* On a phone every line counts: the version footer gives way to the page. */
+  html.fixed-page .site-footer { display: none; }
+}
+
+/* ——— Workbench: panels beside a main pane, drawers on narrow screens ——— */
+.workbench { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.workbench-main { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
+.workbench-panel { position: relative; flex: none; display: flex; min-height: 0; background: var(--sheet); }
+.workbench-panel-body { display: flex; flex-direction: column; flex: none; width: var(--panel-width, 260px); min-width: 0; min-height: 0; overflow: hidden; }
+.workbench-panel[data-mode="inline"] {
+  width: var(--panel-width, 260px); overflow: hidden;
+  transition: width var(--motion-slow) var(--ease-standard), opacity var(--motion-base) var(--ease-standard);
+}
+.workbench-panel[data-mode="inline"][data-state="closed"] { width: 0; opacity: 0; }
+.workbench-panel[data-mode="inline"][data-resizing] { transition: none; }
+.workbench-start[data-mode="inline"] { border-inline-end: 2px solid var(--ink); }
+.workbench-end[data-mode="inline"] { border-inline-start: 2px solid var(--ink); }
+.workbench-panel[data-mode="overlay"] {
+  position: absolute; inset-block: 0; z-index: 6; width: min(var(--panel-width, 300px), calc(100% - 44px));
+  box-shadow: var(--shadow);
+  transition: transform var(--motion-slow) var(--ease-standard), visibility 0s linear 0s;
+}
+.workbench-panel[data-mode="overlay"] .workbench-panel-body { width: 100%; }
+.workbench-start[data-mode="overlay"] { inset-inline-start: 0; border-inline-end: 2px solid var(--ink); }
+.workbench-end[data-mode="overlay"] { inset-inline-end: 0; border-inline-start: 2px solid var(--ink); }
+.workbench-start[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(-100% - 8px)); }
+.workbench-end[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(100% + 8px)); }
+[dir="rtl"] .workbench-start[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(100% + 8px)); }
+[dir="rtl"] .workbench-end[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(-100% - 8px)); }
+.workbench-scrim {
+  position: absolute; inset: 0; z-index: 5; background: var(--backdrop);
+  opacity: 0; transition: opacity var(--motion-slow) var(--ease-standard);
+}
+.workbench-scrim[data-state="open"] { opacity: 1; }
+.workbench-resizer {
+  position: absolute; inset-block: 0; inset-inline-start: -5px; z-index: 2; width: 10px; cursor: col-resize; touch-action: none;
+}
+.workbench-resizer::after { content: ""; position: absolute; inset-block: 0; inset-inline-start: 4px; width: 2px; background: transparent; transition: background-color var(--motion-fast) ease; }
+.workbench-resizer:hover::after, .workbench-resizer:focus-visible::after, .workbench-panel[data-resizing] .workbench-resizer::after { background: var(--accent); }
+.workbench-resizer:focus-visible { outline: none; }
+.workbench-panel[data-mode="overlay"] .workbench-resizer { display: none; }
+
+/* ——— Tabs ——— */
+.shell-tabs { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.shell-tablist { position: relative; display: flex; flex: none; gap: 2px; padding: 8px 10px 0; border-bottom: 2px solid var(--ink); overflow: hidden; }
+.shell-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; border: 0; border-radius: 7px 7px 0 0; background: transparent; color: var(--muted); font-size: .86rem; font-weight: 800; white-space: nowrap; transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+.shell-tab:hover:not(:disabled) { color: var(--ink); background: var(--menu-hover); }
+.shell-tab[aria-selected="true"] { color: var(--ink); }
+.shell-tab:disabled { opacity: .45; cursor: default; }
+.shell-tab:focus-visible { outline-offset: -3px; }
+.shell-tab-indicator { position: absolute; bottom: 0; left: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent); transition: transform var(--motion-base) var(--ease-standard), width var(--motion-base) var(--ease-standard); }
+.shell-tab-stage { position: relative; display: flex; flex: 1 1 auto; min-height: 0; }
+.shell-tab-panel { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard); }
+.shell-tab-panel[data-enter="forward"] { opacity: 0; transform: translateX(calc(var(--motion-shift) * 2)); transition: none; }
+.shell-tab-panel[data-enter="back"] { opacity: 0; transform: translateX(calc(var(--motion-shift) * -2)); transition: none; }
+
+/* ——— Anchored layers and menus ——— */
+.shell-layer {
+  position: fixed; z-index: 40; min-width: 180px; overflow: auto; overscroll-behavior: contain;
+  border: 2px solid var(--pop-border); border-radius: 11px; color: var(--ink); background: var(--sheet);
+  box-shadow: 3px 3px 0 var(--pop-hard), 0 14px 30px -14px var(--pop-soft);
+  transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard), visibility 0s;
+}
+.shell-layer[data-state="closed"] { opacity: 0; transform: translateY(calc(var(--motion-shift) * -1)) scale(var(--motion-scale)); }
+.shell-layer[data-side="top"][data-state="closed"] { transform: translateY(var(--motion-shift)) scale(var(--motion-scale)); }
+.shell-layer[data-state="closing"] {
+  opacity: 0; pointer-events: none; transform: translateY(calc(var(--motion-shift) * -.5)) scale(var(--motion-scale));
+  transition-duration: var(--motion-fast); transition-timing-function: var(--ease-exit);
+}
+.shell-layer:focus { outline: none; }
+.shell-layer-body { padding: 6px; }
+.shell-menu { min-width: 220px; max-width: min(340px, calc(100vw - 16px)); }
+.shell-menu-level { display: grid; gap: 1px; transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard); }
+@starting-style {
+  .shell-menu-level[data-enter="forward"] { opacity: 0; transform: translateX(calc(var(--motion-shift) * 2)); }
+  .shell-menu-level[data-enter="back"] { opacity: 0; transform: translateX(calc(var(--motion-shift) * -2)); }
+}
+.shell-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 6px 10px; border: 0; border-radius: 7px;
+  color: var(--ink); background: transparent; font-size: .88rem; font-weight: 650; text-align: start;
+}
+.shell-menu-item:hover:not(:disabled), .shell-menu-item:focus-visible { background: var(--menu-hover); outline: none; }
+.shell-menu-item:disabled { color: var(--disabled-text); cursor: default; }
+.shell-menu-danger { color: var(--danger-text); }
+.shell-menu-mark { display: grid; place-items: center; flex: none; width: 18px; height: 18px; }
+.shell-menu-mark svg { width: 18px; height: 18px; }
+.shell-menu-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.shell-menu-hint { flex: none; color: var(--muted); font-size: .76rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.shell-menu-more { flex: none; color: var(--muted); font-size: 1.1rem; line-height: 1; }
+.shell-menu-back { color: var(--muted); font-weight: 800; border-bottom: 1px solid var(--hair); border-radius: 7px 7px 0 0; margin-bottom: 3px; }
+.shell-menu-separator { height: 1px; margin: 4px 6px; background: var(--hair); }
+@media (pointer: coarse) { .shell-menu-item { min-height: 44px; } }
+
+/* ——— Collapsible blocks (height animated from script) ——— */
+.shell-collapse { transition: height var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard); }
+
+/* Printing (such as a PDF export) flows over as many pages as it needs. */
+@media print {
+  html.fixed-page body { position: static; height: auto; overflow: visible; }
+}

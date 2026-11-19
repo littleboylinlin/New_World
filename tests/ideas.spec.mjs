@@ -1,5 +1,6 @@
 import { startWork, chooseImportType } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
+import { saveNow } from './editor-helpers.mjs'
 import { file } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
@@ -14,7 +15,7 @@ async function newNovel(page, name, text) {
   await expect(textArea(page)).toBeVisible()
   if (text) {
     await textArea(page).fill(text)
-    await page.getByRole('button', { name: '手动保存' }).click()
+    await saveNow(page)
     await expect(page.locator('.save-status')).toHaveText('已保存')
   }
 }
@@ -102,8 +103,8 @@ test('网页版 Ctrl+Alt+N 弹出记灵感，默认关联最近打开的作品',
 
 test('编辑器侧边的灵感可以插入正文，章节目录右键有章节操作', async ({ page }) => {
   await newNovel(page, '潮汐', '第一段。')
-  // The ideas sit under the chapter list, open where there is room, and the toolbar button folds them.
-  const toggle = page.locator('.ideas-toggle')
+  // The ideas sit in the side panel, open where there is room, and the toolbar button folds it.
+  const toggle = page.locator('.side-toggle')
   const panel = page.getByRole('region', { name: '这部作品的灵感' })
   await expect(panel).toContainText('这部作品还没有灵感。')
   await expect(toggle).toHaveAttribute('aria-expanded', 'true')
@@ -138,7 +139,7 @@ test('编辑器侧边的灵感可以插入正文，章节目录右键有章节�
   const chapters = page.getByRole('list', { name: '章节' })
   await chapters.getByRole('button').first().click({ button: 'right' })
   const menu = page.getByRole('menu')
-  await expect(menu.getByRole('menuitem')).toHaveText(['新建章节', '重命名章节', '下移', '删除章节'])
+  await expect(menu.getByRole('menuitem')).toHaveText([/^重命名章节/, '删除章节'])
   await menu.getByRole('menuitem', { name: '重命名章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill('涨潮')
   await page.getByRole('button', { name: '保存章节名' }).click()
@@ -152,7 +153,7 @@ test('作品列表延迟加载、快速切换、刷新重进与手动改选时�
   const urlB = page.url()
 
   const panel = page.getByRole('region', { name: '这部作品的灵感' })
-  const toggle = page.locator('.ideas-toggle')
+  const toggle = page.locator('.side-toggle')
   const dialog = page.getByRole('dialog', { name: '记灵感' })
   const select = dialog.getByRole('combobox', { name: '关联作品' })
 

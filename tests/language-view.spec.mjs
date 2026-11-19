@@ -1,5 +1,6 @@
 import { startWork, chooseImportType, openDrawer } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
+import { saveNow } from './editor-helpers.mjs'
 
 test.use({ locale: 'en-US' })
 
@@ -93,7 +94,7 @@ test('语言切换前保存失败时保留当前正文，且不请求另一种�
   await page.getByRole('button', { name: 'Create novel' }).click()
   const editor = page.getByRole('textbox', { name: 'Chapter text', exact: true })
   await editor.fill('Saved text.')
-  await page.getByRole('button', { name: 'Save now' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('Saved')
   const url = page.url()
   await page.evaluate(() => { window.storageFull = true })

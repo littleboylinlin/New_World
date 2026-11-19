@@ -49,8 +49,12 @@ html.export-document, .export-document body { margin: 0; color-scheme: light; ba
 
 @media print {
   html.printing-edition, .printing-edition body {
+    /* The editor pins the page to the screen; printing flows across as many pages as it needs. */
+    position: static;
     display: block;
+    height: auto;
     min-height: 0;
+    overflow: visible;
     margin: 0;
     padding: 0;
     color: #000;

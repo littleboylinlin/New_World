@@ -2,6 +2,7 @@ import { startWork, chooseImportType, activeLibrary } from './navigation-helpers
 import { open, readFile } from 'node:fs/promises'
 import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
+import { chapterAction, chapterHeading, editorAction, moveChapter, saveNow, workAction } from './editor-helpers.mjs'
 import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
@@ -50,12 +51,14 @@ async function appendText(page, value) {
 }
 
 async function manualSave(page) {
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(status(page)).toHaveText('已保存')
 }
 
 async function originalBytes(page, input) {
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: '下载原文件' }).click()])
+  // On an editable version the download sits in the menu under the work's name.
+  const onEditor = await page.locator('.work-name').count()
+  const [download] = await Promise.all([page.waitForEvent('download'), onEditor ? workAction(page, '下载原文件') : page.getByRole('button', { name: '下载原文件' }).click()])
   expect(download.suggestedFilename()).toBe(input.name)
   expect(await readFile(await download.path())).toEqual(input.buffer)
 }
@@ -68,25 +71,25 @@ test('新建小说、章节 CRUD 和阅读／编辑模式，两库数据独立',
   await page.getByRole('button', { name: '新建章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
   await page.getByRole('button', { name: '创建章节' }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(chapterHeading(page)).toHaveText('第二章')
   await textArea(page).fill('第二封信到了。')
-  await page.getByRole('button', { name: '重命名章节' }).click()
+  await chapterAction(page, '第二章', '重命名章节')
   await page.getByRole('textbox', { name: '章节名' }).fill('回信')
   await page.getByRole('button', { name: '保存章节名' }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('回信')
-  await page.getByRole('button', { name: '上移', exact: true }).click()
+  await expect(chapterHeading(page)).toHaveText('回信')
+  await moveChapter(page, '回信', 'up')
   await expect(page.getByRole('list', { name: '章节' }).getByRole('button').first()).toHaveText('回信')
   await page.getByRole('button', { name: '第一章', exact: true }).click()
   await expect(textArea(page)).toHaveText('第一封信从雾里来。')
-  await page.getByRole('button', { name: '阅读模式' }).click()
+  await editorAction(page, '阅读模式')
   await expect(page.getByRole('document', { name: '章节正文' })).toHaveText('第一封信从雾里来。')
   await expect(page.getByRole('button', { name: '加粗' })).toBeHidden()
-  await page.getByRole('button', { name: '编辑正文' }).click()
+  await editorAction(page, '编辑正文')
   await page.screenshot({ path: testInfo.outputPath('editor-desktop.png'), fullPage: true })
-  await page.getByRole('button', { name: '删除章节' }).click()
+  await chapterAction(page, '第一章', '删除章节')
   await page.getByRole('button', { name: '取消' }).click()
   await expect(textArea(page)).toContainText('第一封信')
-  await page.getByRole('button', { name: '删除章节' }).click()
+  await chapterAction(page, '第一章', '删除章节')
   await page.getByRole('button', { name: '确认删除章节' }).click()
   await expect(textArea(page)).toHaveText('第二封信到了。')
   const original = new URL(page.url()).hash
@@ -158,7 +161,7 @@ test('自动保存后关闭浏览器，重新打开仍可读取各章', async ({
     await page.getByRole('button', { name: '新建章节' }).click()
     await page.getByRole('textbox', { name: '章节名' }).fill('第二章 电台')
     await page.getByRole('button', { name: '创建章节' }).click()
-    await expect(page.locator('.writing-header h3')).toHaveText('第二章 电台')
+    await expect(chapterHeading(page)).toHaveText('第二章 电台')
     await textArea(page).fill('有人在雾里答复。')
     await expect(status(page)).toHaveText('已保存')
   } finally { await first.close() }
@@ -166,9 +169,10 @@ test('自动保存后关闭浏览器，重新打开仍可读取各章', async ({
   try {
     const page = second.pages()[0]
     await page.goto(address)
-    await expect(textArea(page)).toHaveText('深夜的电台仍在播音。')
-    await page.getByRole('button', { name: '第二章 电台' }).click()
+    // The chapter left open last time opens again.
     await expect(textArea(page)).toHaveText('有人在雾里答复。')
+    await page.getByRole('button', { name: '第一章', exact: true }).click()
+    await expect(textArea(page)).toHaveText('深夜的电台仍在播音。')
   } finally { await second.close() }
 })
 
@@ -182,23 +186,26 @@ test('并发保存不会覆盖，冲突稿可另存并单独删除', async ({ pa
   await textArea(page).fill('窗口一先保存。')
   await manualSave(page)
   await textArea(other).fill('窗口二的独立内容。')
-  await other.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(other)
   await expect(other.getByRole('alert')).toContainText('已在其他页面更新')
-  await other.getByRole('link', { name: '书库首页', exact: true }).click()
+  await workAction(other, '原创库')
   await expect(textArea(other)).toHaveText('窗口二的独立内容。')
   await expect.poll(() => other.url()).toBe(url)
-  await other.getByRole('button', { name: '另存为独立版本' }).click()
+  await editorAction(other, '另存为独立版本')
   await other.getByRole('textbox', { name: '版本名' }).fill('另一条路线')
   await other.getByRole('button', { name: '保存独立版本' }).click()
-  await expect(other.getByRole('heading', { name: '另一条路线' })).toBeVisible()
+  await expect.poll(() => other.url()).not.toBe(url)
   await expect(textArea(other)).toHaveText('窗口二的独立内容。')
-  await other.getByRole('link', { name: '编辑稿', exact: true }).click()
+  await workAction(other, '编辑稿', true)
   await expect(textArea(other)).toHaveText('窗口一先保存。')
-  await other.getByRole('link', { name: '另一条路线', exact: true }).click()
-  await other.getByRole('button', { name: '删除版本' }).click()
+  await workAction(other, '另一条路线', true)
+  await expect(textArea(other)).toHaveText('窗口二的独立内容。')
+  await editorAction(other, '删除版本')
   await other.getByRole('button', { name: '确认删除版本' }).click()
-  await expect(other.getByRole('link', { name: '另一条路线' })).toHaveCount(0)
   await expect(textArea(other)).toHaveText('窗口一先保存。')
+  await other.locator('.work-name').click()
+  await expect(other.getByRole('menuitem', { name: '切换版本' })).toHaveCount(0)
+  await other.keyboard.press('Escape')
 })
 
 test('模拟存储空间不足，旧内容保留、当前输入可重试', async ({ page, context }) => {
@@ -215,7 +222,7 @@ test('模拟存储空间不足，旧内容保留、当前输入可重试', async
   await manualSave(page)
   await page.evaluate(() => { window.storageFull = true })
   await textArea(page).fill('留在编辑器里的段落。')
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(status(page)).toContainText('失败')
   await expect(page.getByRole('alert')).toContainText('本地存储空间不足')
   const verifier = await context.newPage()
@@ -248,7 +255,8 @@ test('TXT 长文分章，手动编码、重复导入及超限文件', async ({ p
   await page.getByRole('button', { name: '第二章 归途' }).click()
   await expect(textArea(page)).toContainText('结尾在这里。')
   await appendText(page, '补上一句。')
-  await page.getByRole('link', { name: '原文件', exact: true }).click()
+  await workAction(page, '原文件', true)
+  await expect(page.locator('.work-name')).toHaveCount(0)
   await originalBytes(page, long)
   await shelf(page)
   await openBook(page, '舊稿')
@@ -426,7 +434,7 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
   await convert(page)
   const formatLabels = { txt: 'TXT', md: 'Markdown', html: 'HTML', docx: 'DOCX', pdf: 'PDF' }
   for (const format of ['txt', 'md', 'html', 'docx']) {
-    await page.getByRole('button', { name: '导出', exact: true }).click()
+    await editorAction(page, '导出')
     const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
     await dialog.getByRole('radio', { name: formatLabels[format] }).check()
     const style = dialog.getByLabel('导出样式')
@@ -481,7 +489,7 @@ test('TXT、Markdown、HTML、DOCX 导出及浏览器打印 PDF', async ({ page 
       await viewer.close()
     }
   }
-  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await editorAction(page, '导出')
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
   await dialog.getByRole('radio', { name: 'PDF' }).check()
   await expect(dialog.getByLabel('导出样式')).toHaveValue('standard')
@@ -506,7 +514,7 @@ test('章节目录显示各章字数和全书字数', async ({ page }) => {
   await page.getByRole('button', { name: '新建章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
   await page.getByRole('button', { name: '创建章节' }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(chapterHeading(page)).toHaveText('第二章')
   await expect(counts).toHaveText(['9', '0'])
   await textArea(page).fill('雨 停 了。\nThe rain’s stopped.')
   await expect(page.locator('.word-count')).toHaveText('本章 7 字')
@@ -517,7 +525,7 @@ test('章节目录显示各章字数和全书字数', async ({ page }) => {
   await expect(counts).toHaveText(['9', '7'])
   await expect(total).toHaveText('全书 16 字')
   await page.getByRole('button', { name: '第二章', exact: true }).click()
-  await page.getByRole('button', { name: '删除章节' }).click()
+  await chapterAction(page, '第二章', '删除章节')
   await page.getByRole('button', { name: '确认删除章节' }).click()
   await expect(total).toHaveText('全书 9 字')
 })
@@ -530,13 +538,13 @@ test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: '新建章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
   await page.getByRole('button', { name: '创建章节' }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第二章')
+  await expect(chapterHeading(page)).toHaveText('第二章')
   await textArea(page).fill('第二封信落在窗台。')
   await manualSave(page)
   await page.getByRole('button', { name: '新建章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill('第三章')
   await page.getByRole('button', { name: '创建章节' }).click()
-  await expect(page.locator('.writing-header h3')).toHaveText('第三章')
+  await expect(chapterHeading(page)).toHaveText('第三章')
   await textArea(page).fill('第三封信没有署名。')
   await manualSave(page)
 
@@ -548,7 +556,7 @@ test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
     return (await readFile(path)).toString('utf8')
   }
 
-  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await editorAction(page, '导出')
   await dialog().getByRole('radio', { name: 'TXT' }).check()
   await expect(dialog().getByRole('checkbox', { name: '全选' })).toBeChecked()
   await expect(dialog().getByRole('checkbox', { name: '第一章' })).toBeVisible()
@@ -559,7 +567,7 @@ test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
   expect(all).toContain('第二封信落在窗台。')
   expect(all).toContain('第三封信没有署名。')
 
-  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await editorAction(page, '导出')
   await dialog().getByRole('checkbox', { name: '全选' }).uncheck()
   await expect(dialog().getByRole('checkbox', { name: '第一章' })).not.toBeChecked()
   await dialog().getByRole('button', { name: '开始导出' }).click()
@@ -587,7 +595,7 @@ test.describe('移动编辑', () => {
     await textArea(page).tap()
     await page.keyboard.insertText('移动端的第一行。')
     await manualSave(page)
-    await page.locator('.chapter-navigation summary').tap()
+    await page.locator('.nav-toggle').tap()
     await expect(page.getByRole('button', { name: '新建章节' })).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('editor-mobile.png'), fullPage: true })

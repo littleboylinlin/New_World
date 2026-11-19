@@ -6,6 +6,7 @@ import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.j
 import { test, expect as baseExpect, withoutRelease } from './app-test.mjs'
 import { seedProject, databaseSnapshot, projectFixture } from './project-fixture.mjs'
 import { pixel } from './fixtures.mjs'
+import { editWorkInformation, editorAction } from './editor-helpers.mjs'
 
 const expect = baseExpect.configure({ timeout: 15000 })
 test.setTimeout(90000)
@@ -67,17 +68,20 @@ async function updateStoredMetadata(page, id, metadata) {
 
 for (const library of ['original', 'reference']) test(`${library} 可选作品信息创建、修改、清空及刷新持久化`, async ({ page }) => {
   await create(page, library, '信息小说', values)
-  await expect(page.getByRole('region', { name: '作品信息', exact: true })).toContainText(values.author)
+  // On the editor page the information lives in the work menu's form.
+  await editWorkInformation(page)
+  await expect(infoDialog(page).getByLabel('作者', { exact: true })).toHaveValue(values.author)
+  await infoDialog(page).getByRole('button', { name: '取消' }).click()
   await page.reload()
   let book = (await page.evaluate(databaseSnapshot)).books[0]
   expect(book.metadata).toEqual(values)
-  await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  await editWorkInformation(page)
   await infoDialog(page).getByLabel('作者', { exact: true }).fill('修改后的笔名')
   await infoDialog(page).getByRole('button', { name: '保存作品信息', exact: true }).click()
   await expect(infoDialog(page)).toBeHidden()
   await page.reload(); book = (await page.evaluate(databaseSnapshot)).books[0]
   expect(book.metadata.author).toBe('修改后的笔名'); expect(book.metadata.synopsis).toBe(values.synopsis)
-  await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  await editWorkInformation(page)
   await fillInfo(infoDialog(page), {})
   await infoDialog(page).getByRole('button', { name: '保存作品信息', exact: true }).click()
   await expect(infoDialog(page)).toBeHidden(); await page.reload()
@@ -93,13 +97,13 @@ test('Schema 1 不补默认信息，编辑保留未知字段与未改动的 CRLF
   expect(book).not.toHaveProperty('metadata')
   const metadata = { author: '', synopsis: '原样\r\n\r\n换行', status: 'future-status', future: { id: book.id, active: true, absent: null } }
   await updateStoredMetadata(page, book.id, metadata)
-  await page.reload(); await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  await page.reload(); await editWorkInformation(page)
   await expect(infoDialog(page).getByLabel('创作状态', { exact: true })).toHaveValue('future-status')
   await infoDialog(page).getByLabel('作者', { exact: true }).fill('新作者')
   await infoDialog(page).getByRole('button', { name: '保存作品信息', exact: true }).click(); await expect(infoDialog(page)).toBeHidden()
   book = (await page.evaluate(databaseSnapshot)).books[0]
   expect(book.metadata).toEqual({ ...metadata, author: '新作者' })
-  await page.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+  await editWorkInformation(page)
   await updateStoredMetadata(page, book.id, { ...book.metadata, future: { concurrent: true } })
   await infoDialog(page).getByLabel('作者', { exact: true }).fill('过期表单')
   await infoDialog(page).getByRole('button', { name: '保存作品信息', exact: true }).click()
@@ -136,7 +140,7 @@ for (const library of ['original', 'reference']) test(`${library} Schema 3 完�
     await clean.getByRole('button', { name: '确认导入', exact: true }).click(); await expect(clean.getByRole('dialog', { name: '导入工程预览' })).toBeHidden()
     const copied = (await clean.evaluate(databaseSnapshot)).books.find(b => !b.workId && b.id !== seeded.root)
     expect(copied.metadata).toEqual(metadata); expect(copied.id).not.toBe(metadata.future.id)
-    await clean.getByRole('button', { name: '编辑作品信息', exact: true }).click()
+    await editWorkInformation(clean)
     await infoDialog(clean).getByLabel('作者', { exact: true }).fill('副本作者')
     await infoDialog(clean).getByRole('button', { name: '保存作品信息', exact: true }).click(); await expect(infoDialog(clean)).toBeHidden()
     expect((await clean.evaluate(databaseSnapshot)).books.find(b => b.id === copied.id).metadata.future).toEqual(metadata.future)
@@ -170,7 +174,7 @@ test('正文五种格式的信息选项默认关闭，可选择标题副标题�
   await create(page, 'original', '元数据导出书', { ...values, author: 'Export Author', synopsis: 'Intro one.\nLine two.\n\nIntro three.' })
   await editor(page).fill('BODY ONLY CONTENT.'); await page.keyboard.press('Control+s'); await expect(page.locator('.save-status')).toHaveText('已保存')
   async function exportAs(format, selected) {
-    await page.getByRole('button', { name: '导出', exact: true }).click()
+    await editorAction(page, '导出')
     const form = page.getByRole('dialog', { name: '导出编辑稿' })
     for (const label of ['作品标题及副标题','作者','作品简介']) await expect(form.getByRole('checkbox', { name: label, exact: true })).not.toBeChecked()
     await form.getByRole('radio', { name: format, exact: true }).check()
@@ -190,7 +194,7 @@ test('正文五种格式的信息选项默认关闭，可选择标题副标题�
   expect(xml.indexOf('Export Author')).toBeLessThan(xml.indexOf('BODY ONLY CONTENT.')); expect((xml.match(/<w:sectPr/g)??[]).length).toBe(2)
   const core = Buffer.from(await entries.find(e=>e.filename==='docProps/core.xml').getData(new Uint8ArrayWriter())).toString(); expect(core).toContain('Export Author'); await zip.close()
   await page.evaluate(() => { window.newWorldDesktop = { savePdf: async () => { window.printedWork = document.querySelector('.print-edition').innerHTML } } })
-  await page.getByRole('button', { name: '导出', exact: true }).click(); const form=page.getByRole('dialog',{name:'导出编辑稿'})
+  await editorAction(page, '导出'); const form=page.getByRole('dialog',{name:'导出编辑稿'})
   await form.getByRole('radio',{name:'PDF',exact:true}).check(); for (const label of selected) await form.getByRole('checkbox',{name:label,exact:true}).check()
   await form.getByRole('button',{name:'开始导出',exact:true}).click(); await expect(form).toBeHidden()
   const printed = await page.evaluate(()=>window.printedWork); expect(printed).toContain('export-work-info'); expect(printed).toContain('Intro three.'); expect(printed).toContain('BODY ONLY CONTENT.')

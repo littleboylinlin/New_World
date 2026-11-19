@@ -5,6 +5,7 @@ import {
 } from './appearance'
 import type { Appearance, CjkFont, LatinFont, LineHeight, ParagraphSpacing, TextWidth, Theme } from './appearance'
 import { button, element } from './ui'
+import { createPopover } from './shell/popover'
 
 let groups = 0
 
@@ -34,17 +35,19 @@ const widthLabel = (value: TextWidth) => ({
 const switches = ['off', 'on'] as const
 
 /** Keeps a control in step with changes made elsewhere until the control leaves the page (unless persistent). */
-function follow(node: HTMLElement, paint: (value: Appearance) => void, persistent = false) {
+type Lifetime = boolean | (() => boolean)
+
+function follow(node: HTMLElement, paint: (value: Appearance) => void, persistent: Lifetime = false) {
   paint(appearance())
   const stop = onAppearanceChange((value) => {
-    if (!persistent && !node.isConnected) { stop(); return }
+    if (typeof persistent === 'function' ? !persistent() : !persistent && !node.isConnected) { stop(); return }
     paint(value)
   })
 }
 
 function radioGroup<T extends string>(
   label: string, className: string, values: readonly T[], content: (value: T) => Node[], select: (value: T) => void,
-  current: (value: Appearance) => T, persistent = false,
+  current: (value: Appearance) => T, persistent: Lifetime = false,
 ) {
   const group = element('div', className)
   group.setAttribute('role', 'radiogroup')
@@ -69,7 +72,7 @@ function swatch(theme: Theme) {
   return element('span', `theme-swatch theme-swatch-${theme}`)
 }
 
-function sizeControls(withReset: boolean, persistent = false) {
+function sizeControls(withReset: boolean, persistent: Lifetime = false) {
   const row = element('div', 'size-controls')
   const smaller = button('', 'button button-quiet button-small size-step')
   smaller.append(element('span', 'size-glyph size-glyph-small', 'Aa'), element('span', 'size-sign', '−'))
@@ -122,35 +125,6 @@ function readingLayoutControls(persistent = false) {
     radioGroup(t('appearance.textWidth'), 'settings-options choice-options', textWidths,
       (value) => [element('span', '', widthLabel(value))], (value) => updateAppearance({ width: value }), (value) => value.width, persistent),
   ]
-}
-
-export function readingLayoutButton(host: HTMLElement) {
-  const title = t('settings.appearanceGroupTypography')
-  const open = button(t('appearance.layout'), 'button button-quiet button-small')
-  open.title = title
-  open.setAttribute('aria-label', title)
-  open.setAttribute('aria-haspopup', 'dialog')
-  let dialog: HTMLDialogElement | undefined
-  open.addEventListener('click', () => {
-    if (!dialog) {
-      const panel = element('dialog', 'manage-dialog reading-layout-dialog')
-      const content = element('div', 'manage-form')
-      const header = element('div', 'modal-head')
-      const label = element('h2', '', title)
-      label.id = `reading-layout-${++groups}`
-      panel.setAttribute('aria-labelledby', label.id)
-      const close = button(t('common.close'), 'button button-quiet button-small')
-      close.autofocus = true
-      close.addEventListener('click', () => panel.close())
-      header.append(label, close)
-      content.append(header, ...readingLayoutControls())
-      panel.append(content)
-      host.append(panel)
-      dialog = panel
-    }
-    dialog.showModal()
-  })
-  return open
 }
 
 const spellingErrors: Record<SpellingError, string> = {
@@ -308,70 +282,73 @@ export function mountAppearanceSettings(section: HTMLElement) {
   section.append(typographyGroup, themeGroup, writingGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
 }
 
-/** The "Aa" button in the reading and writing toolbars, with a small appearance panel. */
+/**
+ * The "Aa" button of the reading and writing toolbars. Its panel holds every reading and writing
+ * choice in one place; the settings page shows the same choices, and both stay in step.
+ */
 export function appearanceMenu() {
   const menu = element('div', 'appearance-menu')
   const toggle = button('', 'format-button appearance-toggle')
   toggle.append(element('span', 'format-glyph', 'Aa'))
   toggle.setAttribute('aria-label', t('appearance.title'))
   toggle.title = t('appearance.title')
-  toggle.setAttribute('aria-expanded', 'false')
-  const panel = element('div', 'appearance-panel')
-  panel.id = `appearance-panel-${++groups}`
-  panel.setAttribute('role', 'group')
-  panel.setAttribute('aria-label', t('appearance.title'))
-  panel.hidden = true
-  toggle.setAttribute('aria-controls', panel.id)
+  menu.append(toggle)
+  const alive = () => toggle.isConnected
+  const popover = createPopover({ anchor: toggle, label: t('appearance.title'), role: 'group', className: 'appearance-panel', sheetOnNarrow: true })
+  const panel = popover.body
+  panel.classList.add('appearance-panel-body')
+  popover.layer.id = `appearance-panel-${++groups}`
+  toggle.setAttribute('aria-controls', popover.layer.id)
 
   const themeRow = radioGroup(t('appearance.theme'), 'theme-swatches', themes,
-    (value) => [swatch(value), element('span', 'visually-hidden', themeLabel(value))], (value) => updateAppearance({ theme: value }), (value) => value.theme)
+    (value) => [swatch(value), element('span', 'visually-hidden', themeLabel(value))], (value) => updateAppearance({ theme: value }), (value) => value.theme, alive)
   for (const [index, item] of [...themeRow.children].entries()) (item as HTMLElement).title = themeLabel(themes[index]!)
 
-  const fontLabel = element('label', 'field-label appearance-font')
-  fontLabel.append(element('span', '', t('appearance.latinFont')))
   const font = element('select', 'editor-select')
+  font.setAttribute('aria-label', t('appearance.latinFont'))
   for (const value of latinFonts) {
     const option = element('option', `font-${value}`, latinLabel(value))
     option.value = value
     font.append(option)
   }
   font.addEventListener('change', () => updateAppearance({ latin: font.value as LatinFont }))
-  follow(font, (value) => { font.value = value.latin })
-  fontLabel.append(font)
+  follow(font, (value) => { font.value = value.latin }, alive)
 
-  const spelling = element('label', 'appearance-check')
-  const spellingBox = element('input')
-  spellingBox.type = 'checkbox'
-  spellingBox.addEventListener('change', () => updateAppearance({ spellcheck: spellingBox.checked }))
-  follow(spellingBox, (value) => { spellingBox.checked = value.spellcheck })
-  spelling.append(spellingBox, element('span', '', t('appearance.spellcheck')))
+  const checkbox = (label: string, read: (value: Appearance) => boolean, write: (on: boolean) => void) => {
+    const row = element('label', 'appearance-check')
+    const box = element('input')
+    box.type = 'checkbox'
+    box.addEventListener('change', () => write(box.checked))
+    follow(box, (value) => { box.checked = read(value) }, alive)
+    row.append(element('span', '', label), box)
+    return row
+  }
+  const segments = <T extends string>(label: string, values: readonly T[], name: (value: T) => string, select: (value: T) => void, current: (value: Appearance) => T) =>
+    radioGroup(label, 'aa-segments', values, (value) => [element('span', '', name(value))], select, current, alive)
+  const row = (label: string, control: HTMLElement) => {
+    const line = element('div', 'aa-row')
+    line.append(element('span', 'aa-label', label), control)
+    return line
+  }
 
   const more = button(t('appearance.more'), 'appearance-more')
-  panel.append(themeRow, sizeControls(false), fontLabel, spelling, more)
-  menu.append(toggle, panel)
-
-  function setOpen(open: boolean, returnFocus = false) {
-    panel.hidden = !open
-    toggle.setAttribute('aria-expanded', String(open))
-    if (open) document.addEventListener('pointerdown', outside, true)
-    else document.removeEventListener('pointerdown', outside, true)
-    if (!open && returnFocus) toggle.focus()
-  }
-  function outside(event: Event) {
-    if (!menu.isConnected || !menu.contains(event.target as Node)) setOpen(false)
-  }
+  panel.append(
+    themeRow,
+    row(t('appearance.textSize'), sizeControls(false, alive)),
+    row(t('appearance.latinFont'), font),
+    row(t('appearance.lineHeight'), segments(t('appearance.lineHeight'), lineHeights, lineHeightLabel, (value) => updateAppearance({ lineHeight: value }), (value) => value.lineHeight)),
+    row(t('appearance.paragraphSpacing'), segments(t('appearance.paragraphSpacing'), paragraphSpacings, paragraphLabel, (value) => updateAppearance({ paragraph: value }), (value) => value.paragraph)),
+    row(t('appearance.textWidth'), segments(t('appearance.textWidth'), textWidths, widthLabel, (value) => updateAppearance({ width: value }), (value) => value.width)),
+    checkbox(t('appearance.indentOn'), (value) => value.indent, (on) => updateAppearance({ indent: on })),
+    checkbox(t('appearance.spellcheck'), (value) => value.spellcheck, (on) => updateAppearance({ spellcheck: on })),
+    more,
+  )
   toggle.addEventListener('mousedown', (event) => event.preventDefault())
-  toggle.addEventListener('click', () => setOpen(Boolean(panel.hidden)))
-  menu.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !panel.hidden) {
-      event.preventDefault()
-      event.stopPropagation()
-      setOpen(false, true)
-    }
-  })
+  toggle.addEventListener('click', () => popover.toggle())
   more.addEventListener('click', () => {
-    setOpen(false)
+    popover.close()
     openAppearanceSettings()
   })
-  return menu
+  /** Opens the panel under another control, used when the toolbar has folded "Aa" into "⋯". */
+  return Object.assign(menu, { openPanel: (from?: HTMLElement) => popover.open(true, from) })
 }

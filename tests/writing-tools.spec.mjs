@@ -17,7 +17,7 @@ test('英文按单词计数，中文按字计数，混排相加', async ({ page 
   await expect(page.locator('.word-count')).toHaveText('本章 5 字')
   await textArea(page).fill('The keeper’s well-known lamp. 灯塔守望者。')
   await expect(page.locator('.word-count')).toHaveText('本章 10 字')
-  await expect(page.locator('.word-counts')).toHaveAttribute('title', '中文按字计数，英文等按词计数')
+  await expect(page.locator('.word-count')).toHaveAttribute('title', '中文按字计数，英文等按词计数')
 })
 
 test('拼写检查默认关闭，可在「外观」面板打开并记住', async ({ page }) => {
@@ -43,14 +43,15 @@ test('作品内直接调整阅读与写作版式，设置首页的入口跳到�
   const paragraph = textArea(page).locator('p').first()
   await expect(paragraph).toHaveCSS('text-indent', '0px')
   const url = page.url()
-  const entry = page.getByRole('button', { name: '阅读与写作版式', exact: true })
+  // Layout now lives in the one "Aa" panel together with theme, size and font.
+  const entry = page.getByRole('button', { name: '外观', exact: true })
   await entry.click()
-  const dialog = page.getByRole('dialog', { name: '阅读与写作版式' })
+  const dialog = page.getByRole('group', { name: '外观' })
   await dialog.getByRole('radiogroup', { name: '行距' }).getByRole('radio', { name: '宽松' }).check()
   await dialog.getByRole('radiogroup', { name: '段落间距' }).getByRole('radio', { name: '无' }).check()
-  await dialog.getByRole('radiogroup', { name: '首行缩进' }).getByRole('radio', { name: '缩进两字' }).check()
+  await dialog.getByRole('checkbox', { name: '缩进两字' }).check()
   await dialog.getByRole('radiogroup', { name: '正文宽度' }).getByRole('radio', { name: '宽' }).check()
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   await expect(page).toHaveURL(url)
   const metrics = await paragraph.evaluate((node) => {

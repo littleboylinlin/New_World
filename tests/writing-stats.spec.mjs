@@ -1,6 +1,7 @@
 import { startWork, openDrawer } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
 import { bookAction } from './fixtures.mjs'
+import { saveNow } from './editor-helpers.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const total = (page) => page.locator('.stat-total .stat-value')
@@ -16,12 +17,13 @@ async function newNovel(page, name) {
 }
 
 async function manualSave(page) {
-  await page.getByRole('button', { name: '手动保存' }).click()
+  await saveNow(page)
   await expect(page.locator('.save-status')).toHaveText('已保存')
 }
 
 async function goHome(page) {
-  await page.getByRole('link', { name: '书库首页', exact: true }).click()
+  // The editor has no breadcrumbs; the sidebar's first link goes home.
+  await page.locator('#app-nav a[href="#/"]').click()
   await ready(page)
 }
 

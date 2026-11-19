@@ -41,3 +41,34 @@ export function leave(element: HTMLElement) {
   element.addEventListener('animationend', done, { once: true })
   window.setTimeout(done, 400)
 }
+
+/** Reads one of the shared duration tokens in milliseconds; zero when motion is reduced. */
+export function motionMs(token: 'fast' | 'base' | 'slow' = 'base') {
+  if (reducedMotion.matches) return 0
+  const value = getComputedStyle(document.documentElement).getPropertyValue(`--motion-${token}`).trim()
+  const number = Number.parseFloat(value)
+  if (!Number.isFinite(number)) return 0
+  return value.endsWith('ms') ? number : number * 1000
+}
+
+/**
+ * Plays a CSS transition driven by a data-state attribute, and calls `done` once it ends.
+ * Falls back to a timer so an interrupted or skipped transition never leaves the element stuck.
+ */
+export function afterTransition(node: HTMLElement, token: 'fast' | 'base' | 'slow', done: () => void) {
+  const wait = motionMs(token)
+  let finished = false
+  let timer = 0
+  const finish = () => {
+    if (finished) return
+    finished = true
+    node.removeEventListener('transitionend', onEnd)
+    window.clearTimeout(timer)
+    done()
+  }
+  const onEnd = (event: TransitionEvent) => { if (event.target === node) finish() }
+  if (!wait) { finish(); return finish }
+  node.addEventListener('transitionend', onEnd)
+  timer = window.setTimeout(finish, wait + 60)
+  return finish
+}

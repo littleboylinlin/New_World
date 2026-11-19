@@ -13,6 +13,7 @@ import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { file } from '../fixtures.mjs'
 import { selectReading, createAnnotation } from '../annotation-helpers.mjs'
 import { checkNativeHeader } from '../header-layout.mjs'
+import { chapterHeading, editorAction, historyCount, saveNow } from '../editor-helpers.mjs'
 
 const { version } = JSON.parse(await readFile('package.json', 'utf-8'))
 const versionTag = `v${version}`
@@ -83,7 +84,7 @@ async function stop(app) {
 const exportLabels = { txt: 'TXT', md: 'Markdown', html: 'HTML', docx: 'DOCX', pdf: 'PDF' }
 
 async function exportTo(page, format) {
-  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await editorAction(page, '导出')
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
   await dialog.getByRole('radio', { name: exportLabels[format] }).check()
   await dialog.getByRole('button', { name: '开始导出' }).click()
@@ -282,14 +283,14 @@ test('阅读批注在安装版中可选区创建、悬停固定、切换形式�
     await page.getByRole('textbox', { name: '作品名' }).fill('桌面批注')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('桌面正文。\n第二段，English!')
-    await page.getByRole('button', { name: '阅读模式' }).click()
+    await editorAction(page, '阅读模式')
     await expect(page.locator('.annotation-manager summary')).toContainText('（0）')
     await selectReading(page, 2, 12)
     await createAnnotation(page, '重启后仍保留的批注\n第二行', 'mark', '#78b8ed')
     await page.locator('.annotation-mark').first().hover()
     await expect(page.locator('.annotation-popup')).toContainText('重启后仍保留')
     await page.locator('.annotation-popup .annotation-text').click()
-    await page.locator('.writing-header h3').hover()
+    await chapterHeading(page).hover()
     await expect(page.locator('.annotation-popup')).toHaveAttribute('data-pinned', 'true')
     await page.locator('.annotation-popup').getByRole('button', { name: '编辑批注' }).click()
     const dialog = page.getByRole('dialog', { name: '编辑批注' })
@@ -305,7 +306,7 @@ test('阅读批注在安装版中可选区创建、悬停固定、切换形式�
     page = await app.firstWindow()
     await page.goto(url)
     await expect(editor(page)).toHaveText('桌面正文。第二段，English!')
-    await page.getByRole('button', { name: '阅读模式' }).click()
+    await editorAction(page, '阅读模式')
     await expect(page.locator('.annotation-inline')).toContainText('重启后仍保留的批注')
     await expect(page.locator('.annotation-inline')).toHaveCSS('color', 'rgb(89, 115, 140)')
     await expect(page.locator('.annotation-inline')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -867,7 +868,7 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
     await page.getByRole('textbox', { name: '作品名' }).fill('备份的灯塔')
     await page.getByRole('button', { name: '创建小说' }).click()
     await editor(page).fill('守夜人把灯点亮。')
-    await page.getByRole('button', { name: '手动保存' }).click()
+    await saveNow(page)
     await expect(page.locator('.save-status')).toHaveText('已保存')
 
     const section = await openSettingsCategory(page, 'backup')
@@ -900,7 +901,7 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
 
     await page.locator('.settings-back').click()
     await editor(page).fill('恢复前改过的正文。')
-    await page.getByRole('button', { name: '手动保存' }).click()
+    await saveNow(page)
     await expect(page.locator('.save-status')).toHaveText('已保存')
 
     await app.evaluate((_electron, path) => { globalThis.testRestorePath = path }, join(folder, manual))
@@ -1179,15 +1180,15 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     // Open edition and restore v0 from History dialog (automatically backing up v2 first)
     await page.evaluate((u) => { location.hash = u }, `#/original/${workId}/${editionId}`)
     await expect(editor(page)).toHaveText(v2)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('2')
-    await page.locator('button.history-toggle').click()
+    await expect.poll(() => historyCount(page)).toBe('2')
+    await editorAction(page, '历史版本')
     const revDialog = page.getByRole('dialog', { name: /历史版本/ })
     await expect(revDialog).toBeVisible()
     await revDialog.locator('button.revision-item').nth(1).click()
     await expect(revDialog.locator('.revision-preview-text')).toHaveText(v0)
     await revDialog.getByRole('button', { name: '恢复此版本' }).click()
     await expect(editor(page)).toHaveText(v0)
-    await expect(page.locator('button.history-toggle .history-count')).toHaveText('3')
+    await expect.poll(() => historyCount(page)).toBe('3')
 
     // Open Trash UI and restore both the deleted chapter and idea across restart
     await page.evaluate(() => { location.hash = '#/trash' })
