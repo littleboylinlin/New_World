@@ -431,8 +431,9 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   /* Full screen: the traffic lights are gone on a Mac; on Windows two buttons remain, leave full screen and close. */
   .desktop.macos.fullscreen .header-inner { padding-inline-start: 14px; }
   .desktop:not(.macos).fullscreen .header-inner { padding-inline-end: 104px; }
-  .window-exit-fullscreen, .fullscreen .window-minimize, .fullscreen .window-maximize { display: none; }
-  .fullscreen .window-exit-fullscreen { display: inline-flex; }
+  /* Doubled class so these win over .window-button's display, which comes later in this block. */
+  .window-button.window-exit-fullscreen, .fullscreen .window-button.window-minimize, .fullscreen .window-button.window-maximize { display: none; }
+  .fullscreen .window-button.window-exit-fullscreen { display: inline-flex; }
   .desktop .brand img { width: 28px; height: 28px; border-radius: 7px; }
   .desktop .brand-name { font-size: 1rem; }
   .desktop .site-header .button { min-height: 32px; padding-block: 2px; }
