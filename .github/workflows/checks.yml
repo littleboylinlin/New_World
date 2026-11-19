@@ -17,7 +17,8 @@ permissions:
 jobs:
   browser-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The suite takes about 8 minutes; leave room for a test that is run a second time.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

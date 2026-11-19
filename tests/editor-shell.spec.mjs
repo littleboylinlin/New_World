@@ -127,19 +127,22 @@ test.describe('选中文字的浮动工具条', () => {
   test('拖动中不出现，松开约 200ms 后才出现并固定在选区旁', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await seedChapters(page, [['第一章', [paragraph('选中这一段文字之后，工具条才会出现在旁边。'), ...longChapter('选', 10)]]])
+    await expect(chapterText(page)).toContainText('选中这一段文字之后')
     // Note when the tools open and when the button is released, from before the drag starts, so an
-    // opening at any moment (even between the last drag step and the release) is recorded.
+    // opening at any moment (even between the last drag step and the release) is recorded. Watch the
+    // whole page rather than one node, in case the editor is drawn again in between.
     await page.evaluate(() => {
-      const node = document.querySelector('.selection-toolbar')
       window.selectionTiming = { up: 0, open: 0 }
       document.addEventListener('pointerup', () => { window.selectionTiming.up = performance.now() }, { capture: true, once: true })
       new MutationObserver((_, observer) => {
-        if (node.dataset.state === 'open') { window.selectionTiming.open = performance.now(); observer.disconnect() }
-      }).observe(node, { attributes: true })
+        if (document.querySelector('.selection-toolbar[data-state="open"]')) { window.selectionTiming.open = performance.now(); observer.disconnect() }
+      }).observe(document.body, { attributes: true, attributeFilter: ['data-state'], subtree: true })
     })
     await selectWithMouse(page, 2, 12)
     // Never while the button is still held.
     expect(await page.evaluate(() => window.selectionTiming.open)).toBe(0)
+    // The drag really selected the text, so a missing toolbar below is the toolbar's fault.
+    expect((await page.evaluate(() => getSelection().toString())).length).toBeGreaterThan(5)
     await page.mouse.up()
     await expect.poll(() => page.evaluate(() => window.selectionTiming.open)).toBeGreaterThan(0)
     const timing = await page.evaluate(() => window.selectionTiming.open - window.selectionTiming.up)
