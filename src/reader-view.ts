@@ -14,7 +14,7 @@ import { createEdition, listEditions } from './documents/store'
 import type { RegisterLeave } from './documents/editor-view'
 import { openText } from './text-preview'
 import { appearanceMenu } from './appearance-view'
-import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, libraries, link, notice, originalPath } from './ui'
+import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, libraries, link, nextPaint, notice, originalPath, progressNotice } from './ui'
 
 function readingText(text: string, source = false) {
   return element('article', source ? 'reading-text markdown-source' : 'reading-text', text)
@@ -267,17 +267,23 @@ export async function renderReader(
       if (converting) return
       converting = true
       for (const control of actions.querySelectorAll('button')) control.disabled = true
-      message.replaceChildren(notice(fromFile ? t('reader.convertingAndPreservingTheOriginalFile') : t('reader.creatingManuscript')))
+      const progress = progressNotice(fromFile ? t('reader.convertingAndPreservingTheOriginalFile') : t('reader.creatingManuscript'))
+      message.replaceChildren(progress.element)
       try {
+        await nextPaint()
         const converted = fromFile && blob
           ? await (await import('./documents/import')).convertFile(book.format, blob, signal, encoding)
           : { chapters: [emptyChapter()], notes: [] }
         signal.throwIfAborted()
+        if (fromFile) progress.set(t('reader.savingManuscript', [converted.chapters.length]))
         const project = book.workId ? (await readBook(library, workId))?.book : book
         if (!project) throw new Error(t('library.theContinuationProjectHasBeenRemoved'))
         const edition = await createEdition(project, converted.chapters, {
           source: fromFile ? 'original' : 'blank', notes: converted.notes, originalId: reference && fromFile ? id : undefined,
         })
+        if (signal.aborted) return
+        progress.set(t('reader.openingManuscript'))
+        await nextPaint()
         if (!signal.aborted) location.hash = bookPath(library, workId, edition.id)
       } catch (error) {
         if (!signal.aborted) message.replaceChildren(previewProblem(error))

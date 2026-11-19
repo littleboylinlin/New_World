@@ -2,7 +2,7 @@
 
 [简体中文](README.md)
 
-New World v0.20.1 is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work.
+New World is a local novel manager. The original library is for writing and managing your own novels; the continuation/imitation library organizes continuation projects by source work. The latest version is on [GitHub Releases](https://github.com/littleboylinlin/New_World/releases/latest); what changed in each version is in the [release notes](docs/releases).
 
 ## Smooth writing (v0.20.1)
 
@@ -32,7 +32,7 @@ v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bo
 
 ## Windows desktop
 
-The current stable release for Windows and macOS is [v0.20.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.20.1). It fixes IME caret following and multi-character jumps with frame-by-frame smoothing, retaining typewriter mode, the local task workspace and Schema 3 projects while accepting Schema 1/2. Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
+The current stable release for Windows and macOS is the [latest GitHub release](https://github.com/littleboylinlin/New_World/releases/latest); both platforms ship the same version, and what changed in each one is in the [release notes](docs/releases). Read the backup guidance above before upgrading or rolling back. Existing complete project migration, file associations, reading annotations and manuscript exports remain available. See the [project format specification](docs/newworld-format.md) and [Reading annotations](docs/reading-annotations.md) for usage and limitations, and `AI_INTEGRATION.md` for the AI protocol. Update checks select only the installer for the current platform.
 
 Download `New-World-Setup-<version>-x64.exe` from [GitHub Releases](https://github.com/littleboylinlin/New_World/releases). The target platform is Windows 11 x64; it installs for the current user and does not require Node.js. The installer is not Authenticode-signed, so Windows may warn about an unknown publisher. Verify it with PowerShell's `Get-FileHash <installer> -Algorithm SHA256` against `SHA256SUMS.txt` on the same release page.
 

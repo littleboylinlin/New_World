@@ -230,6 +230,8 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 
 .undo-toast { position: fixed; z-index: 4; left: 50%; bottom: 58px; display: flex; align-items: center; gap: 12px; width: max-content; max-width: calc(100% - 32px); padding: 10px 10px 10px 16px; border: 2px solid var(--ink); border-radius: 14px; color: var(--paper); background: var(--ink); box-shadow: 4px 4px 0 var(--yellow), 0 16px 34px -14px var(--pop-soft); transform: translateX(-50%); font-size: .9rem; font-weight: 650; }
 .focus-writing .undo-toast { bottom: 22px; }
+/* With web pages filling the bottom of the window, the notice waits at the top instead. */
+.undo-toast.undo-toast-top { top: 12px; bottom: auto; }
 .undo-toast p { min-width: 0; overflow-wrap: anywhere; }
 .undo-toast .button { flex: none; border-color: var(--yellow); color: var(--on-yellow); background: var(--yellow); box-shadow: none; }
 .undo-toast .button:hover:not(:disabled) { background: #fff; border-color: #fff; transform: none; box-shadow: none; }
@@ -669,3 +671,9 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 .capture-schedule { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px 12px; }
 .capture-schedule .dialog-help { grid-column: 1 / -1; margin: 0; }
 .capture-panel :is(.field-error, .dialog-help):empty { display: none; }
+
+.progress-notice { display: flex; align-items: center; gap: 10px; }
+.progress-spinner { flex: none; width: 16px; height: 16px; border: 2.5px solid color-mix(in srgb, currentColor 22%, transparent); border-top-color: currentColor; border-radius: 50%; animation: progress-spin 800ms linear infinite; }
+@keyframes progress-spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .progress-spinner { animation-duration: 2400ms; } }
+.editor-loading { margin: 24px auto; max-width: 36em; }

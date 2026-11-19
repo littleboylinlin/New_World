@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-New World v0.20.1 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。
+New World 是一个本地小说管理器。原创库用于创作和管理自己的小说，续写／仿写库按原作组织续写项目。最新版本见 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases/latest)，各版本的改动见 [发行说明](docs/releases)。
 
 ## 平滑写作（v0.20.1）
 
@@ -32,7 +32,7 @@ v0.18.1 读取 Schema 1 / 2，重新导出使用 Schema 2，作品信息及符�
 
 ## Windows 桌面版
 
-Windows 与 macOS 当前正式版均为 [v0.20.1](https://github.com/littleboylinlin/New_World/releases/tag/v0.20.1)。本版修复组字跟随和多字上屏时的光标跳动，保留打字机模式、本地任务工作区及 Schema 3 工程，兼容导入 Schema 1/2；升级与回退前须阅读本页的备份提示。原有完整工程迁移、文件关联、阅读批注及正文导出继续保留。使用方式和限制见 [工程格式规范](docs/newworld-format.md) 和 [阅读批注](docs/reading-annotations.md)，AI 接入协议详见 `AI_INTEGRATION.md`。检查更新时各自只选择本平台的安装包。
+Windows 与 macOS 的当前正式版见 [GitHub Releases 最新版](https://github.com/littleboylinlin/New_World/releases/latest)，两个平台同时发布同一版本；每一版的改动见 [发行说明](docs/releases)。升级与回退前须阅读本页的备份提示。原有完整工程迁移、文件关联、阅读批注及正文导出继续保留。使用方式和限制见 [工程格式规范](docs/newworld-format.md) 和 [阅读批注](docs/reading-annotations.md)，AI 接入协议详见 `AI_INTEGRATION.md`。检查更新时各自只选择本平台的安装包。
 
 在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 

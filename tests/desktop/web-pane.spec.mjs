@@ -169,6 +169,16 @@ test('摘进灵感、转成待办：带上网页标题，「附带链接」默�
     await link.check()
     await dialog.getByRole('button', { name: '存为灵感' }).click()
     await expect(dialog).toBeHidden()
+    // The "saved" notice keeps clear of the page, which stays live (no still picture) and usable.
+    const notice = page.locator('.undo-toast:not(.leaving)')
+    await expect(notice).toBeVisible()
+    await expect(pane.locator('.web-snapshot')).toBeHidden()
+    await expect.poll(async () => (await webViews(app))[0].visible).toBe(true)
+    const [noticeBox, stageBox] = await Promise.all([notice, pane.locator('.web-stage')].map((locator) => locator.evaluate((node) => {
+      const rect = node.getBoundingClientRect()
+      return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+    })))
+    expect(noticeBox.right <= stageBox.left || noticeBox.left >= stageBox.right || noticeBox.bottom <= stageBox.top || noticeBox.top >= stageBox.bottom).toBe(true)
     if (await page.locator('.side-toggle').getAttribute('aria-expanded') !== 'true') await page.locator('.side-toggle').click()
     await page.getByRole('tab', { name: /^灵感与待办/ }).click()
     await page.getByRole('tablist', { name: '灵感与待办' }).getByRole('tab', { name: /^灵感/ }).click()

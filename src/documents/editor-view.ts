@@ -3,7 +3,7 @@ import { Editor } from '@tiptap/core'
 import { formDialog, nameField } from '../dialogs'
 import { libraryChanges, readBook, storageError } from '../library'
 import type { Book } from '../library'
-import { bookPath, button, element, icon } from '../ui'
+import { bookPath, button, element, icon, nextPaint, progressNotice } from '../ui'
 import type { IconName } from '../ui'
 import { offerUndo, showNotice } from '../undo'
 import { appearanceMenu } from '../appearance-view'
@@ -90,6 +90,9 @@ export async function syncOpenEditionFromExternal(library: string, bookId: strin
 const textTools = ['heading', 'bold', 'italic', 'underline', 'lists', 'quote', 'more-format'] as const
 const insertTools = ['image', 'rule'] as const
 const noteTools = ['note-add', 'note-list', 'note-display'] as const
+
+/** Chapters this long take the browser noticeable time to lay out (about 60 000 characters). */
+const isLongChapter = (record: ChapterRecord) => JSON.stringify(record.content).length > 120_000
 
 export async function renderEdition(
   host: HTMLElement, root: HTMLElement, book: Book, initial: Edition, signal: AbortSignal, registerLeave: RegisterLeave,
@@ -837,6 +840,11 @@ export async function renderEdition(
       const next = await readChapter(edition, id)
       if (!await flush() || !current()) return false
       const order = (target: string) => edition.chapters.findIndex((entry) => entry.id === target)
+      if (isLongChapter(next)) {
+        status.textContent = t('editor.openingLongChapter')
+        await nextPaint()
+        if (!current()) return false
+      }
       mountChapter(next, order(id) < order(chapter.id) ? 'previous' : 'next')
       if (wb.start!.mode() === 'overlay') wb.start!.setOpen(false)
       return true
@@ -1122,6 +1130,14 @@ export async function renderEdition(
     caret?.destroy()
     editor?.destroy()
   }, { once: true })
+  // A very long chapter takes the browser a few seconds to lay out: say so before it starts.
+  if (isLongChapter(chapter)) {
+    const loading = progressNotice(t('editor.openingLongChapter'))
+    loading.element.classList.add('editor-loading')
+    paper.replaceChildren(loading.element)
+    await nextPaint()
+    if (signal.aborted) return
+  }
   mountChapter(chapter)
   toolbarReady = true
   paintTarget()
