@@ -1017,7 +1017,8 @@ if (!app.requestSingleInstanceLock()) {
     desktopStarted = true
     const background = login.backgroundLaunch() && tray && !requestedMainWindow && !pendingProjectPaths.size
     if (background && process.platform === 'darwin') app.dock.hide()
-    const opened = openWindow(!background, !background)
+    // Desktop tests set NEW_WORLD_DISABLE_INTRO so the opening animation never stands between them and the page.
+    const opened = openWindow(!background, !background && process.env.NEW_WORLD_DISABLE_INTRO !== '1')
     if (pendingCapture) openCapture()
     return opened
   }).catch(() => {

@@ -15,12 +15,36 @@ test('冷启动开场动画打出名字、播完后移除自己并清掉启动�
   await expect(intro(page)).toHaveCount(0)
 })
 
-test('按任意键可跳过开场动画', async ({ page }) => {
+test('按任意键可跳过开场动画，这个键照常传给应用', async ({ page }) => {
   await page.goto('/?intro')
   await expect(intro(page)).toBeAttached()
   await page.waitForFunction(() => document.querySelector('.app-column main')?.children.length > 0)
-  await page.keyboard.press('Space')
+  await page.evaluate(() => {
+    window.keysSeen = []
+    document.addEventListener('keydown', (event) => window.keysSeen.push({ key: event.key, prevented: event.defaultPrevented }))
+  })
+  await page.keyboard.press('a')
   await expect(intro(page)).toHaveCount(0, { timeout: 1000 })
+  expect(await page.evaluate(() => window.keysSeen)).toEqual([{ key: 'a', prevented: false }])
+})
+
+test('窗口转到后台时开场动画直接结束', async ({ page }) => {
+  await page.goto('/?intro')
+  await expect(intro(page)).toBeAttached()
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect(intro(page)).toHaveCount(0)
+})
+
+test('没有动画帧时开场动画也会按时结束', async ({ page }) => {
+  // Frames stop for a covered or background window; only the timers can end the intro then.
+  await page.addInitScript(() => { window.requestAnimationFrame = () => 0 })
+  await page.goto('/?intro')
+  await expect(intro(page)).toBeAttached()
+  await expect(intro(page)).toHaveCount(0, { timeout: 6000 })
+  await expect(page.locator('main')).toBeVisible()
 })
 
 test('点击可跳过开场动画', async ({ page }) => {

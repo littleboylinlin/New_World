@@ -13,6 +13,9 @@ import { checkNativeHeader } from '../header-layout.mjs'
 import { privateWebSmoke } from './web-helpers.mjs'
 import { editorAction, historyCount } from '../editor-helpers.mjs'
 
+// The opening animation stays off in desktop tests; windows.spec.mjs checks that it ends by itself.
+process.env.NEW_WORLD_DISABLE_INTRO = '1'
+
 const command = promisify(execFile)
 const { version } = JSON.parse(await readFile('package.json', 'utf8'))
 const manifest = JSON.parse(await readFile('public/locales/manifest.json', 'utf8'))

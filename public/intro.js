@@ -13,6 +13,8 @@
   if (saved.intro === false) return
   if (!window.matchMedia || matchMedia('(prefers-reduced-motion: reduce)').matches) return
   if (!document.body || !document.body.animate) return
+  // A window that starts hidden would never get animation frames; go straight to the app.
+  if (document.hidden) return
 
   // Timeline in milliseconds. The app may only be waited for once the door is shut (WAIT).
   var TYPE_START = 80, CHAR = 55
@@ -25,6 +27,10 @@
   var HOME_START = 2000, HOME = 450, HOME_STEP = 40
   var END = 2500
   var GIVE_UP = 10000
+  // Animation frames stop while the window is hidden, covered or unfocused on some systems, so these
+  // timers end the intro on their own: SPARE after the app is ready, and at the latest after LAST.
+  var SPARE = 500
+  var LAST = GIVE_UP + END + SPARE
 
   function bezier(x1, y1, x2, y2) {
     function at(a1, a2, t) { return ((1 - 3 * a2 + 3 * a1) * t + (3 * a2 - 6 * a1)) * t * t + 3 * a1 * t }
@@ -246,6 +252,7 @@
     glow.setAttribute('opacity', glowLevel.toFixed(3))
   }
 
+  var entrances = []
   function homeEntrance() {
     if (homePlayed) return
     homePlayed = true
@@ -254,22 +261,31 @@
     for (var i = 0; i < targets.length; i++) {
       var target = targets[i]
       if (!target.getClientRects().length || getComputedStyle(target).display === 'none') continue
-      target.animate([{ opacity: 0, transform: 'scale(1.04)' }, { opacity: 1, transform: 'scale(1)' }], {
+      entrances.push(target.animate([{ opacity: 0, transform: 'scale(1.04)' }, { opacity: 1, transform: 'scale(1)' }], {
         duration: HOME, delay: order++ * HOME_STEP, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'backwards',
-      })
+      }))
     }
   }
 
+  // Ends the intro for good. Without a fade (a timer, a hidden window) the home page is left fully shown,
+  // even if its entrance never got the frames to play.
   function finish(fade) {
     if (finished) return
     finished = true
     cancelAnimationFrame(raf)
+    clearTimeout(lastTimer)
+    clearTimeout(readyTimer)
     window.removeEventListener('pointerdown', skip, true)
     window.removeEventListener('keydown', skip, true)
     window.removeEventListener('resize', measure)
     window.removeEventListener('resize', remeasureScreen)
+    document.removeEventListener('visibilitychange', onVisibility)
     var remove = function () { veil.remove(); style.remove() }
-    if (!fade) { remove(); return }
+    if (!fade) {
+      for (var i = 0; i < entrances.length; i++) { try { entrances[i].finish() } catch (error) { /* already done */ } }
+      remove()
+      return
+    }
     veil.animate([{ opacity: Number(veil.style.opacity || 1) }, { opacity: 0 }], { duration: fade, easing: 'ease-out', fill: 'forwards' })
     setTimeout(remove, fade + 20)
   }
@@ -290,11 +306,8 @@
   }
 
   // A click or any key skips: straight to the home page when it is ready, otherwise to the shut door.
-  function skip(event) {
-    if (event.type === 'keydown') {
-      event.preventDefault()
-      event.stopPropagation()
-    }
+  // The key is not swallowed: it still reaches the app, so typing or a shortcut works at once.
+  function skip() {
     if (finished) return
     if (ready) { finish(160); return }
     if (clock < WAIT) {
@@ -308,7 +321,18 @@
   window.addEventListener('resize', measure)
   window.addEventListener('resize', remeasureScreen)
 
-  window.newWorldIntro = { ready: function () { ready = true } }
+  function onVisibility() { if (document.hidden) finish() }
+  document.addEventListener('visibilitychange', onVisibility)
+
+  var readyTimer = 0
+  var lastTimer = setTimeout(function () { finish() }, LAST)
+  window.newWorldIntro = {
+    ready: function () {
+      if (ready && readyTimer) return
+      ready = true
+      if (!finished) readyTimer = setTimeout(function () { finish() }, END + SPARE)
+    },
+  }
   render()
   raf = requestAnimationFrame(tick)
 })()

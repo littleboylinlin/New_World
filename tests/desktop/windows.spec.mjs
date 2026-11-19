@@ -51,7 +51,8 @@ async function runSetup(path, directory = '') {
   return Number(stdout.trim())
 }
 
-async function launch(testInfo, extraArgs = []) {
+// The opening animation is off unless a test asks for it, so it never stands between a test and the page.
+async function launch(testInfo, extraArgs = [], { intro = false } = {}) {
   const profile = testInfo.outputPath('profile')
   await mkdir(profile, { recursive: true })
   if (!installedApp) {
@@ -65,7 +66,7 @@ async function launch(testInfo, extraArgs = []) {
   args.push(...extraArgs)
   args.push('--proxy-server=http://127.0.0.1:1', '--disable-gpu')
   if (process.platform === 'linux' && !process.env.DISPLAY) args.push('--ozone-platform=headless')
-  return electron.launch({ executablePath: installedApp || undefined, args, env: { ...process.env, XDG_CONFIG_HOME: profile } })
+  return electron.launch({ executablePath: installedApp || undefined, args, env: { ...process.env, XDG_CONFIG_HOME: profile, NEW_WORLD_DISABLE_INTRO: intro ? '0' : '1' } })
 }
 
 async function install() {
@@ -736,6 +737,22 @@ test('黑色主题重开时窗口直接以深色底色打开，不先闪浅色',
     await section.getByRole('radio', { name: /跟随系统/ }).check()
     await expect.poll(() => app.evaluate(themeFile)).toBe('system')
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('system')
+  } finally { await stop(app) }
+})
+
+test('冷启动开场动画会自行结束：窗口在后台时也不会一直挡住页面', async ({}, testInfo) => {
+  const app = await launch(testInfo, [], { intro: true })
+  try {
+    const page = await app.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+    expect(await page.evaluate(() => 'newWorldIntro' in window)).toBe(true)
+    // Animation frames can stop for a window that is not in front; the intro must end on its own anyway.
+    await app.evaluate(({ BrowserWindow }) => { const [win] = BrowserWindow.getAllWindows(); win.blur(); win.minimize() })
+    await expect(page.locator('.nw-intro')).toHaveCount(0, { timeout: 15_000 })
+    await app.evaluate(({ BrowserWindow }) => { const [win] = BrowserWindow.getAllWindows(); win.restore(); win.focus() })
+    await expect(page).toHaveURL('new-world://app/')
+    await page.locator('#writing-link').click()
+    await expect(page).toHaveURL(/#\/writing/)
   } finally { await stop(app) }
 })
 
