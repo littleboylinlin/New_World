@@ -100,6 +100,12 @@ interface Window {
     hideCapture?: () => Promise<void>
     onCaptureShown?: (listener: () => void) => void
     setRecentWorks?: (works: { title: string; hash: string }[]) => Promise<void>
+    /** Opens a separate window that shows one reading route (#/compare/…) and nothing else. */
+    openReadingWindow?: (hash: string) => Promise<void>
+    /** Private web panes (main window only); see desktop/web-pane.cjs. */
+    web?: (action: WebPaneAction, id: string, ...args: unknown[]) => Promise<any>
+    onWebState?: (listener: (state: WebPaneState) => void) => void
+    onWebKeep?: (listener: (entry: WebKeepEntry) => void) => void
     onCommand?: (listener: (command: DesktopCommand) => void) => void
     getBackupState?: () => Promise<BackupState>
     setBackupFrequency?: (frequency: BackupFrequency) => Promise<BackupState>
@@ -229,4 +235,28 @@ interface AiConfirmRequest {
 interface AiDispatchPacket {
   callId: string
   payload: Record<string, unknown>
+}
+
+type WebPaneAction = 'create' | 'navigate' | 'back' | 'forward' | 'reload' | 'stop' | 'place' | 'capture' | 'selection' | 'keep' | 'focus' | 'openOutside' | 'state' | 'close'
+
+interface WebPaneState {
+  id: string
+  closed?: boolean
+  url?: string
+  title?: string
+  loading?: boolean
+  canGoBack?: boolean
+  canGoForward?: boolean
+  focused?: boolean
+  blocked?: string
+  error?: { kind: 'certificate' | 'failed'; code: number; description: string; url: string }
+}
+
+interface WebKeepEntry {
+  type: 'web-keep'
+  kind: 'idea' | 'task'
+  id: string
+  text: string
+  title: string
+  url: string
 }

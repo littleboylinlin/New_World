@@ -28,6 +28,21 @@ function isTrustedAppRenderer(event, { appUrl, mainWindow, captureWindow }) {
   return isTrustedMainRenderer(event, { appUrl, mainWindow }) || isTrustedCaptureRenderer(event, { appUrl, captureWindow })
 }
 
+/** The only route a separate reading window may show: one chapter or one original file, read-only. */
+const readingRoute = /^#\/compare\/(original|reference)\/[0-9a-f-]{36}\/(file|[0-9a-f-]{36}\/[0-9a-f-]{36})$/
+
+function isReadingRoute(hash) {
+  return typeof hash === 'string' && hash.length <= 200 && readingRoute.test(hash)
+}
+
+/** A reading window may only ask for what it needs to show text (its language pack). */
+function isTrustedReadingRenderer(event, { appUrl, readingWindows }) {
+  for (const win of readingWindows ?? []) {
+    if (isWindowWebContents(event, win) && isTrustedOriginFrame(event, appUrl)) return true
+  }
+  return false
+}
+
 function isTrustedTaskNotification(contents, permission, details, { appUrl, mainWindow }) {
   return permission === 'notifications' && isWindowWebContents({ sender: contents }, mainWindow)
     && details?.isMainFrame === true && typeof details.requestingUrl === 'string'
@@ -55,5 +70,7 @@ module.exports = {
   isTrustedCaptureRenderer,
   isTrustedAppRenderer,
   isTrustedTaskNotification,
+  isReadingRoute,
+  isTrustedReadingRenderer,
   shouldCancelClientConfirmations,
 }

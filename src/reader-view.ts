@@ -1,7 +1,9 @@
 import { rememberWork } from './ideas'
-import { workTaskControls } from './tasks/links'
+import { createLinkedTask, workTaskControls, workTaskPath } from './tasks/links'
 import { t } from './i18n'
-import { workInformationPanel } from './work-information-view'
+import { showWorkInformation, workInformationPanel } from './work-information-view'
+import type { ShellMenuItem } from './shell/popover'
+import { showNotice } from './undo'
 import { annotateTextPreviews } from './annotations/preview'
 import { canConvert, formats, textEncodings } from './formats'
 import type { TextEncoding } from './formats'
@@ -12,7 +14,7 @@ import { createEdition, listEditions } from './documents/store'
 import type { RegisterLeave } from './documents/editor-view'
 import { openText } from './text-preview'
 import { appearanceMenu } from './appearance-view'
-import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, link, notice, originalPath } from './ui'
+import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, libraries, link, notice, originalPath } from './ui'
 
 function readingText(text: string, source = false) {
   return element('article', source ? 'reading-text markdown-source' : 'reading-text', text)
@@ -183,6 +185,45 @@ export async function renderReader(
     const linkedOriginal = selected?.originalId && selected.originalId !== id
       ? await readBook(library, selected.originalId).catch(() => null) : stored
     if (signal.aborted) return
+    if (selected) {
+      // An editable version takes the whole page: the work's title, versions, information and
+      // tasks move into the menu under the work's name in the editor's toolbar.
+      const body = element('div', 'work-body editor-host')
+      body.append(notice(t('reader.openingEditableVersion')))
+      panel.classList.add('editor-page')
+      panel.replaceChildren(body)
+      const workMenu = (): ShellMenuItem[] => {
+        const items: ShellMenuItem[] = []
+        const versions: ShellMenuItem[] = []
+        if (!reference && blob) versions.push({ label: t('reader.originalFile'), icon: 'file', action: () => { location.hash = bookPath(library, id) } })
+        for (const edition of reference ? [] : editions) {
+          versions.push({ label: edition.name, checked: edition.id === selected.id, radio: true, action: () => { location.hash = bookPath(library, id, edition.id) } })
+        }
+        if (versions.length > 1) items.push({ label: t('editor.switchVersion'), icon: 'copy', children: () => versions })
+        if (reference) {
+          items.push({ label: t('reader.backToContinuationProject'), icon: 'back', action: () => { location.hash = bookPath(library, workId) } })
+          if (linkedOriginal?.blob) items.push({ label: t('reader.viewSource'), icon: 'file', action: () => { location.hash = originalPath(linkedOriginal.book.id) } })
+        }
+        if (!book.workId) {
+          items.push({ label: t('work.edit'), icon: 'edit', action: () => {
+            void readBook(book.library, book.id).then((stored) => { if (stored && !signal.aborted) showWorkInformation(stored.book) }, (error) => showNotice(storageError(error)))
+          } })
+          items.push({ label: t('tasks.addLinked'), icon: 'plus', action: () => {
+            void createLinkedTask({ library: book.library, bookId: book.workId ?? book.id, title: book.title }).catch((error) => showNotice(storageError(error)))
+          } })
+          items.push({ label: t('tasks.workTasks'), icon: 'check', action: () => { location.hash = workTaskPath(book.library, book.workId ?? book.id) } })
+        }
+        if (linkedOriginal?.blob) {
+          const original = linkedOriginal
+          items.push({ label: t('reader.downloadOriginalFile'), icon: 'download', action: () => downloadFile(original.blob, original.book.originalName) })
+        }
+        items.push({ separator: true, label: '' }, { label: libraries[library].name, icon: 'back', action: () => { location.hash = bookPath(library) } })
+        return items
+      }
+      const { renderEdition } = await import('./documents/editor-view')
+      await renderEdition(body, root, book, selected, signal, registerLeave, { title: book.title, menu: workMenu })
+      return
+    }
     const heading = element('header', 'page-heading reader-heading')
     const title = element('div', 'reader-title')
     title.append(element('p', 'eyebrow', reference ? (editionId ? t('reader.continuationDraft') : t('reader.readSource')) : t('navigation.workDetails')), element('h1', '', book.title))
@@ -207,18 +248,10 @@ export async function renderReader(
       tabs.append(original)
     }
     for (const edition of reference ? [] : editions) {
-      const anchor = link(bookPath(library, id, edition.id), edition.name, 'version-tab')
-      if (selected?.id === edition.id) anchor.setAttribute('aria-current', 'page')
-      tabs.append(anchor)
+      tabs.append(link(bookPath(library, id, edition.id), edition.name, 'version-tab'))
     }
     const body = element('div', 'work-body')
     content.replaceChildren(heading, ...(!book.workId ? [workInformationPanel(book, signal, (next) => { title.querySelector('h1')!.textContent = next.title })] : []), tabs, body)
-    if (selected) {
-      body.append(notice(t('reader.openingEditableVersion')))
-      const { renderEdition } = await import('./documents/editor-view')
-      await renderEdition(body, root, book, selected, signal, registerLeave)
-      return
-    }
     if (editionId) {
       body.append(notice(t('reader.thisEditableVersionHasBeenRemovedFromThe'), true))
       return

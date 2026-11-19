@@ -55,6 +55,29 @@ jobs:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npm run test:webkit
 
+  # The desktop web pane in Electron: private sessions, refused permissions, blocked schemes,
+  # certificate errors and the native view's placement. Every page comes from a local test site;
+  # the throwaway certificate is made by the runner's openssl.
+  web-pane-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install-deps chromium && sudo apt-get install -y xvfb
+      - run: npm run build
+      - run: xvfb-run -a npm run test:web-pane
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: web-pane-checks
+          path: test-results/web-pane/**/error-context.md
+          retention-days: 7
+
   windows-tests:
     runs-on: windows-2025
     timeout-minutes: 20
@@ -68,7 +91,8 @@ jobs:
         id: plan
         run: node desktop/release-plan.mjs --github-output
       - run: npm ci
-      - run: npm run build:windows
+      - id: package
+        run: npm run build:windows
       - name: Test the installed Windows app
         run: |
           $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
@@ -95,6 +119,17 @@ jobs:
           path: |
             dist-windows/New-World-Setup-*-x64.exe
             dist-windows/New-World-lang-*.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      # Pull requests into a branch other than main (an integration branch such as feat/ui-revamp)
+      # keep the installer for hand testing, whether or not the tests passed. Pull requests into
+      # main and the release flow are unchanged.
+      - uses: actions/upload-artifact@v6
+        if: always() && github.event_name == 'pull_request' && github.base_ref != 'main' && steps.package.outcome == 'success'
+        with:
+          name: windows-x64-installer-pr${{ github.event.pull_request.number }}
+          path: dist-windows/New-World-Setup-*-x64.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -148,7 +183,7 @@ jobs:
 
   release:
     if: github.repository == 'littleboylinlin/New_World' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [browser-tests, webkit-tests, windows-tests, macos-tests]
+    needs: [browser-tests, webkit-tests, web-pane-tests, windows-tests, macos-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency: desktop-release

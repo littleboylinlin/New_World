@@ -1,6 +1,6 @@
 {
   "name": "new-world",
-  "version": "0.23.1",
+  "version": "0.24.0",
   "description": "本地小说管理器与写作工作台",
   "author": "小男孩",
   "license": "GPL-3.0-or-later",
@@ -19,6 +19,7 @@
     "test": "npm run build && node --experimental-strip-types --test tests/unit/*.mjs && playwright test --project=chromium",
     "test:webkit": "npm run build && playwright test --project=webkit",
     "test:desktop": "playwright test --config desktop/playwright.config.mjs",
+    "test:web-pane": "playwright test --config desktop/playwright-web.config.mjs",
     "predev": "node scripts/build-language-packs.mjs",
     "build:macos": "npm run build && node desktop/build-macos.mjs",
     "test:macos": "playwright test --config desktop/playwright-macos.config.mjs"

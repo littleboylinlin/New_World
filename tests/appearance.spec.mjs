@@ -1,5 +1,6 @@
 import { startWork } from './navigation-helpers.mjs'
 import { expect, test } from './app-test.mjs'
+import { editorAction } from './editor-helpers.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
 const root = (page) => page.locator('html')
@@ -94,7 +95,7 @@ test('设置中可分别选择中英文字体，米黄主题不改变导出样�
   await page.locator('.settings-back').click()
   await expect(textArea(page)).toHaveCSS('font-family', /^Georgia, Gelasio, "Kaiti SC"/)
 
-  await page.getByRole('button', { name: '导出', exact: true }).click()
+  await editorAction(page, '导出')
   const exporting = page.getByRole('dialog', { name: '导出编辑稿' })
   await exporting.getByRole('radio', { name: 'PDF' }).check()
   const paper = exporting.locator('.export-preview-page')

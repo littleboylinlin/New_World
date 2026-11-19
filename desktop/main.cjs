@@ -9,6 +9,7 @@ const windowTheme = require('./window-theme.cjs')
 const spelling = require('./spelling.cjs')
 const backups = require('./backup.cjs')
 const capture = require('./capture.cjs')
+const { createWebPanes } = require('./web-pane.cjs')
 const { loginItems, backgroundFlag } = require('./login-item.cjs')
 const login = loginItems(app, process.platform)
 const projectFiles = require('./project-files.cjs')
@@ -18,6 +19,8 @@ const {
   isTrustedMainRenderer,
   isTrustedTaskNotification,
   isTrustedAppRenderer,
+  isReadingRoute,
+  isTrustedReadingRenderer,
   shouldCancelClientConfirmations,
 } = require('./ipc-guard.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
@@ -90,6 +93,10 @@ function trustedMainRenderer(event) {
 
 function trustedAppRenderer(event) {
   return isTrustedAppRenderer(event, { appUrl, mainWindow, captureWindow })
+}
+
+function trustedReadingRenderer(event) {
+  return isTrustedReadingRenderer(event, { appUrl, readingWindows })
 }
 
 function rejectPendingAiDispatches(reason) {
@@ -233,7 +240,7 @@ ipcMain.handle('new-world:reset-storage-location', (event) => {
 })
 
 ipcMain.handle('new-world:get-language', (event) => {
-  if (!trustedAppRenderer(event) || !languages?.current) throw new Error('Invalid language request')
+  if (!(trustedAppRenderer(event) || trustedReadingRenderer(event)) || !languages?.current) throw new Error('Invalid language request')
   return languages.current
 })
 
@@ -553,6 +560,40 @@ function openCapture() {
   captureWindow.webContents.send('new-world:capture-shown')
 }
 
+// Web panes: private web pages placed over their pane in the main window (see web-pane.cjs).
+const webPanes = createWebPanes({
+  electron: require('electron'),
+  window: () => mainWindow,
+  send: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('new-world:web-state', state) },
+  command: (entry) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('new-world:web-keep', entry) },
+  t: (key, values) => t(key, values),
+})
+const webActions = new Set(['create', 'navigate', 'back', 'forward', 'reload', 'stop', 'place', 'capture', 'selection', 'keep', 'focus', 'openOutside', 'state', 'close'])
+
+ipcMain.handle('new-world:web', (event, action, id, ...args) => {
+  if (!trustedMainRenderer(event) || !webActions.has(action)) throw new Error(t('main.invalidSettingsRequest'))
+  return webPanes[action](id, ...args)
+})
+
+// Reading windows: one chapter or original file each, read-only, opened from the editor's split view.
+const readingWindows = new Set()
+
+ipcMain.handle('new-world:open-reading-window', (event, hash) => {
+  if (!trustedMainRenderer(event) || !isReadingRoute(hash)) throw new Error(t('main.invalidSettingsRequest'))
+  const [x, y] = mainWindow.getPosition()
+  const offset = 36 * (readingWindows.size + 1)
+  const reading = new BrowserWindow({
+    width: 760, height: 820, minWidth: 360, minHeight: 320, x: x + offset, y: y + offset,
+    backgroundColor: windowBackground(), icon: join(__dirname, 'icon.png'),
+    webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: false },
+  })
+  if (process.platform !== 'darwin') reading.setMenuBarVisibility(false)
+  harden(reading.webContents, reading, false)
+  readingWindows.add(reading)
+  reading.on('closed', () => readingWindows.delete(reading))
+  void reading.loadURL(`${appUrl}${hash}`).catch(() => {})
+})
+
 /** Runs a page command in the main window, opening it first when needed. */
 function command(value, show = true) {
   if (show || !mainWindow) showWindow()
@@ -732,9 +773,13 @@ function openWindow(visible = true) {
     rejectPendingAiDispatches('Application window closed.')
     // A hidden quick note window must not keep the app running once the main window is gone.
     if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
+    for (const reading of readingWindows) if (!reading.isDestroyed()) reading.destroy()
+    void webPanes.closeAll()
   })
   contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
+      // The page that placed the web panes is going away; so do they.
+      void webPanes.closeAll()
       aiRendererReady = false
       rejectPendingAiDispatches('Application window reloaded.')
     }
@@ -861,9 +906,15 @@ if (!app.requestSingleInstanceLock()) {
   app.on('open-file', (event, path) => { event.preventDefault(); queueProjects(projectFiles.projectPaths([path])) })
   queueProjects(projectFiles.projectPaths(process.argv))
   app.on('activate', () => { if (desktopStarted) showWindow() })
-  app.on('before-quit', () => {
+  let webCleared = false
+  app.on('before-quit', (event) => {
     forceQuit = true
     void aiBridge?.stop()
+    // Empty every private web session before the app goes.
+    if (!webCleared && webPanes.size()) {
+      event.preventDefault()
+      void webPanes.closeAll().finally(() => { webCleared = true; app.quit() })
+    }
   })
   app.on('window-all-closed', () => app.quit())
   app.on('will-quit', () => {

@@ -1,5 +1,6 @@
 import { expect, test } from './app-test.mjs'
 import { annotationNovel, annotationRows, createAnnotation, readingBody, selectReading } from './annotation-helpers.mjs'
+import { editorAction } from './editor-helpers.mjs'
 
 const note = '窗外的灯光暗了下来，远处有人缓缓走过。'
 
@@ -99,7 +100,7 @@ test('行间预览不改变任何正文行、透明文字色与高亮色分别�
   await page.goto('/#/original')
   await expect(page.locator('.shelf-page h1')).toHaveText('写作')
   await page.goto(url)
-  await page.getByRole('button', { name: '阅读模式' }).click()
+  await editorAction(page, '阅读模式')
   await readingBody(page).evaluate((node) => node.scrollIntoView({ block: 'start' }))
   await expect(marker).toBeVisible()
   expect((await annotationRows(page))[0].readingAnnotations.items[0]).toEqual({ ...saved, display: 'inline' })
@@ -139,6 +140,8 @@ for (const descendingIds of [false, true]) test(`长批注窄窗口截断，同�
   await page.mouse.click(5, 5)
   await page.screenshot({ path: testInfo.outputPath('editor-inline-ellipsis.png') })
   await page.evaluate(() => document.documentElement.dataset.lineHeight = 'compact')
+  // The notes are placed again on the next frames after the line height changes.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   await expectLightweight(page)
   await page.screenshot({ path: testInfo.outputPath('editor-inline-narrow.png') })
   await page.setViewportSize({ width: 320, height: 480 })
@@ -168,13 +171,15 @@ test('拖动全过程不出现工具栏，正反向/跨段选择释放后定位�
     for (let i = 1; i <= 6; i++) {
       await page.mouse.move(from.x + (to.x - from.x) * i / 6, from.y + (to.y - from.y) * i / 6)
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
-      await expect(page.locator('.annotation-selection')).toBeHidden()
+      await expect(page.locator('.selection-toolbar')).toBeHidden()
     }
     await page.mouse.up()
-    await expect(page.locator('.annotation-selection')).toBeVisible()
-    const box = await page.locator('.annotation-selection').boundingBox()
+    await expect(page.locator('.selection-toolbar')).toBeVisible()
+    // Let the short entrance animation settle before measuring where the tools sit.
+    await page.locator('.selection-toolbar').evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)))
+    const box = await page.locator('.selection-toolbar').boundingBox()
     await page.mouse.move(3, 3)
-    expect(await page.locator('.annotation-selection').boundingBox()).toEqual(box)
+    expect(await page.locator('.selection-toolbar').boundingBox()).toEqual(box)
     await page.keyboard.press('Escape')
   }
   await readingBody(page).focus()
@@ -185,9 +190,9 @@ test('拖动全过程不出现工具栏，正反向/跨段选择释放后定位�
   await page.keyboard.down('Shift')
   await page.keyboard.press('ArrowRight')
   await page.keyboard.press('ArrowRight')
-  await expect(page.locator('.annotation-selection')).toBeHidden()
+  await expect(page.locator('.selection-toolbar')).toBeHidden()
   await page.keyboard.up('Shift')
-  await expect(page.locator('.annotation-selection')).toBeVisible()
+  await expect(page.locator('.selection-toolbar')).toBeVisible()
   await createAnnotation(page, '键盘选区的批注', 'inline')
   expect((await annotationRows(page))[0].readingAnnotations.items[0].anchor.quote.length).toBeGreaterThan(0)
 })
@@ -205,7 +210,7 @@ test('v0.17.0 的旧行间批注无需重写即可轻量显示，ID、锚点与�
   }))
   const legacy = (await annotationRows(page))[0].readingAnnotations
   await page.reload()
-  await page.getByRole('button', { name: '阅读模式' }).click()
+  await editorAction(page, '阅读模式')
   await readingBody(page).evaluate((node) => node.scrollIntoView({ block: 'start' }))
   await expectLightweight(page)
   expect((await annotationRows(page))[0].readingAnnotations).toEqual(legacy)

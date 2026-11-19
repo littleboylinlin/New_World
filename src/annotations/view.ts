@@ -11,7 +11,26 @@ import { inlineAnnotationLayer } from './inline-view'
 import './annotations.css'
 
 /** Owns only reading UI. All listeners, timers and portals live exactly as long as the surface. */
-export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement, target: AnnotationTarget, parentSignal: AbortSignal) {
+export interface ReadingAnnotationOptions {
+  /**
+   * The page shows its own selection tools and keeps the list in a panel of its own: the
+   * floating "add" button is left out and the list is always expanded.
+   */
+  embedded?: boolean
+  onChange?: (count: number) => void
+}
+
+export interface ReadingAnnotations {
+  (): void
+  /** Opens the new-note form for the current selection; false when nothing usable is selected. */
+  addFromSelection: () => boolean
+  setAllDisplay: (display: 'inline' | 'mark') => void
+  count: () => number
+}
+
+export function readingAnnotations(
+  surface: AnnotationSurface, host: HTMLElement, target: AnnotationTarget, parentSignal: AbortSignal, options: ReadingAnnotationOptions = {},
+): ReadingAnnotations {
   const lifetime = new AbortController()
   const { signal } = lifetime
   const previousTabIndex = surface.element.getAttribute('tabindex')
@@ -41,6 +60,7 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   message.setAttribute('role', 'alert')
   message.hidden = true
   manager.append(summary, message, list)
+  if (options.embedded) { manager.open = true; manager.classList.add('annotation-manager-embedded') }
   host.append(manager)
 
   function portal(className: string) {
@@ -226,6 +246,7 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
 
   function paint() {
     if (dead) return
+    options.onChange?.(data.items.length)
     summary.textContent = t('annotations.count', [data.items.length])
     const validItems = data.items.filter(valid)
     surface.render(validItems)
@@ -294,6 +315,7 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   popup.addEventListener('focusin', pinPopup, { signal })
 
   function refreshSelection() {
+    if (options.embedded) return hideSelection()
     if (dead || !ready || selecting || keyboardSelecting || !selectionArmed || dialog?.isConnected || document.querySelector('dialog[open]')
       || document.activeElement?.matches('input, textarea, select')) return hideSelection()
     const selection = surface.selection()
@@ -398,7 +420,10 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
   window.addEventListener('resize', reposition, { signal })
   window.visualViewport?.addEventListener('resize', reposition, { signal })
   window.visualViewport?.addEventListener('scroll', reposition, { signal })
-  manager.addEventListener('toggle', () => { hideSelection(); closePopup() }, { signal })
+  manager.addEventListener('toggle', () => {
+    if (options.embedded && !manager.open) manager.open = true
+    hideSelection(); closePopup()
+  }, { signal })
 
   void Promise.all([sourceHash(surface.source), readAnnotations(target)]).then(([digest, stored]) => {
     if (dead) return
@@ -414,5 +439,16 @@ export function readingAnnotations(surface: AnnotationSurface, host: HTMLElement
     else surface.element.setAttribute('tabindex', previousTabIndex)
   }
   parentSignal.addEventListener('abort', destroy, { once: true })
-  return destroy
+  return Object.assign(destroy, {
+    addFromSelection() {
+      const selection = ready && !dead ? surface.selection() : undefined
+      if (!selection) return false
+      edit(undefined, selection)
+      return true
+    },
+    setAllDisplay(display: 'inline' | 'mark') {
+      if (data.items.length) void mutate(data.items.map((item) => ({ ...item, display })))
+    },
+    count: () => data.items.length,
+  })
 }

@@ -125,10 +125,25 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
     if (Math.abs(delta) > .5) scrollRoot.scrollTo({ top: scroll + delta, behavior: 'instant' })
     if (centerLine) {
       const centerDelta = (coords.top + coords.bottom - centeredTop - visible.bottom) / 2
-      if (Math.abs(centerDelta - delta) > 2) {
-        scrollRoot.scrollTo({ top: scroll + centerDelta, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
-      }
+      if (Math.abs(centerDelta - delta) > 2) glideTo(scroll + centerDelta)
     }
+  }
+
+  // A smooth scroll inside a pane can stall when the page is busy; it is aimed once, and if it
+  // has not arrived shortly after, the pane is set where it was going.
+  let glideTarget: number | undefined
+  let glideTimer = 0
+  function glideTo(top: number) {
+    const target = Math.max(0, Math.min(top, scrollRoot.scrollHeight - scrollRoot.clientHeight))
+    if (reducedMotion.matches) { scrollRoot.scrollTo({ top: target, behavior: 'instant' }); return }
+    if (glideTarget !== undefined && Math.abs(glideTarget - target) < 1) return
+    glideTarget = target
+    scrollRoot.scrollTo({ top: target, behavior: 'smooth' })
+    window.clearTimeout(glideTimer)
+    glideTimer = window.setTimeout(() => {
+      if (glideTarget !== undefined && Math.abs(scrollRoot.scrollTop - glideTarget) > 1) scrollRoot.scrollTo({ top: glideTarget, behavior: 'instant' })
+      glideTarget = undefined
+    }, 450)
   }
 
   function measure() {
@@ -197,6 +212,8 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
   }
   function cancelReveal() {
     reveal = inputPending = false
+    glideTarget = undefined
+    window.clearTimeout(glideTimer)
     // Stop an in-flight smooth scroll as soon as the user starts browsing.
     if (typewriter) scrollRoot.scrollTo({ top: scrollRoot.scrollTop, behavior: 'instant' })
   }
@@ -295,6 +312,7 @@ export function writingMotion(editor: Editor, paper: HTMLElement) {
       observer.disconnect()
       mutations.disconnect()
       cancelAnimationFrame(frame)
+      window.clearTimeout(glideTimer)
       follower.destroy()
       composition.destroy()
       caret.remove()
