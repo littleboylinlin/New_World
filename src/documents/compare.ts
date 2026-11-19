@@ -203,9 +203,13 @@ export function openWindow(source: PaneSource) {
   if (source.kind !== 'web') void window.newWorldDesktop?.openReadingWindow?.(sourceRoute(source))
 }
 
-/** The source a work opens to by default: the chapter last read in its newest version, else its file. */
-export function defaultSource(work: CatalogWork, lastChapterOf: (edition: Edition) => string | undefined): ReferenceSource | undefined {
-  const edition = work.editions.at(-1)
+/**
+ * The source a work opens to by default: the chapter last read in its newest version, else its file.
+ * Given a version, the chapter last read in that version instead.
+ */
+export function defaultSource(work: CatalogWork, lastChapterOf: (edition: Edition) => string | undefined, editionId?: string): ReferenceSource | undefined {
+  const edition = editionId ? work.editions.find(({ id }) => id === editionId) : work.editions.at(-1)
+  if (editionId && !edition?.chapters.length) return undefined
   if (edition?.chapters.length) {
     const remembered = lastChapterOf(edition)
     const chapterId = edition.chapters.some(({ id }) => id === remembered) ? remembered! : edition.chapters[0].id

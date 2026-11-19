@@ -715,6 +715,8 @@ export async function renderEdition(
     editor?.destroy()
     paper.replaceChildren()
     chapter = next
+    // The comparison list marks the chapter being edited.
+    splitEditor.refreshPanel()
     change = saved = 0
     status.textContent = t('editor.saved')
     error.hidden = recover.hidden = true

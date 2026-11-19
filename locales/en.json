@@ -1231,7 +1231,7 @@
   "compare.empty": "No works to read side by side yet.",
   "compare.entryHint": "Click to open on the right, or drag it to any side of the text",
   "compare.entryMenu": "Ways to open {0}",
-  "compare.filter": "Filter works",
+  "compare.filter": "Search works, versions or chapters",
   "compare.hint": "Drop it on the text, or right-click (long-press) to choose where it opens. Side-by-side text is read-only.",
   "compare.loading": "Opening…",
   "compare.missing": "No longer on the shelf",
@@ -1292,5 +1292,9 @@
   "web.toTask": "Make a to-do",
   "web.tools": "Web tools",
   "web.untitled": "Untitled page",
-  "web.withLink": "Include link"
+  "web.withLink": "Include link",
+  "compare.editing": "Editing",
+  "compare.currentVersion": "Current version",
+  "compare.chapterCount": "{0} chapters",
+  "compare.switchSource": "Read something else"
 }

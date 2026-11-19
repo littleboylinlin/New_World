@@ -1,6 +1,8 @@
 import { t } from './i18n'
 import { appearanceMenu } from './appearance-view'
-import { parseSourceRoute } from './documents/compare'
+import { parseSourceRoute, readCatalog, sourceRoute } from './documents/compare'
+import type { CatalogWork } from './documents/compare'
+import { sourceMenu } from './documents/compare-menu'
 import { referencePane } from './documents/reference-pane'
 import { selectionToolbar } from './documents/selection-toolbar'
 import { openCaptureDialog } from './idea-capture'
@@ -27,12 +29,16 @@ if (!source) {
   const bar = element('header', 'editor-toolbar reading-window-bar')
   const row = element('div', 'toolbar-row')
   const names = element('div', 'toolbar-title')
-  const name = element('span', 'toolbar-name work-name toolbar-name-text')
+  // The work's name switches to anything else in the library, by the same work → version → chapter
+  // list the editor offers.
+  const workName = button('', 'toolbar-name work-name')
+  const name = element('span', 'toolbar-name-text')
+  workName.append(name, element('span', 'dropdown-caret', '▾'))
   const chapter = button('', 'toolbar-name chapter-name')
   const chapterText = element('span', 'toolbar-name-text')
   chapter.append(chapterText, element('span', 'dropdown-caret', '▾'))
   const line = element('div', 'toolbar-names')
-  line.append(name, element('span', 'toolbar-name-separator', '/'), chapter)
+  line.append(workName, element('span', 'toolbar-name-separator', '/'), chapter)
   names.append(line, element('div', 'toolbar-status', t('compare.readOnly')))
   const spacer = element('div', 'reading-window-spacer')
   row.append(names, spacer, appearanceMenu())
@@ -46,6 +52,8 @@ if (!source) {
       chapterText.textContent = pane.part()
       chapter.disabled = pane.chapters().length < 2
       document.title = t('window.title', [pane.part() || pane.title(), pane.title()])
+      // Reopening the window (or reloading it) comes back to what it shows now.
+      history.replaceState(null, '', sourceRoute(pane.source()))
     },
   })
   // The window has no corner menu; switching chapters lives under the chapter's name.
@@ -57,6 +65,14 @@ if (!source) {
       action: () => { void pane.switchChapter(id) },
     }))
   }, 'chapter-menu')
+  let catalog: CatalogWork[] = []
+  const loadCatalog = () => readCatalog().then((next) => { catalog = next }, () => {})
+  void loadCatalog()
+  // Another window may have added a work or a chapter meanwhile.
+  window.addEventListener('focus', () => { void loadCatalog() })
+  menuButton(workName, t('compare.switchSource'), () => sourceMenu(catalog, undefined, (next) => {
+    void pane.show(next)
+  }, pane.source()), 'chapter-menu')
   page.append(bar, pane.element)
   main.append(page)
   selectionToolbar({

@@ -1231,7 +1231,7 @@
   "compare.empty": "还没有可以对照的作品。",
   "compare.entryHint": "点击在右侧打开，也可以拖到正文区的任意一侧",
   "compare.entryMenu": "{0}的打开方式",
-  "compare.filter": "筛选作品",
+  "compare.filter": "搜索作品、版本或章节",
   "compare.hint": "拖到正文区放下，或右键（长按）选择打开位置。对照内容只读。",
   "compare.loading": "正在打开…",
   "compare.missing": "已不在书架上",
@@ -1292,5 +1292,9 @@
   "web.toTask": "转成待办",
   "web.tools": "网页工具",
   "web.untitled": "未命名网页",
-  "web.withLink": "附带链接"
+  "web.withLink": "附带链接",
+  "compare.editing": "编辑中",
+  "compare.currentVersion": "当前版本",
+  "compare.chapterCount": "{0} 章",
+  "compare.switchSource": "换一个对照"
 }
