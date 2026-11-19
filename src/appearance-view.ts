@@ -275,8 +275,15 @@ export function mountAppearanceSettings(section: HTMLElement) {
   typewriterBox.addEventListener('change', () => updateAppearance({ typewriter: typewriterBox.checked }))
   follow(typewriterBox, (value) => { typewriterBox.checked = value.typewriter }, true)
   typewriter.append(typewriterBox, element('span', '', t('appearance.typewriter')))
+  const smoothTyping = element('label', 'appearance-check')
+  const smoothTypingBox = element('input')
+  smoothTypingBox.type = 'checkbox'
+  smoothTypingBox.addEventListener('change', () => updateAppearance({ smoothTyping: smoothTypingBox.checked }))
+  follow(smoothTypingBox, (value) => { smoothTypingBox.checked = value.smoothTyping }, true)
+  smoothTyping.append(smoothTypingBox, element('span', '', t('appearance.smoothTyping')))
   writingGroup.append(
     element('h3', 'settings-group-title', t('appearance.writing')),
+    smoothTyping, element('p', 'dialog-help', t('appearance.smoothTypingHint')),
     typewriter, element('p', 'dialog-help', t('appearance.typewriterHint')),
   )
   // Only the desktop app plays an opening animation, on a cold start.

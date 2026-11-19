@@ -790,6 +790,11 @@ function openWindow(visible = true, intro = false) {
     mainWindow.on('maximize', reportMaximized)
     mainWindow.on('unmaximize', reportMaximized)
   }
+  // Full screen (F11, or the green button on a Mac) hides the system's window buttons; the header follows.
+  const shown = mainWindow
+  const reportFullScreen = () => { if (!contents.isDestroyed()) contents.send('new-world:window-fullscreen', shown.isFullScreen()) }
+  mainWindow.on('enter-full-screen', reportFullScreen)
+  mainWindow.on('leave-full-screen', reportFullScreen)
   return mainWindow.loadURL(intro ? `${appUrl}?intro` : appUrl)
 }
 
@@ -807,6 +812,10 @@ ipcMain.on('new-world:window-maximize', (event) => windowControl(event, (window)
 ipcMain.on('new-world:window-close', (event) => windowControl(event, (window) => window.close()))
 ipcMain.handle('new-world:window-is-maximized', (event) => (
   trustedMainRenderer(event) ? mainWindow.isMaximized() : false
+))
+ipcMain.on('new-world:window-exit-fullscreen', (event) => windowControl(event, (window) => window.setFullScreen(false)))
+ipcMain.handle('new-world:window-is-fullscreen', (event) => (
+  trustedMainRenderer(event) ? mainWindow.isFullScreen() : false
 ))
 
 ipcMain.on('new-world:close-result', (event, saved) => {

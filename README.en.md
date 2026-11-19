@@ -10,6 +10,8 @@ The editor caret follows the current line's text size and theme. Typing on the s
 
 “Settings → Appearance → Typewriter mode” is off by default. When enabled, typing and newlines keep the current line near the middle of the editor. Scrolling to browse pauses following until you type again. Caret transitions and centering respect the system's reduced-motion preference.
 
+“Settings → Appearance → Smooth caret and typing” is on by default. Turn it off to use the system caret in the text and in every field; the change applies at once and is saved on this device.
+
 Word counts, the chapter outline and search results update after about 400ms without typing; autosave waits about 500ms. Manual saves and leaving a chapter still save immediately. Continuous typing no longer repeatedly scans the whole chapter or serializes save snapshots, so displayed counts may lag slightly. Database v9, project Schema 3 and full-library backup format 2 remain as in v0.19.0. See the [v0.20.1 release notes](docs/releases/v0.20.1.md).
 
 ## Local task workspace (v0.19.0)
@@ -64,7 +66,7 @@ Pick a language in "Settings → General" and apply it. The app saves your text 
 
 Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.20.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
 
-The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
+The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. In full screen the top-right buttons become “Exit full screen” and close, and on macOS the app bar takes back the space of the traffic lights. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
 ## Appearance
 
@@ -146,6 +148,8 @@ Jot an idea down the moment it comes, and pick it up later while writing.
 ## Writing stats
 
 The home page shows writing stats below the library lists: a heatmap that records words per day, plus cards for the day streak and total words.
+
+“Reminders and tasks” on the home page lists tasks that are overdue, due today, or due or reminding within the next 7 days, up to 8; “View all” opens the rest on the task page. Tick one to complete it (with undo). A task linked to a work opens that chapter and passage; any other task opens its details. On wide windows the card takes a column of its own on the right. “Recent projects” switches between a list and covers, remembered on this device.
 
 - The heatmap covers the past year; each square is one day, and darker means more written that day. Pointing at a square or focusing it with the arrow keys shows that day's date and word count; days with no writing show "No writing", and today is marked separately.
 - Counts follow the editor: each Chinese character or Chinese punctuation mark counts as one, and each English (or other space-separated) word counts as one. A day is credited only when a save increases the word count; deleting or editing text never subtracts.

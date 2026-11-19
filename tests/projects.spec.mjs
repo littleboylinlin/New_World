@@ -301,7 +301,7 @@ test('现有 v7 书库升级到 v10 后完整保留数据和索引主键', async
   const before = await page.evaluate(databaseSnapshot)
   await page.goto('/#/writing')
   await expect(page.getByRole('button', { name: importLabel })).toBeVisible()
-  await expect(page.locator('#trash-unread')).toBeVisible()
+  await expect(page.getByRole('link', { name: '回收站', exact: true })).not.toHaveAttribute('aria-describedby')
   const version = await page.evaluate(async () => {
     const db = await new Promise((r) => { const q = indexedDB.open('new-world-library'); q.onsuccess = () => r(q.result) })
     const books = db.transaction('books').objectStore('books')

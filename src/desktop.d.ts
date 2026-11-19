@@ -95,6 +95,10 @@ interface Window {
     closeWindow: () => void
     isMaximized: () => Promise<boolean>
     onMaximizeChange: (listener: (maximized: boolean) => void) => void
+    /** Leaves full screen; the header shows this button in place of minimise and maximise. */
+    exitFullScreen?: () => void
+    isFullScreen?: () => Promise<boolean>
+    onFullScreenChange?: (listener: (fullScreen: boolean) => void) => void
     getCaptureState?: () => Promise<CaptureState>
     setCaptureShortcut?: (shortcut: string) => Promise<CaptureShortcutResult>
     hideCapture?: () => Promise<void>

@@ -2,7 +2,7 @@ import { expect, test } from './app-test.mjs'
 
 async function seedHomeWorkspace(page) {
   await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
-  await expect(page.locator('.recent-projects > div')).not.toBeEmpty()
+  await expect(page.locator('.recent-projects .recent-content')).not.toBeEmpty()
   await page.evaluate(async () => {
     const db = await new Promise((resolve, reject) => {
       const req = indexedDB.open('new-world-library')
@@ -44,7 +44,7 @@ async function seedHomeWorkspace(page) {
   })
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.locator('.recent-list strong')).toHaveText(['海港灯塔', '雾海航行记'])
-  await expect(page.locator('.home > section')).toHaveCount(2)
+  await expect(page.locator('.home > section')).toHaveCount(3)
   await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
 }
 

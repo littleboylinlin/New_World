@@ -180,7 +180,7 @@
 .editor-paper { position: relative; min-height: 100%; padding: clamp(14px, 3vw, 38px) clamp(11px, 2.4vw, 28px); background: var(--surface); }
 .novel-body { max-width: var(--text-width, 44rem); min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: var(--text-line-height, 1.95); overflow-wrap: anywhere; caret-color: var(--accent); }
 .novel-body::selection, .novel-body ::selection { background: var(--tint); }
-.smooth-writing:not(.native-caret) .novel-body { caret-color: transparent; }
+.smooth-writing:not(.native-caret, .plain-caret) .novel-body { caret-color: transparent; }
 .smooth-writing .novel-body[contenteditable="true"] { padding-bottom: max(56px, 2lh, var(--writing-bottom-space, 0px)); }
 /* The smooth caret and the reading box are drawn by src/typing. */
 .typewriter-writing .novel-body[contenteditable="true"] { padding-block: var(--typewriter-space, 40vh) max(var(--typewriter-space, 40vh), var(--writing-bottom-space, 0px)); }

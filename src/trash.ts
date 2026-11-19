@@ -30,12 +30,6 @@ export async function listTrash(): Promise<TrashItem[]> {
   }))
 }
 
-export async function hasTrashSince(viewedAt: number) {
-  const db = await openDatabase()
-  const index = db.transaction('trash').objectStore('trash').index('byDeletedAt')
-  return await resultOf(index.getKey(IDBKeyRange.lowerBound(viewedAt, true))) !== undefined
-}
-
 // Restoring puts the saved rows back in one transaction, or changes nothing when their place is gone.
 export async function restoreTrash(id: string) {
   const db = await openDatabase()

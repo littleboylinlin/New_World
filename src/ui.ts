@@ -33,6 +33,7 @@ const paths = {
   unarchive: 'M3 4h18v4H3zm2 4v12h14V8m-7 3v6m-3-3 3-3 3 3',
   backup: 'M12 3v12m-4-4 4 4 4-4M4 17v3h16v-3',
   check: 'm5 12 5 5 9-10',
+  bell: 'M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9Zm4.3 11a2 2 0 0 0 3.4 0',
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm5 12 4 4',
   close: 'M6 6l12 12M18 6 6 18',

@@ -25,10 +25,6 @@ export function mountSidebar() {
   let inWork = false
   let collapsed = preferenceState.get() === 'yes'
   let drawer = false
-  const trashDot = element('span', 'trash-dot')
-  trashDot.id = 'trash-unread'
-  trashDot.hidden = true
-  trashDot.append(element('span', 'visually-hidden', t('trash.newItems')))
 
   for (const [id, path, key, glyph] of entries) {
     const label = t(key)
@@ -37,7 +33,6 @@ export function mountSidebar() {
     entry.setAttribute('aria-label', label)
     entry.title = label
     entry.append(icon(glyph), element('span', 'sidebar-label', label))
-    if (id === 'trash') entry.append(trashDot)
     nav.append(entry)
     links.set(id, entry)
   }
@@ -105,6 +100,6 @@ export function mountSidebar() {
       }
       paint()
     },
-    trashLink: links.get('trash')!, trashDot, settingsEntry: links.get('settings')!,
+    settingsEntry: links.get('settings')!,
   }
 }

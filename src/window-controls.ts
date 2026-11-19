@@ -6,6 +6,7 @@ import type { IconName } from './ui'
 export function mountWindowControls() {
   const desktop = window.newWorldDesktop
   const actions = document.querySelector<HTMLElement>('.header-actions')
+  if (desktop) followFullScreen(desktop)
   if (!desktop || desktop.platform === 'darwin' || !actions) return
   const controls = document.createElement('div')
   controls.className = 'window-controls'
@@ -23,8 +24,10 @@ export function mountWindowControls() {
     return control
   }
 
-  addButton(t('window.minimize'), 'minimize', () => desktop.minimizeWindow())
-  const maximize = addButton(t('window.maximize'), 'maximize', () => desktop.toggleMaximizeWindow())
+  addButton(t('window.minimize'), 'minimize', () => desktop.minimizeWindow(), 'window-button window-minimize')
+  const maximize = addButton(t('window.maximize'), 'maximize', () => desktop.toggleMaximizeWindow(), 'window-button window-maximize')
+  // In full screen minimise and maximise make no sense; one button leaves full screen instead.
+  if (desktop.exitFullScreen) addButton(t('window.exitFullScreen'), 'restore', () => desktop.exitFullScreen?.(), 'window-button window-exit-fullscreen')
   addButton(t('window.close'), 'close', () => desktop.closeWindow(), 'window-button window-close')
 
   const showMaximized = (maximized: boolean) => {
@@ -34,4 +37,14 @@ export function mountWindowControls() {
   void desktop.isMaximized().then(showMaximized)
   desktop.onMaximizeChange(showMaximized)
   actions.append(controls)
+}
+/**
+ * Marks the page while the window is in full screen. macOS then hides its traffic lights, so the
+ * header gives their space back; on Windows the header swaps its buttons.
+ */
+function followFullScreen(desktop: NonNullable<typeof window.newWorldDesktop>) {
+  const root = document.documentElement
+  const show = (fullScreen: boolean) => root.classList.toggle('fullscreen', fullScreen)
+  void desktop.isFullScreen?.().then(show, () => {})
+  desktop.onFullScreenChange?.(show)
 }
