@@ -7,7 +7,7 @@ export async function prepareDesktopApp(output) {
   await rm(appDir, { recursive: true, force: true })
   await mkdir(join(appDir, 'desktop'), { recursive: true })
   await mkdir(join(appDir, 'shared'), { recursive: true })
-  const desktopFiles = ['main.cjs', 'preload.cjs', 'language.cjs', 'storage-location.cjs', 'close-behavior.cjs', 'login-item.cjs', 'window-theme.cjs', 'spelling.cjs', 'backup.cjs', 'capture.cjs', 'ai-store.cjs', 'ai-bridge.cjs', 'ipc-guard.cjs', 'project-files.cjs',
+  const desktopFiles = ['main.cjs', 'preload.cjs', 'language.cjs', 'storage-location.cjs', 'close-behavior.cjs', 'login-item.cjs', 'window-theme.cjs', 'spelling.cjs', 'backup.cjs', 'capture.cjs', 'ai-store.cjs', 'ai-bridge.cjs', 'ipc-guard.cjs', 'project-files.cjs', 'web-pane.cjs',
     'icon.png', 'tray.png', 'windows-update.cjs', 'windows-release.mjs', 'macos-update.cjs', 'release.mjs', 'update-download.cjs', 'update-partial.cjs',
     'cleanup.cjs', 'macos-install.cjs', 'macos-replace.cjs', 'macos-swap.js']
   await Promise.all([
