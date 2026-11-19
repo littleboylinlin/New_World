@@ -635,16 +635,24 @@ export async function renderEdition(
     readOnlyNote.hidden = !reference
     findButton.disabled = Boolean(reference && !reference.editor())
     bar.setAvailable('compare', splitEditor.isNarrow() && splitEditor.references().length > 0)
-    refreshChapters()
+    paintChapterName()
     refreshFormat()
   }
 
-  function refreshChapters() {
+  /** The chapter name in the toolbar: the focused pane's. Changing focus touches nothing else. */
+  function paintChapterName() {
     const reference = splitEditor.focusedReference()
     const shown = reference ? reference.part() : chapterInfo().title
     chapterTitle.textContent = shown
     chapterName.title = t('editor.switchChapter')
     chapterName.setAttribute('aria-label', t('editor.switchChapterNamed', [shown]))
+  }
+
+  // The chapter list is rebuilt only when the chapters or the mode change, never for a change of
+  // focus or a pane beside the text loading: a rebuild would pull the entry out from under a press,
+  // a drag or an open menu.
+  function refreshChapters() {
+    paintChapterName()
     navLabel.textContent = t('editor.chapterList105', [edition.chapters.length])
     wordLabels = directory.render()
     refreshWords()

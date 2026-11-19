@@ -179,6 +179,22 @@ test.describe('分块大小与聚焦', () => {
     await expect(page.locator('.main-pane .found-text')).toHaveCount(0)
   })
 
+  test('打开对照、对照加载完成、切换聚焦都不重建章节目录，正在按住或拖动的条目不会被换掉', async ({ page }) => {
+    await seedChapters(page, three)
+    const entry = await chapterItem(page, '第二章').elementHandle()
+    await dragTo(page, chapterItem(page, '第二章'), await areaPoint(page, .85, .5))
+    await expect(referenceText(page)).toContainText('海雾里的第二章。')
+    await chapterText(page).click()
+    await referenceText(page).click()
+    await page.locator('.chapter-name').click()
+    await page.getByRole('menuitemradio', { name: /第三章/ }).click()
+    await expect(referenceText(page)).toContainText('潮第 1 段')
+    expect(await entry.evaluate((node) => node.isConnected)).toBe(true)
+    // The same entry can be dragged again at once.
+    await dragTo(page, chapterItem(page, '第二章'), await areaPoint(page, .25, .94))
+    await expect(referencePanes(page)).toHaveCount(2)
+  })
+
   test('对照块只读：输入不改变内容，可以选中，选中文字只出现「记灵感」并带上文字', async ({ page }) => {
     await seedChapters(page, three)
     await openFromChapterMenu(page, '第二章')
