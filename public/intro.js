@@ -234,7 +234,11 @@
       outside.setAttribute('d', 'M-100000 -100000 H100000 V100000 H-100000 Z ' + roundRect(frame.x, frame.y, frame.width, frame.height, 20))
     }
     placeFrame()
-    inside.setAttribute('opacity', (1 - standard(progress(time, EXPAND_START, REVEAL))).toFixed(3))
+    // The view behind the door and the door itself (edge-on, its foot hangs below the frame) fade as it unfolds.
+    var gone = (1 - standard(progress(time, EXPAND_START, REVEAL))).toFixed(3)
+    inside.setAttribute('opacity', gone)
+    panel.setAttribute('opacity', gone)
+    lines.setAttribute('opacity', gone)
     swing(open > 0 ? 90 * open : 60 * (1 - shut))
     // While the app is still loading the shut door breathes a little light through its edge.
     var breathe = time >= WAIT && !ready ? .5 - .5 * Math.cos(waited / 1200 * Math.PI * 2) : 0
