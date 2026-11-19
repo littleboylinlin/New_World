@@ -285,7 +285,7 @@ test.describe('章节目录', () => {
     await expect.poll(() => chapterTitles(page)).toEqual(['乙', '丙', '甲', '丁'])
   })
 
-  test('键盘 Alt+方向键调整顺序并朗读新位置；右键与「⋯」只有改名和删除', async ({ page }) => {
+  test('键盘 Alt+方向键调整顺序并朗读新位置；右键与「⋯」除了打开位置只有改名和删除', async ({ page }) => {
     await seedChapters(page, [['甲', [paragraph('甲章。')]], ['乙', [paragraph('乙章。')]], ['丙', [paragraph('丙章。')]]])
     const list = page.getByRole('list', { name: '章节' })
     await list.getByRole('button', { name: '丙', exact: true }).focus()
@@ -305,7 +305,8 @@ test.describe('章节目录', () => {
     await expect(page.getByRole('button', { name: '上移' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '重命名章节' })).toHaveCount(0)
     await list.getByRole('button', { name: '乙', exact: true }).click({ button: 'right' })
-    await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([/^重命名章节/, '删除章节'])
+    // The ways to open a chapter beside the text come first (第二期 split panes).
+    await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['在右侧打开', '在下方打开', /^重命名章节/, '删除章节'])
     await page.keyboard.press('Escape')
     await chapterItem(page, '甲').hover()
     await expect(chapterItem(page, '甲').locator('.chapter-more')).toBeVisible()
