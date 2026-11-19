@@ -37,7 +37,10 @@ import { createLinkedTask, takeTaskJump } from '../tasks/links'
 import { hashDocumentContent } from '../confirm-state'
 import { writingMotion } from './writing-motion'
 import { applyPlace, measurePlace } from './place'
-import { mountSplitEditor } from './split-editor'
+import { isWebPane, mountSplitEditor } from './split-editor'
+import { canBrowse } from './web-pane'
+import { keepFromWeb, linkedText } from './web-keep'
+import { webTab } from './web-tab'
 import type { SplitEditor } from './split-editor'
 import type { SelectionTarget } from './selection-toolbar'
 import { rememberEdition, takeOpenRequest } from './compare'
@@ -407,6 +410,7 @@ export async function renderEdition(
       find.chapterMounted()
       paintTarget()
     },
+    onKeep: (kind, entry) => keepFromWeb(kind, entry, { library: edition.library, bookId: edition.bookId, title: book.title }),
   })
   right.insertBefore(bar.add({ id: 'compare', node: splitEditor.toggle, priority: 73, menu: () => [{ label: t('compare.drawer'), icon: 'compare', action: () => splitEditor.toggle.click() }] }), sideButton)
 
@@ -420,6 +424,8 @@ export async function renderEdition(
   tabs.add({ id: 'ideas', label: t('ideas.title'), panel: ideasPanel })
   tabs.add({ id: 'notes', label: t('editor.notesTab'), panel: notesPanel })
   tabs.add({ id: 'compare', label: t('compare.tab'), panel: splitEditor.panel })
+  // Private web pages are a desktop feature; the web version shows no 网页 tab at all.
+  if (canBrowse()) tabs.add({ id: 'web', label: t('web.tab'), panel: webTab((url, where) => splitEditor.openWeb(url, where), splitEditor.openItems, signal) })
   wb.end!.body.append(tabs.element)
 
   // The page keeps one top-level heading for assistive technology; the toolbar shows the name.
@@ -633,7 +639,9 @@ export async function renderEdition(
     workName.title = t('editor.workMenu', [name])
     workName.setAttribute('aria-label', t('editor.workMenu', [name]))
     readOnlyNote.hidden = !reference
+    readOnlyNote.textContent = isWebPane(reference) ? t('web.privateNote') : t('compare.readOnly')
     findButton.disabled = Boolean(reference && !reference.editor())
+    chapterName.disabled = Boolean(reference && reference.chapters().length < 2)
     bar.setAvailable('compare', splitEditor.isNarrow() && splitEditor.references().length > 0)
     paintChapterName()
     refreshFormat()
@@ -862,7 +870,8 @@ export async function renderEdition(
       const list = element('ul', 'ideas-panel-list')
       for (const idea of [...waiting, ...ideas.filter((item) => item.usedAt)]) {
         const item = element('li', idea.usedAt ? 'idea-used' : '')
-        const text = element('p', 'idea-text', idea.text)
+        const text = element('p', 'idea-text')
+        text.append(linkedText(idea.text, canBrowse() ? (url) => splitEditor.openWeb(url) : undefined))
         const insert = button(t('ideas.insert'), 'button button-quiet button-small')
         insert.addEventListener('mousedown', (event) => event.preventDefault())
         insert.addEventListener('click', () => insertIdea(idea))
@@ -983,6 +992,7 @@ export async function renderEdition(
       ...(workHidden ? [{ label: t('editor.workMenu', [work.title]), icon: 'book' as const, children: work.menu }] : []),
       ...overflow,
       ...(overflow.length ? [{ separator: true, label: '' }] : []),
+      ...(canBrowse() ? [{ label: t('web.open'), icon: 'compare' as const, action: () => splitEditor.openWeb() }] : []),
       { label: editing ? t('editor.readingMode') : t('editor.editText'), icon: editing ? 'book' : 'edit', action: () => { void toggleMode() } },
       { label: t('editor.saveAsASeparateVersion'), icon: 'copy', action: saveCopy },
       { label: t('editor.export'), icon: 'download', action: exportVersion },

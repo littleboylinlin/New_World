@@ -5,6 +5,7 @@ import { t } from '../i18n'
 import { listBooks, openDatabase, resultOf } from '../library'
 import type { Book, ImportedBook, LibraryId } from '../library'
 import { readTree } from '../shell/split-tree'
+import { isWebUrl } from '../web-search'
 import type { SplitTree } from '../shell/split-tree'
 import type { Edition, EditionKey } from './model'
 
@@ -12,6 +13,11 @@ import type { Edition, EditionKey } from './model'
 export type ReferenceSource =
   | { kind: 'chapter'; library: LibraryId; bookId: string; editionId: string; chapterId: string }
   | { kind: 'file'; library: LibraryId; bookId: string }
+
+/** A private web page (desktop only). Its address is never stored, so it is never restored. */
+export type WebSource = { kind: 'web'; url?: string }
+/** Anything a pane beside the text can show. */
+export type PaneSource = ReferenceSource | WebSource
 
 export const mainPane = 'main'
 
@@ -30,7 +36,7 @@ export function readSource(raw: unknown): ReferenceSource | undefined {
   return undefined
 }
 
-export function sameSource(a: ReferenceSource, b: ReferenceSource) {
+export function sameSource(a: PaneSource, b: PaneSource) {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
@@ -174,15 +180,17 @@ export function lastEdition(): EditionKey | undefined {
   return { library: raw.library as LibraryId, bookId: raw.bookId, id: raw.id }
 }
 
-export function requestOpen(source: ReferenceSource, placement: OpenPlacement) {
+export function requestOpen(source: PaneSource, placement: OpenPlacement) {
   try { sessionStorage.setItem(pendingKey, JSON.stringify({ source, placement })) } catch { /* The work still opens. */ }
 }
 
-export function takeOpenRequest(): { source: ReferenceSource; placement: OpenPlacement } | undefined {
+export function takeOpenRequest(): { source: PaneSource; placement: OpenPlacement } | undefined {
   try {
     const raw = JSON.parse(sessionStorage.getItem(pendingKey) ?? 'null')
     sessionStorage.removeItem(pendingKey)
-    const source = readSource(raw?.source)
+    // A web page asked for from outside the editor (a link in an idea) opens once and is gone.
+    const web = raw?.source?.kind === 'web' && typeof raw.source.url === 'string' && isWebUrl(raw.source.url) ? { kind: 'web' as const, url: raw.source.url as string } : undefined
+    const source = web ?? readSource(raw?.source)
     if (source) return { source, placement: raw.placement === 'bottom' ? 'bottom' : 'right' }
   } catch { /* Nothing waiting. */ }
   return undefined
@@ -191,8 +199,8 @@ export function takeOpenRequest(): { source: ReferenceSource; placement: OpenPla
 /** Whether this app can open a separate reading window (only the desktop app can). */
 export const canOpenWindow = () => Boolean(window.newWorldDesktop?.openReadingWindow)
 
-export function openWindow(source: ReferenceSource) {
-  void window.newWorldDesktop?.openReadingWindow?.(sourceRoute(source))
+export function openWindow(source: PaneSource) {
+  if (source.kind !== 'web') void window.newWorldDesktop?.openReadingWindow?.(sourceRoute(source))
 }
 
 /** The source a work opens to by default: the chapter last read in its newest version, else its file. */

@@ -7,6 +7,8 @@ import { mountAppearanceSettings } from './appearance-view'
 import { mountAiSettings } from './ai/settings-view'
 import { mountBackupView } from './backup-view'
 import { mountCaptureSettings } from './idea-capture'
+import { readSearchEngine, saveSearchEngine, searchEngines } from './web-search'
+import type { SearchEngine } from './web-search'
 
 export type SettingsCategory = 'general' | 'appearance' | 'capture' | 'storage' | 'backup' | 'ai' | 'updates'
 
@@ -173,6 +175,23 @@ export function mountSettingsView(
   error.setAttribute('role', 'alert')
   error.hidden = true
   windowCard.append(options, badge, state, error)
+
+  // The web pane's address bar searches with this engine (desktop only, where web panes exist).
+  if (desktop?.web) {
+    const card = createCard(generalBody, t('settings.webSearch'), 'web-search-title')
+    const select = element('select', 'editor-select web-search-engine')
+    select.setAttribute('aria-labelledby', 'web-search-title')
+    for (const [value, engine] of Object.entries(searchEngines)) {
+      const option = element('option', '', engine.name)
+      option.value = value
+      select.append(option)
+    }
+    select.value = readSearchEngine()
+    select.addEventListener('change', () => saveSearchEngine(select.value as SearchEngine))
+    const field = element('label', 'field-label')
+    field.append(select)
+    card.append(field, element('p', 'dialog-help', t('settings.webSearchHint')))
+  }
 
   let refreshLogin: (() => Promise<void>) | undefined
   if (desktop?.getLoginItem && desktop.setLoginItem && ['darwin', 'win32'].includes(desktop.platform)) {
