@@ -2,6 +2,7 @@ import './styles.css'
 import './appearance'
 import { initializeLanguage } from './i18n'
 import { installFieldTyping } from './typing/field-typing'
+import { introReady } from './intro'
 
 // Every text field, in the main window and the quick note window, shares one caret and reading box.
 installFieldTyping()
@@ -22,6 +23,7 @@ async function start() {
     retry.addEventListener('click', () => location.reload())
     panel.append(message, retry)
     document.body.replaceChildren(panel)
+    introReady()
     return
   }
   // The desktop quick note window loads the same page with its own route and nothing else.

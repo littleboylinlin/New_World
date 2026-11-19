@@ -5,6 +5,9 @@ import { _electron as electron, expect, test } from '@playwright/test'
 import { startWork } from '../navigation-helpers.mjs'
 import { exists, inWebView, openWebPane, partitionFiles, startSite, waitForView, webViews } from './web-helpers.mjs'
 
+// The opening animation stays off in desktop tests; windows.spec.mjs checks that it ends by itself.
+process.env.NEW_WORLD_DISABLE_INTRO = '1'
+
 // The desktop web pane, run against the app from this checkout (npm run build first). Every page is
 // served by a local test site; nothing on the internet is visited.
 
