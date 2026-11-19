@@ -17,6 +17,8 @@ function dismiss(replaced = false) {
   window.clearTimeout(timer)
   stopWatching?.()
   stopWatching = undefined
+  // A notice still sliding out (taken away by a click) goes at once too, so only one is ever on screen.
+  if (replaced) for (const old of document.querySelectorAll('.undo-toast.leaving')) old.remove()
   if (shown) {
     if (replaced) shown.remove()
     else leave(shown)
