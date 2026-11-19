@@ -1,10 +1,15 @@
 import { readFile } from 'node:fs/promises'
 import { REPO } from '../config.mjs'
 
-const PLATFORMS = {
+const INSTALLERS = {
   'windows-x64': /^New-World-Setup-.+-x64\.exe$/,
   'macos-arm64': /^New-World-.+-macos-arm64\.dmg$/,
   'macos-x64': /^New-World-.+-macos-x64\.dmg$/,
+}
+// The language packs are published with every release under fixed names (desktop/release-plan.mjs).
+const LANGUAGE_PACKS = {
+  'lang-zh-CN': /^New-World-lang-zh-CN\.json$/,
+  'lang-en': /^New-World-lang-en\.json$/,
 }
 
 async function github(path) {
@@ -31,14 +36,16 @@ export async function latestRelease() {
   const release = await github('/releases/latest')
   let sums
   const assets = {}
-  for (const [platform, pattern] of Object.entries(PLATFORMS)) {
+  // A release may cover only some platforms (release.json); the site offers what it has.
+  for (const [platform, pattern] of Object.entries({ ...INSTALLERS, ...LANGUAGE_PACKS })) {
     const asset = release.assets.find((item) => pattern.test(item.name))
-    if (!asset) throw new Error(`${release.tag_name} has no ${platform} installer`)
+    if (!asset) continue
     let sha256 = asset.digest?.startsWith('sha256:') ? asset.digest.slice(7) : null
     if (!sha256) sha256 = (sums ??= await checksums(release)).get(asset.name) ?? null
     if (!sha256) throw new Error(`${asset.name} has no SHA-256 checksum`)
     assets[platform] = { name: asset.name, url: asset.browser_download_url, sha256, size: asset.size }
   }
+  if (!Object.keys(INSTALLERS).some((platform) => assets[platform])) throw new Error(`${release.tag_name} has no installer`)
   return {
     version: release.tag_name.replace(/^v/, ''),
     tag: release.tag_name,

@@ -3,9 +3,9 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
 const lang = () => window.siteLang?.() ?? 'zh'
 
 const DOWNLOADS = {
-  'windows-x64': { zh: 'Windows', en: 'Windows' },
-  'macos-arm64': { zh: 'Apple 芯片', en: 'Apple silicon' },
-  'macos-x64': { zh: 'Intel 芯片', en: 'Intel chip' },
+  'windows-x64': { zh: 'Windows', en: 'Windows', route: 'windows' },
+  'macos-arm64': { zh: 'Apple 芯片', en: 'Apple silicon', route: 'macos-arm64' },
+  'macos-x64': { zh: 'Intel 芯片', en: 'Intel chip', route: 'macos-x64' },
 }
 
 async function detectPlatform() {
@@ -25,12 +25,18 @@ async function detectPlatform() {
   }
 }
 
+// The button goes through /download/<platform>, which picks the source by region (the mirror in
+// mainland China, GitHub elsewhere). The line under it names both sources, for anyone whose
+// network makes the other one faster.
 function downloadButton(key, tone) {
   const asset = data.latest.assets[key]
   const label = DOWNLOADS[key]
+  const path = `/download/${label.route}`
+  const item = document.createElement('div')
+  item.className = 'download'
   const link = document.createElement('a')
   link.className = `btn ${tone}`
-  link.href = asset.url
+  link.href = path
   link.dataset.download = key
   link.dataset.sha256 = asset.sha256
   link.title = `${asset.name}\nSHA-256: ${asset.sha256}`
@@ -39,7 +45,11 @@ function downloadButton(key, tone) {
     <span data-l="zh">下载</span><span data-l="en" lang="en">Download</span>
     <small><span data-l="zh">${label.zh}</span><span data-l="en" lang="en">${label.en}</span></small>
   </span>`
-  return link
+  const sources = document.createElement('p')
+  sources.className = 'download-source'
+  sources.innerHTML = `<span data-l="zh">从 <a href="${path}?from=mirror" data-source="mirror">国内镜像</a> · <a href="${path}?from=github" data-source="github">GitHub</a> 下载</span><span data-l="en" lang="en">Download from <a href="${path}?from=mirror" data-source="mirror">China mirror</a> · <a href="${path}?from=github" data-source="github">GitHub</a></span>`
+  item.append(link, sources)
+  return item
 }
 
 async function setUpDownloads() {
@@ -47,6 +57,8 @@ async function setUpDownloads() {
   let keys = []
   if (os === 'windows') keys = ['windows-x64']
   else if (os === 'mac') keys = arch ? [`macos-${arch}`] : ['macos-arm64', 'macos-x64']
+  // A release may not include every platform; then the button keeps pointing to the release page.
+  keys = keys.filter((key) => data.latest.assets[key])
   if (!keys.length) return
   const tones = ['btn-primary', 'btn-primary btn-blue']
   document.getElementById('downloads').replaceChildren(...keys.map((key, index) => downloadButton(key, tones[index])))
