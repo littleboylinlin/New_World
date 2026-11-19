@@ -736,7 +736,8 @@ function refreshMenus() {
   }
 }
 
-function openWindow(visible = true) {
+// `intro` is set only for the first visible window of a launch: the page then plays its opening animation.
+function openWindow(visible = true, intro = false) {
   nativeTheme.themeSource = windowTheme.themeSource(theme)
   mainWindow = new BrowserWindow({
     show: visible, skipTaskbar: !visible,
@@ -789,7 +790,7 @@ function openWindow(visible = true) {
     mainWindow.on('maximize', reportMaximized)
     mainWindow.on('unmaximize', reportMaximized)
   }
-  return mainWindow.loadURL(appUrl)
+  return mainWindow.loadURL(intro ? `${appUrl}?intro` : appUrl)
 }
 
 // The custom Windows caption buttons. Close goes through the same save-before-close flow as the native button.
@@ -1016,7 +1017,7 @@ if (!app.requestSingleInstanceLock()) {
     desktopStarted = true
     const background = login.backgroundLaunch() && tray && !requestedMainWindow && !pendingProjectPaths.size
     if (background && process.platform === 'darwin') app.dock.hide()
-    const opened = openWindow(!background)
+    const opened = openWindow(!background, !background)
     if (pendingCapture) openCapture()
     return opened
   }).catch(() => {

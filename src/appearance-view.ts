@@ -279,7 +279,21 @@ export function mountAppearanceSettings(section: HTMLElement) {
     element('h3', 'settings-group-title', t('appearance.writing')),
     typewriter, element('p', 'dialog-help', t('appearance.typewriterHint')),
   )
-  section.append(typographyGroup, themeGroup, writingGroup, spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
+  // Only the desktop app plays an opening animation, on a cold start.
+  const startupGroup = element('div', 'settings-subgroup')
+  if (window.newWorldDesktop) {
+    const intro = element('label', 'appearance-check')
+    const introBox = element('input')
+    introBox.type = 'checkbox'
+    introBox.addEventListener('change', () => updateAppearance({ intro: introBox.checked }))
+    follow(introBox, (value) => { introBox.checked = value.intro }, true)
+    intro.append(introBox, element('span', '', t('appearance.intro')))
+    startupGroup.append(
+      element('h3', 'settings-group-title', t('appearance.startup')),
+      intro, element('p', 'dialog-help', t('appearance.introHint')),
+    )
+  }
+  section.append(typographyGroup, themeGroup, writingGroup, ...(window.newWorldDesktop ? [startupGroup] : []), spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
 }
 
 /**

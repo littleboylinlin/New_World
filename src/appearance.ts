@@ -29,6 +29,8 @@ export interface Appearance {
   spellcheck: boolean
   /** Keep the writing line near the middle of the editor viewport. */
   typewriter: boolean
+  /** Play the opening animation when the desktop app starts. Read before the bundle by public/intro.js. */
+  intro: boolean
 }
 
 export const minSize = 14
@@ -38,7 +40,7 @@ const key = 'new-world:appearance'
 const changed = 'new-world:appearance-change'
 export const defaults: Appearance = {
   theme: 'system', latin: 'times', cjk: 'auto', size: null,
-  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false, typewriter: false,
+  lineHeight: 'standard', paragraph: 'standard', indent: false, width: 'standard', spellcheck: false, typewriter: false, intro: true,
 }
 
 /** English names are the fonts' own names and are not translated. */
@@ -65,6 +67,7 @@ function normalize(value: unknown): Appearance {
     width: pick(record.width, textWidths, defaults.width),
     spellcheck: record.spellcheck === true,
     typewriter: record.typewriter === true,
+    intro: record.intro !== false,
   }
 }
 

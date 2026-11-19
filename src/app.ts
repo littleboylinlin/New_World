@@ -1,3 +1,4 @@
+import { introReady } from './intro'
 import { writingFilter } from './navigation-preferences'
 import { enqueueProject, mountProjectImports } from './projects/view'
 import { mountTaskReminders } from './tasks/reminders'
@@ -219,6 +220,7 @@ mountWebVersionCheck(saveBeforeLeaving)
 mountWebStorage()
 void mountFolderSync()
 window.newWorldDesktop?.reportReady?.()
+introReady()
 startAutomaticBackups()
 
 // The tray menu lists the works opened last.
