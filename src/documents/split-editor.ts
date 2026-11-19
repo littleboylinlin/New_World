@@ -402,6 +402,10 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   panel.append(filter, hint, list)
   filter.addEventListener('input', () => paintPanel())
 
+  // Each drawing of the list owns its entries' listeners; the next drawing releases them.
+  let listing = new AbortController()
+  signal.addEventListener('abort', () => listing.abort(), { once: true })
+
   function entry(label: string, detail: string, payload: () => ComparePayload, className = '') {
     const row = element('div', `compare-entry ${className}`.trim())
     const main = button('', 'compare-entry-open')
@@ -417,12 +421,14 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     more.setAttribute('aria-hidden', 'true')
     menuButton(more, label, () => openItems(sourceOf))
     row.addEventListener('contextmenu', (event) => { event.preventDefault(); more.click() })
-    draggableEntry(main, { label: () => label, payload, menu: () => more.click(), signal })
+    draggableEntry(main, { label: () => label, payload, menu: () => more.click(), signal: listing.signal })
     row.append(main, more)
     return row
   }
 
   function paintPanel() {
+    listing.abort()
+    listing = new AbortController()
     const query = filter.value.trim().toLocaleLowerCase()
     const edition = options.edition()
     const groups: HTMLElement[] = []

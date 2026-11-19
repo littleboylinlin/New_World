@@ -374,6 +374,8 @@ export function mountFindPanel({ host, getScroller, trigger, onOpenChange, getEd
   }
 
   function openFind() {
+    // A pane without searchable text (an original file beside the text) offers no find.
+    if (trigger.disabled) return
     const wasOpen = opened
     const selection = selectedText(getEditor()).slice(0, query.maxLength)
     if (selection) query.value = selection
