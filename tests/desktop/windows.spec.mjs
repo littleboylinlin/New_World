@@ -178,7 +178,8 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       const settings = document.querySelector('#settings').getBoundingClientRect()
       const sidebar = document.querySelector('#app-sidebar').getBoundingClientRect()
       const controls = document.querySelector('.window-controls').getBoundingClientRect()
-      const buttons = [...document.querySelectorAll('.window-controls button')].map((node) => ({
+      // Only the buttons on screen: "Exit full screen" waits hidden until the window goes full screen.
+      const buttons = [...document.querySelectorAll('.window-controls button')].filter((node) => node.checkVisibility()).map((node) => ({
         label: node.getAttribute('aria-label'), title: node.getAttribute('title'),
       }))
       return {
