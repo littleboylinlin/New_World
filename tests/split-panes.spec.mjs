@@ -34,6 +34,26 @@ async function placeSaved(page, { chapterScroll, filePlace }) {
   }, { chapterScroll, filePlace })).toBe(true)
 }
 
+/** Waits for every running transition and animation in the split area to end. */
+async function animationsDone(page) {
+  await page.locator('.split-view').evaluate(async (root) => {
+    const running = () => root.getAnimations({ subtree: true }).filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+    while (root.hasAttribute('data-animating') || running().length) {
+      await Promise.all(running().map((animation) => animation.finished.catch(() => {})))
+      await new Promise(requestAnimationFrame)
+    }
+  })
+}
+
+/** Each pane's place and size as fractions of the split area, so a shift of the whole area does not count. */
+const paneFractions = (page) => page.locator('.split-view').evaluate((root) => {
+  const area = root.getBoundingClientRect()
+  return [...root.querySelectorAll('.split-pane')].filter((node) => !node.hidden).map((node) => {
+    const rect = node.getBoundingClientRect()
+    return [(rect.left - area.left) / area.width, (rect.top - area.top) / area.height, rect.width / area.width, rect.height / area.height]
+  })
+})
+
 /** Reachable once it has finished sliding or fading into place. */
 const settledReachable = (locator) => expect.poll(() => reachable(locator)).toBe(true)
 
@@ -216,6 +236,13 @@ test.describe('整个书库', () => {
     await branchOf(panel, '分块样书').locator(':scope > summary > svg').click()
     await expect(branchOf(panel, '另一部')).toHaveAttribute('open', '')
     await expect(branchOf(panel, '分块样书')).not.toHaveAttribute('open', '')
+    // A <details> reports its toggle in a later task, and only then is the choice written down;
+    // reloading before that would test nothing but the timing.
+    const keys = await Promise.all(['另一部', '分块样书'].map((name) => branchOf(panel, name).getAttribute('data-key')))
+    await expect.poll(() => page.evaluate((keys) => {
+      const stored = JSON.parse(localStorage.getItem('new-world:compare-expanded') ?? '{}')
+      return [stored[keys[0]], stored[keys[1]]]
+    }, keys)).toEqual([true, false])
     await page.reload()
     await expect(chapterText(page)).toBeVisible()
     const again = await openCompareTab(page)
@@ -363,21 +390,29 @@ test.describe('记住与恢复', () => {
     await openFromChapterMenu(page, '第三章', '在下方打开')
     await expect(referencePanes(page)).toHaveCount(2)
     const divider = page.getByRole('separator', { name: '调整分块大小' }).first()
+    // Let the new pane finish gliding in, so the sizes compared are the ones that were saved.
+    await animationsDone(page)
     await divider.focus()
     await page.keyboard.press('Shift+ArrowLeft')
     await settle(page)
-    const rects = await referencePanes(page).evaluateAll((nodes) => nodes.map((node) => { const r = node.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] }))
-    const main = await rectOf(page.locator('.main-pane'))
+    await animationsDone(page)
+    // The remembered layouts without their time stamps, which change whenever one is written again.
+    const remembered = () => page.evaluate(() => JSON.stringify(Object.values(JSON.parse(localStorage.getItem('new-world:editor-split') ?? '{}')).map(({ at, ...layout }) => layout)))
+    const saved = await remembered()
+    const before = await paneFractions(page)
     await page.reload()
     await expect(chapterText(page)).toBeVisible()
     await expect(referencePanes(page)).toHaveCount(2)
     await expect(referencePanes(page).nth(0)).toContainText('海雾里的第二章。')
     await expect(referencePanes(page).nth(1)).toContainText('潮第 1 段')
+    // What was written down before the reload is what comes back; the panes are compared as shares
+    // of the split area, which is what is remembered.
+    expect(await remembered()).toBe(saved)
+    let after
     await expect.poll(async () => {
-      const now = await referencePanes(page).evaluateAll((nodes) => nodes.map((node) => { const r = node.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] }))
-      return now.every((rect, i) => rect.every((value, j) => near(value, rects[i][j])))
-    }).toBe(true)
-    expect(near((await rectOf(page.locator('.main-pane'))).width, main.width)).toBe(true)
+      after = await paneFractions(page)
+      return after.length === before.length && after.every((rect, i) => rect.every((value, j) => Math.abs(value - before[i][j]) < .005))
+    }, { message: 'pane places' }).toBe(true).catch((error) => { throw new Error(`${error.message}\n${JSON.stringify({ before, after })}`) })
     await expect(page.locator('.split-pane[data-focused]')).toContainText('潮第 1 段')
     await expect(chapterHeading(page)).toHaveText('第三章')
 
@@ -423,7 +458,11 @@ test.describe('记住与恢复', () => {
   test('新窗口路由用同一套对照块：同样的停留位置和外观', async ({ page, context }) => {
     await seedChapters(page, three)
     await openFromChapterMenu(page, '第三章')
-    await referencePanes(page).first().locator('.reference-scroll').evaluate((node) => { node.scrollTop = 1200 })
+    // Scroll only once the chapter is in the pane: an empty pane cannot scroll, and the chapter
+    // arriving afterwards would put it back at the top.
+    const scroll = referencePanes(page).first().locator('.reference-scroll')
+    await expect(referencePanes(page).first()).toContainText('潮第 1 段')
+    await expect.poll(() => scroll.evaluate((node) => { node.scrollTop = 1200; return node.scrollTop })).toBeGreaterThanOrEqual(1199)
     await placeSaved(page, { chapterScroll: 1100 })
     const route = await page.evaluate(() => {
       const layouts = JSON.parse(localStorage.getItem('new-world:editor-split'))
