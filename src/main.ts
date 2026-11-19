@@ -26,6 +26,8 @@ async function start() {
   }
   // The desktop quick note window loads the same page with its own route and nothing else.
   if (window.newWorldDesktop && location.hash === '#/capture') await import('./capture-app')
+  // A reading window (opened by the desktop app) shows one chapter or file on its own.
+  else if (location.hash.startsWith('#/compare/')) await import('./reading-window')
   else await import('./app')
 }
 

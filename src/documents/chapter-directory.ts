@@ -15,6 +15,11 @@ interface DirectoryOptions {
   reorder: (order: string[]) => Promise<void>
   rename: (id: string) => void
   remove: (id: string) => void
+  /** Entries that open the chapter beside the text, shown first in each chapter's menu. */
+  openItems: (id: string) => ShellMenuItem[]
+  /** A chapter dragged out of the list (past this panel's edge) is handed over to open beside the text. */
+  panel: () => HTMLElement
+  dragOut: (id: string, event: PointerEvent) => void
   signal: AbortSignal
 }
 
@@ -33,16 +38,24 @@ export function chapterDirectory(options: DirectoryOptions) {
     id: string; item: HTMLElement; ghost: HTMLElement; from: number; to: number
     items: HTMLElement[]; mids: number[]; step: number; pointerId: number; offset: number; listTop: number
   } | undefined
-  let press: { id: string; item: HTMLElement; x: number; y: number; pointerId: number; type: string; timer: number } | undefined
+  // A press in reading mode can only drag the chapter out to open it; a finger holds still first.
+  let press: { id: string; item: HTMLElement; x: number; y: number; pointerId: number; type: string; timer: number; reorder: boolean; armed: boolean } | undefined
+  let travel = 0
+  let startY = 0
   let autoScroll = 0
   let lastY = 0
 
   function actions(id: string): ShellMenuItem[] {
+    const open = options.openItems(id)
+    if (!options.canEdit()) return open
     return [
+      ...open,
+      ...(open.length ? [{ separator: true, label: '' }] : []),
       { label: t('editor.renameChapter'), icon: 'edit', hint: 'F2', action: () => options.rename(id) },
       { label: t('editor.deleteChapter'), icon: 'trash', danger: true, action: () => options.remove(id) },
     ]
   }
+  const openMenu = (item: HTMLElement) => item.querySelector<HTMLButtonElement>('.chapter-more')?.click()
 
   function render() {
     // Keep keyboard focus on the same chapter when the list is rebuilt under it.
@@ -64,7 +77,7 @@ export function chapterDirectory(options: DirectoryOptions) {
       label.title = t('editor.chapterCharacterCount')
       words.set(id, label)
       item.append(jump, label)
-      if (editing) {
+      {
         const more = button('', 'chapter-more', 'more')
         // The name leaves out the title, so a search for a chapter by name finds only the chapter.
         more.setAttribute('aria-label', t('editor.chapterActions'))
@@ -140,6 +153,18 @@ export function chapterDirectory(options: DirectoryOptions) {
     return target instanceof Element ? target.closest<HTMLElement>('.chapter-item') : null
   }
 
+  /** Leaves the reorder drag and lets the chapter be dropped beside the text instead. */
+  function handOff(event: PointerEvent) {
+    if (!dragging) return
+    const { id } = dragging
+    endDrag(true, true)
+    options.dragOut(id, event)
+  }
+  const outside = (x: number) => {
+    const box = options.panel().getBoundingClientRect()
+    return x > box.right + 12 || x < box.left - 12
+  }
+
   function startDrag(event: PointerEvent, item: HTMLElement, id: string) {
     const items = [...list.querySelectorAll<HTMLElement>('.chapter-item')]
     const from = items.indexOf(item)
@@ -163,6 +188,8 @@ export function chapterDirectory(options: DirectoryOptions) {
       step: box.height + gap, offset: event.clientY - box.top, listTop: list.scrollTop,
     }
     lastY = event.clientY
+    startY = event.clientY
+    travel = 0
     navigator.vibrate?.(8)
     drag(event.clientY)
   }
@@ -202,7 +229,7 @@ export function chapterDirectory(options: DirectoryOptions) {
     }
   }
 
-  function endDrag(cancel: boolean) {
+  function endDrag(cancel: boolean, instant = false) {
     const state = dragging
     if (!state) return
     cancelAnimationFrame(autoScroll)
@@ -235,7 +262,7 @@ export function chapterDirectory(options: DirectoryOptions) {
       }
     }
     const duration = motionMs('fast')
-    if (!duration) { finish(); return }
+    if (!duration || instant) { finish(); return }
     state.ghost.classList.add('chapter-ghost-drop')
     state.ghost.style.top = `${slot.top}px`
     window.setTimeout(finish, duration)
@@ -249,43 +276,61 @@ export function chapterDirectory(options: DirectoryOptions) {
   }
 
   list.addEventListener('pointerdown', (event) => {
-    if (!options.canEdit() || dragging || event.button !== 0) return
+    if (dragging || event.button !== 0) return
     const item = itemAt(event.target)
     if (!item || (event.target as Element).closest('.chapter-more')) return
     const id = item.dataset.id!
-    press = { id, item, x: event.clientX, y: event.clientY, pointerId: event.pointerId, type: event.pointerType, timer: 0 }
+    const reorder = options.canEdit()
+    press = { id, item, x: event.clientX, y: event.clientY, pointerId: event.pointerId, type: event.pointerType, timer: 0, reorder, armed: false }
     if (event.pointerType !== 'mouse') {
       // Touch drags start with a long press, so a quick swipe still scrolls the list.
       item.classList.add('chapter-pressing')
       press.timer = window.setTimeout(() => {
         if (!press) return
+        if (!press.reorder) { press.armed = true; navigator.vibrate?.(8); return }
         const { item: target, id: key } = press
         cancelPress()
         startDrag(event, target, key)
       }, pressDelay)
     }
   }, { signal })
-  list.addEventListener('pointermove', (event) => {
-    if (dragging) { if (event.pointerId === dragging.pointerId) { event.preventDefault(); drag(event.clientY) } return }
+  // Moves are followed on the window: a quick diagonal drag leaves the list before it counts as one.
+  window.addEventListener('pointermove', (event) => {
+    if (dragging) {
+      if (event.pointerId !== dragging.pointerId) return
+      event.preventDefault()
+      travel = Math.max(travel, Math.abs(event.clientY - startY))
+      if (outside(event.clientX)) handOff(event)
+      else drag(event.clientY)
+      return
+    }
     if (!press || event.pointerId !== press.pointerId) return
     const moved = Math.hypot(event.clientX - press.x, event.clientY - press.y)
-    if (press.type !== 'mouse') { if (moved > 8) cancelPress(); return }
-    if (moved > dragThreshold) {
-      const { item, id } = press
+    if (press.type !== 'mouse' && !press.armed) { if (moved > 8) cancelPress(); return }
+    if (moved > (press.type === 'mouse' ? dragThreshold : 8)) {
+      const { item, id, reorder } = press
       cancelPress()
-      startDrag(event, item, id)
+      if (reorder) startDrag(event, item, id)
+      else options.dragOut(id, event)
     }
   }, { signal })
-  list.addEventListener('pointerup', () => { cancelPress(); endDrag(false) }, { signal })
-  list.addEventListener('pointercancel', () => { cancelPress(); endDrag(true) }, { signal })
+  window.addEventListener('pointerup', (event) => {
+    if (!press && !dragging) return
+    // A long press that never moved opens the chapter's menu, as a right click does.
+    const held = press?.armed ? press.item : dragging && dragging.from === dragging.to && travel < 8 && event.pointerType !== 'mouse' ? dragging.item : undefined
+    cancelPress()
+    endDrag(false)
+    if (held) window.setTimeout(() => openMenu(held), 0)
+  }, { signal })
+  window.addEventListener('pointercancel', () => { if (press || dragging) { cancelPress(); endDrag(true) } }, { signal })
   // While a touch drag runs, the page must not scroll under the finger.
-  list.addEventListener('touchmove', (event) => { if (dragging || press) { if (dragging) event.preventDefault() } }, { passive: false, signal })
+  list.addEventListener('touchmove', (event) => { if (dragging || press?.armed) event.preventDefault() }, { passive: false, signal })
   list.addEventListener('contextmenu', (event) => {
     if (press?.type !== 'mouse' && (press || dragging)) { event.preventDefault(); return }
     const item = itemAt(event.target)
-    if (!item || !options.canEdit()) return
+    if (!item) return
     event.preventDefault()
-    item.querySelector<HTMLButtonElement>('.chapter-more')?.click()
+    openMenu(item)
   }, { signal })
   list.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && dragging) { event.preventDefault(); endDrag(true); return }

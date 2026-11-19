@@ -13,8 +13,8 @@ import { readChapter } from './store'
 interface FindPanelOptions {
   /** The block inside the toolbar that the find controls expand into. */
   host: HTMLElement
-  /** The pane that scrolls the chapter text. */
-  scroller: HTMLElement
+  /** The pane that scrolls the chapter text (the focused pane's, when the view is split). */
+  getScroller: () => HTMLElement
   trigger: HTMLButtonElement
   onOpenChange?: (open: boolean) => void
   getEditor: () => Editor
@@ -45,7 +45,7 @@ function selectedText(editor: Editor) {
   return /[\r\n]/.test(text) ? '' : text
 }
 
-export function mountFindPanel({ host, scroller, trigger, onOpenChange, getEditor, getEdition, getChapterId, switchChapter, signal }: FindPanelOptions) {
+export function mountFindPanel({ host, getScroller, trigger, onOpenChange, getEditor, getEdition, getChapterId, switchChapter, signal }: FindPanelOptions) {
   const panel = host
   panel.classList.add('search-panel')
   panel.id = `find-${getEdition().id}`
@@ -157,6 +157,7 @@ export function mountFindPanel({ host, scroller, trigger, onOpenChange, getEdito
       revealFrame = requestAnimationFrame(() => {
         const mark = getEditor().view.dom.querySelector('.found-text-current')?.getClientRects()[0]
         if (!mark) return
+        const scroller = getScroller()
         const view = scroller.getBoundingClientRect()
         const target = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight,
           scroller.scrollTop + (mark.top + mark.bottom) / 2 - (view.top + view.bottom) / 2))
@@ -389,7 +390,8 @@ export function mountFindPanel({ host, scroller, trigger, onOpenChange, getEdito
     if (!wasOpen || selection) scheduleSearch()
   }
 
-  function closeFind() {
+  /** `restoreFocus` is false when the find bar closes because another pane took the focus. */
+  function closeFind(restoreFocus = true) {
     if (!opened) return
     const editor = getEditor()
     const { matches, active } = searchState(editor)
@@ -403,7 +405,7 @@ export function mountFindPanel({ host, scroller, trigger, onOpenChange, getEdito
     trigger.setAttribute('aria-expanded', 'false')
     panel.inert = true
     leaveAtMatch(editor, matches[active])
-    if (!editor.isEditable || panel.contains(document.activeElement)) {
+    if (restoreFocus && (!editor.isEditable || panel.contains(document.activeElement))) {
       if (editor.isEditable) editor.commands.focus(undefined, { scrollIntoView: false })
       else trigger.focus({ preventScroll: true })
     }
@@ -421,7 +423,7 @@ export function mountFindPanel({ host, scroller, trigger, onOpenChange, getEdito
     paint()
     if (replaceOpen) replacement.focus({ preventScroll: true })
   }, { signal })
-  close.addEventListener('click', closeFind, { signal })
+  close.addEventListener('click', () => closeFind(), { signal })
   previous.addEventListener('click', () => step(-1), { signal })
   next.addEventListener('click', () => step(1), { signal })
   list.addEventListener('click', (event) => {

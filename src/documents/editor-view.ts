@@ -36,6 +36,13 @@ import './editor.css'
 import { createLinkedTask, takeTaskJump } from '../tasks/links'
 import { hashDocumentContent } from '../confirm-state'
 import { writingMotion } from './writing-motion'
+import { applyPlace, measurePlace } from './place'
+import { mountSplitEditor } from './split-editor'
+import type { SplitEditor } from './split-editor'
+import type { SelectionTarget } from './selection-toolbar'
+import { rememberEdition, takeOpenRequest } from './compare'
+import type { ReferenceSource } from './compare'
+import { startOpenDrag } from '../shell/drag-open'
 
 export type RegisterLeave = (callback: () => Promise<boolean>) => void
 
@@ -165,13 +172,29 @@ export async function renderEdition(
   count.title = t('editor.countRule')
   statusLine.append(status, count)
   title.append(names, statusLine)
-  menuButton(workName, work.title, () => [
-    ...work.menu(),
-  ])
-  menuButton(chapterName, t('editor.chapterList'), () => edition.chapters.map(({ id, title: name }, index) => ({
-    label: `${String(index + 1).padStart(2, '0')}  ${name}`, checked: id === chapter.id, radio: true,
-    action: () => { void switchChapter(id) },
-  })), 'chapter-menu')
+  const readOnlyNote = element('span', 'reference-status', t('compare.readOnly'))
+  readOnlyNote.hidden = true
+  statusLine.append(readOnlyNote)
+  // With a reference pane focused, the names and their menus follow that pane.
+  menuButton(workName, work.title, () => {
+    const reference = splitEditor.focusedReference()
+    if (reference) return [...splitEditor.paneMenu(reference), { separator: true, label: '' }, ...splitEditor.compareMenu()]
+    return [...splitEditor.compareMenu(), { separator: true, label: '' }, ...work.menu()]
+  })
+  menuButton(chapterName, t('editor.chapterList'), () => {
+    const reference = splitEditor.focusedReference()
+    if (reference) {
+      const source = reference.source()
+      return reference.chapters().map(({ id, title: name }, index) => ({
+        label: `${String(index + 1).padStart(2, '0')}  ${name}`, checked: source.kind === 'chapter' && id === source.chapterId, radio: true,
+        action: () => { void reference.switchChapter(id) },
+      }))
+    }
+    return edition.chapters.map(({ id, title: name }, index) => ({
+      label: `${String(index + 1).padStart(2, '0')}  ${name}`, checked: id === chapter.id, radio: true,
+      action: () => { void switchChapter(id) },
+    }))
+  }, 'chapter-menu')
 
   const history = element('div', 'toolbar-group')
   const undo = tool(t('editor.undo'), 'undo', () => editor.chain().focus().undo().run(), 'Ctrl / ⌘ + Z')
@@ -188,6 +211,7 @@ export async function renderEdition(
     heading.append(option)
   }
   const setHeading = (level: number) => {
+    if (splitEditor.focusedReference()) return
     const command = editor.chain().focus()
     if (!level) command.setParagraph().run()
     else command.setHeading({ level: level as 1 | 2 | 3 | 4 | 5 | 6 }).run()
@@ -364,7 +388,25 @@ export async function renderEdition(
   // The text inherits spell checking from here; the rest of the page never checks spelling.
   paper.spellcheck = appearance().spellcheck
   scroller.append(paper)
-  wb.main.append(scroller)
+  const mainPaneNode = element('section', 'main-pane')
+  mainPaneNode.setAttribute('aria-label', t('editor.chapterText'))
+  mainPaneNode.append(scroller)
+  let toolbarReady = false
+  const splitEditor: SplitEditor = mountSplitEditor({
+    host: wb.main, main: mainPaneNode, signal,
+    edition: () => edition, chapterId: () => chapter.id,
+    switchMain: (id) => switchChapter(id),
+    onFocusChange: () => paintTarget(),
+    beforeOpen: () => {
+      for (const panel of [wb.start!, wb.end!]) if (panel.mode() === 'overlay' && panel.isOpen()) panel.setOpen(false)
+    },
+    onReferenceChange: (pane) => {
+      if (!toolbarReady || pane !== splitEditor.focusedReference()) return
+      find.chapterMounted()
+      paintTarget()
+    },
+  })
+  right.insertBefore(bar.add({ id: 'compare', node: splitEditor.toggle, priority: 73, menu: () => [{ label: t('compare.drawer'), icon: 'compare', action: () => splitEditor.toggle.click() }] }), sideButton)
 
   const tabs = createTabs(t('editor.sidePanel'), (id) => updateEditorPreferences({ sideTab: id }))
   const ideasPanel = element('section', 'ideas-panel')
@@ -375,6 +417,7 @@ export async function renderEdition(
   notesPanel.append(notesHint, annotationTools)
   tabs.add({ id: 'ideas', label: t('ideas.title'), panel: ideasPanel })
   tabs.add({ id: 'notes', label: t('editor.notesTab'), panel: notesPanel })
+  tabs.add({ id: 'compare', label: t('compare.tab'), panel: splitEditor.panel })
   wb.end!.body.append(tabs.element)
 
   // The page keeps one top-level heading for assistive technology; the toolbar shows the name.
@@ -382,6 +425,7 @@ export async function renderEdition(
   workspace.append(pageHeading, top, notices, wb.element)
   host.replaceChildren(workspace)
   wb.relayout()
+  splitEditor.relayout()
   wb.start!.setOpen((preferences.navOpen ?? true) && wb.start!.mode() === 'inline', false, true)
   wb.end!.setOpen((preferences.sideOpen ?? true) && wb.end!.mode() === 'inline', false, true)
   navToggle.setAttribute('aria-expanded', String(wb.start!.isOpen()))
@@ -394,8 +438,18 @@ export async function renderEdition(
   }
 
   const find = mountFindPanel({
-    host: findHost, scroller, trigger: findButton, getEditor: () => editor,
-    getEdition: () => edition, getChapterId: () => chapter.id, switchChapter, signal,
+    host: findHost, trigger: findButton, signal,
+    getEditor: () => splitEditor.focusedReference()?.editor() ?? editor,
+    getScroller: () => splitEditor.focusedReference()?.scroller ?? scroller,
+    getEdition: () => splitEditor.focusedReference()?.edition() ?? edition,
+    getChapterId: () => {
+      const source = splitEditor.focusedReference()?.source()
+      return source?.kind === 'chapter' ? source.chapterId : chapter.id
+    },
+    switchChapter: (id, wanted) => {
+      const reference = splitEditor.focusedReference()
+      return reference ? reference.switchChapter(id, wanted) : switchChapter(id, wanted)
+    },
   })
 
   const directory = chapterDirectory({
@@ -405,10 +459,26 @@ export async function renderEdition(
     reorder: async (order) => { await alter({ type: 'reorder', order }).catch((cause) => { report(cause); throw cause }) },
     rename: (id) => renameChapter(id),
     remove: (id) => removeChapter(id),
+    openItems: (id) => splitEditor.openItems(() => chapterSource(id)),
+    panel: () => wb.start!.element,
+    dragOut: (id, event) => {
+      const source = chapterSource(id)
+      startOpenDrag({ label: chapterInfo(id).title, payload: { source }, x: event.clientX, y: event.clientY, pointerId: event.pointerId })
+    },
   })
+  function chapterSource(id: string): ReferenceSource {
+    return { kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: id }
+  }
 
   const selection = selectionToolbar({
-    getEditor: () => editor, isEditing: () => editing, scroller, strip, signal,
+    strip, signal,
+    targets: () => [
+      { root: editor.view.dom, scroller, editor, editing, kinds: editing ? ['bold', 'italic', 'idea', 'task'] : ['idea', 'task', 'annotate'] },
+      ...splitEditor.references().flatMap((pane): SelectionTarget[] => {
+        const root = pane.textRoot()
+        return root ? [{ root, scroller: pane.scroller, editor: pane.editor(), editing: false, kinds: ['idea'] }] : []
+      }),
+    ],
     actions: {
       bold: () => editor.chain().focus().toggleBold().run(),
       italic: () => editor.chain().focus().toggleItalic().run(),
@@ -533,18 +603,46 @@ export async function renderEdition(
     if (links.childNodes.length) outline.append(element('strong', '', t('editor.sectionsInThisChapter')), links)
   }
 
+  // The editing tools only work on the editable pane; with a reference focused they rest.
+  const editNodes: (HTMLButtonElement | HTMLSelectElement)[] = [heading, bold, italic, underline, lists, quote, moreFormat, image, rule, noteAdd, noteDisplay]
   function refreshFormat() {
-    for (const { node, active } of markControls) node.setAttribute('aria-pressed', String(typeof active === 'string' ? editor.isActive(active) : active()))
+    const locked = Boolean(splitEditor.focusedReference())
+    for (const { node, active } of markControls) node.setAttribute('aria-pressed', String(!locked && (typeof active === 'string' ? editor.isActive(active) : active())))
     heading.value = editor.isActive('heading') ? String(editor.getAttributes('heading').level) : '0'
-    undo.disabled = !editing || !editor.can().undo()
-    redo.disabled = !editing || !editor.can().redo()
+    for (const node of editNodes) node.disabled = locked
+    undo.disabled = locked || !editing || !editor.can().undo()
+    redo.disabled = locked || !editing || !editor.can().redo()
     selection.refresh()
   }
 
+  let targeted: unknown
+  function paintTarget() {
+    if (!toolbarReady) return
+    const reference = splitEditor.focusedReference()
+    if (targeted !== reference) {
+      // The find bar belongs to the pane it searched; another pane starts afresh.
+      if (find.isOpen()) find.close(false)
+      selection.hide(true)
+      targeted = reference
+    }
+    workspace.classList.toggle('reference-focused', Boolean(reference))
+    const name = reference ? reference.title() || t('compare.loading') : work.title
+    workName.querySelector('.toolbar-name-text')!.textContent = name
+    workName.title = t('editor.workMenu', [name])
+    workName.setAttribute('aria-label', t('editor.workMenu', [name]))
+    readOnlyNote.hidden = !reference
+    findButton.disabled = Boolean(reference && !reference.editor())
+    bar.setAvailable('compare', splitEditor.isNarrow() && splitEditor.references().length > 0)
+    refreshChapters()
+    refreshFormat()
+  }
+
   function refreshChapters() {
-    chapterTitle.textContent = chapterInfo().title
+    const reference = splitEditor.focusedReference()
+    const shown = reference ? reference.part() : chapterInfo().title
+    chapterTitle.textContent = shown
     chapterName.title = t('editor.switchChapter')
-    chapterName.setAttribute('aria-label', t('editor.switchChapterNamed', [chapterInfo().title]))
+    chapterName.setAttribute('aria-label', t('editor.switchChapterNamed', [shown]))
     navLabel.textContent = t('editor.chapterList105', [edition.chapters.length])
     wordLabels = directory.render()
     refreshWords()
@@ -576,31 +674,10 @@ export async function renderEdition(
   // ——— Where each chapter was left ———
   function capturePlace() {
     if (!editor || editor.isDestroyed) return
-    const view = scroller.getBoundingClientRect()
-    const text = editor.view.dom.getBoundingClientRect()
-    const hit = editor.view.posAtCoords({ left: text.left + Math.min(40, text.width / 2), top: Math.max(view.top + 2, text.top + 2) })
-    const position = hit?.pos ?? 0
-    let offset = 0
-    try { offset = editor.view.coordsAtPos(position).top - view.top } catch { /* Positions outside the text fall back to the raw scroll. */ }
-    const { from, to } = editor.state.selection
-    saveChapterPlace(edition, chapter.id, { top: position, offset, scroll: scroller.scrollTop, height: scroller.scrollHeight, from, to })
+    saveChapterPlace(edition, chapter.id, measurePlace(editor, scroller))
   }
   function restorePlace() {
-    const place = readChapterPlace(edition, chapter.id)
-    const size = editor.state.doc.content.size
-    if (!place) { scroller.scrollTop = 0; return }
-    if (place.to <= size && place.from <= size) {
-      try { editor.commands.setTextSelection({ from: place.from, to: place.to }) } catch { /* A stale place is skipped. */ }
-    }
-    scroller.scrollTop = place.scroll
-    // The same layout scrolls back exactly; a changed one (another size or width) follows the text.
-    if (place.height !== undefined && Math.abs(place.height - scroller.scrollHeight) < 2) return
-    if (place.top <= size) {
-      try {
-        const view = scroller.getBoundingClientRect()
-        scroller.scrollTop += editor.view.coordsAtPos(place.top).top - view.top - place.offset
-      } catch { /* Keeps the raw scroll. */ }
-    }
+    applyPlace(editor, scroller, readChapterPlace(edition, chapter.id))
   }
   scroller.addEventListener('scroll', () => {
     window.clearTimeout(placeTimer)
@@ -882,7 +959,13 @@ export async function renderEdition(
   const formatIds = [...textTools, ...insertTools, ...noteTools]
   let formatCollapsed = preferences.formatCollapsed
   bar.setCollapsed(formatIds, formatCollapsed)
+  const viewTools = new Set(['find', 'appearance', 'focus', 'side', 'compare'])
   menuButton(moreButton, t('editor.moreActions'), () => {
+    const reference = splitEditor.focusedReference()
+    if (reference) {
+      const overflow = bar.overflowMenu((id) => viewTools.has(id))
+      return [...overflow, ...(overflow.length ? [{ separator: true, label: '' }] : []), ...splitEditor.paneMenu(reference)]
+    }
     const overflow = bar.overflowMenu()
     // On a phone the work's name gives way to the chapter's; its menu then lives here.
     const workHidden = !workName.offsetParent
@@ -961,6 +1044,11 @@ export async function renderEdition(
     editor?.destroy()
   }, { once: true })
   mountChapter(chapter)
+  toolbarReady = true
+  paintTarget()
+  rememberEdition(edition)
+  const waiting = takeOpenRequest()
+  if (waiting) splitEditor.open(waiting.source, waiting.placement)
   registerLeave(flush)
   const jump = takeTaskJump(edition)
   if (jump?.chapterId) {

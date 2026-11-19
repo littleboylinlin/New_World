@@ -100,6 +100,8 @@ interface Window {
     hideCapture?: () => Promise<void>
     onCaptureShown?: (listener: () => void) => void
     setRecentWorks?: (works: { title: string; hash: string }[]) => Promise<void>
+    /** Opens a separate window that shows one reading route (#/compare/…) and nothing else. */
+    openReadingWindow?: (hash: string) => Promise<void>
     onCommand?: (listener: (command: DesktopCommand) => void) => void
     getBackupState?: () => Promise<BackupState>
     setBackupFrequency?: (frequency: BackupFrequency) => Promise<BackupState>

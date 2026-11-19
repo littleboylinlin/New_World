@@ -102,10 +102,11 @@ export function readChapterPlace(edition: { library: string; bookId: string; id:
   return valid(place) ? place : undefined
 }
 
-export function saveChapterPlace(edition: { library: string; bookId: string; id: string }, chapterId: string, place: Omit<ChapterPlace, 'at'>) {
+/** `opened` is false for a chapter only read beside another: the version still reopens where it was written. */
+export function saveChapterPlace(edition: { library: string; bookId: string; id: string }, chapterId: string, place: Omit<ChapterPlace, 'at'>, opened = true) {
   const book = readPlaces()
   book.chapters[`${editionKey(edition)}/${chapterId}`] = { ...place, at: Date.now() }
-  book.last[editionKey(edition)] = chapterId
+  if (opened) book.last[editionKey(edition)] = chapterId
   const entries = Object.entries(book.chapters)
   if (entries.length > maxPlaces) {
     entries.sort((a, b) => (b[1].at ?? 0) - (a[1].at ?? 0))
