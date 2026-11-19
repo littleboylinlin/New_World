@@ -1,5 +1,5 @@
 // The desktop cold-start intro: "New World" is typed out, the name fades, the door moves to the
-// middle, closes, then opens and the view passes through it into the home page.
+// middle and closes, then swings fully open and its frame unfolds from the middle to reveal the home page.
 // The main process adds ?intro only to the first visible main window of a launch, so tray, background,
 // new and reading windows never play it. It runs before the app bundle and plays while the app loads;
 // src/intro.ts tells it when the app is ready. The door, frame, horizon and sun are the parts of
@@ -21,10 +21,9 @@
   var CLOSE_START = 1280, CLOSE = 280, BOUNCE = 80
   var WAIT = 1720
   var OPEN = 320
-  var ZOOM_START = 1900, ZOOM = 500, ZOOM_SCALE = 12
-  var VEIL_START = 2200, VEIL = 200
-  var HOME_START = 2150, HOME = 450, HOME_STEP = 40
-  var END = 2400
+  var EXPAND_START = 2000, EXPAND = 500, REVEAL = 200
+  var HOME_START = 2000, HOME = 450, HOME_STEP = 40
+  var END = 2500
   var GIVE_UP = 10000
 
   function bezier(x1, y1, x2, y2) {
@@ -54,7 +53,7 @@
   var standard = bezier(.2, .75, .25, 1)
   var slam = bezier(.5, 0, .75, 0)
   var spring = bezier(.3, 1.3, .5, 1)
-  var plunge = bezier(.7, 0, .2, 1)
+  var unfold = bezier(.7, 0, .2, 1)
   function progress(time, start, length) { return Math.min(1, Math.max(0, (time - start) / length)) }
 
   var root = document.documentElement
@@ -108,11 +107,14 @@
   var door = document.createElement('div')
   door.className = 'nw-intro-door'
   var svg = make('svg', { viewBox: '240 180 544 720', 'aria-hidden': 'true' })
-  var zoom = make('g', {}, svg)
-  var parts = make('g', { fill: 'none', stroke: ink, 'stroke-width': '56', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, zoom)
-  make('rect', { x: '300', y: '236', width: '424', height: '552', rx: '20' }, parts)
-  make('path', { d: 'M556 668 H690', 'stroke-width': '40' }, parts)
-  make('path', { d: 'M578 668 a45 45 0 0 1 90 0', 'stroke-width': '40' }, parts)
+  // Once the frame starts to unfold, everything outside it is this paper and the page shows inside it.
+  var outside = make('path', { fill: paper, 'fill-rule': 'evenodd', display: 'none' }, svg)
+  var parts = make('g', { fill: 'none', stroke: ink, 'stroke-width': '56', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg)
+  var inside = make('g', {}, parts)
+  var backdrop = make('rect', { fill: paper, stroke: 'none' }, inside)
+  make('path', { d: 'M556 668 H690', 'stroke-width': '40' }, inside)
+  make('path', { d: 'M578 668 a45 45 0 0 1 90 0', 'stroke-width': '40' }, inside)
+  var frameRect = make('rect', { rx: '20' }, parts)
   var panel = make('path', { fill: paper }, parts)
   var lines = make('path', {}, parts)
   // The light along the latch edge of the shut door, shown only while waiting for the app.
@@ -122,14 +124,25 @@
   document.head.appendChild(style)
   document.body.appendChild(veil)
 
-  // The door turns on its left hinge at x=300. Seen from the icon's angle, the free edge moves in by
-  // cos(angle) and drops by sin(angle): the icon itself is the door at 60 degrees (x=512, 64 lower).
+  // The frame, in icon units. It is the icon's until it unfolds.
+  var frame = { x: 300, y: 236, width: 424, height: 552 }
+  function placeFrame() {
+    var keys = ['x', 'y', 'width', 'height']
+    for (var i = 0; i < keys.length; i++) {
+      frameRect.setAttribute(keys[i], frame[keys[i]].toFixed(2))
+      backdrop.setAttribute(keys[i], frame[keys[i]].toFixed(2))
+    }
+  }
+
+  // The door turns on its left hinge, the frame's left side. Seen from the icon's angle, the free edge moves
+  // in by cos(angle) and drops by sin(angle): the icon itself is the door at 60 degrees (x=512, 64 lower).
   var DROP = 64 / Math.sin(Math.PI / 3)
-  function point(u, v, cos, sin) { return (300 + 424 * cos * u).toFixed(2) + ' ' + (236 + v + DROP * sin * u).toFixed(2) }
+  function point(u, v, cos, sin) { return (frame.x + 424 * cos * u).toFixed(2) + ' ' + (frame.y + v + DROP * sin * u).toFixed(2) }
   function swing(degrees) {
     var angle = degrees * Math.PI / 180
     var cos = Math.cos(angle), sin = Math.sin(angle)
-    panel.setAttribute('d', 'M' + point(0, 0, cos, sin) + ' L' + point(1, 0, cos, sin) + ' L' + point(1, 552, cos, sin) + ' L' + point(0, 552, cos, sin) + ' Z')
+    var tall = frame.height
+    panel.setAttribute('d', 'M' + point(0, 0, cos, sin) + ' L' + point(1, 0, cos, sin) + ' L' + point(1, tall, cos, sin) + ' L' + point(0, tall, cos, sin) + ' Z')
     // The two lines of the page sit at the same place on the door, 164 and 254 below its top edge.
     var from = 66 / 212, to = 152 / 212
     lines.setAttribute('d', 'M' + point(from, 164, cos, sin) + ' L' + point(to, 164, cos, sin) + ' M' + point(from, 254, cos, sin) + ' L' + point(to, 254, cos, sin))
@@ -148,6 +161,28 @@
   door.style.transform = 'translate(-50%, -50%)'
   measure()
 
+  // The screen's edges in icon units, with room for the stroke, once the door rests in the middle.
+  var screen = null
+  function measureScreen() {
+    var box = door.getBoundingClientRect()
+    if (!box.width) return
+    var unit = 544 / box.width
+    var margin = 60
+    screen = {
+      x: 240 - box.left * unit - margin,
+      y: 180 - box.top * unit - margin,
+      right: 240 + (innerWidth - box.left) * unit + margin,
+      bottom: 180 + (innerHeight - box.top) * unit + margin,
+    }
+  }
+  function remeasureScreen() { if (screen) measureScreen() }
+  function roundRect(x, y, width, height, radius) {
+    return 'M' + (x + radius) + ' ' + y + ' H' + (x + width - radius) + ' A' + radius + ' ' + radius + ' 0 0 1 ' + (x + width) + ' ' + (y + radius)
+      + ' V' + (y + height - radius) + ' A' + radius + ' ' + radius + ' 0 0 1 ' + (x + width - radius) + ' ' + (y + height)
+      + ' H' + (x + radius) + ' A' + radius + ' ' + radius + ' 0 0 1 ' + x + ' ' + (y + height - radius)
+      + ' V' + (y + radius) + ' A' + radius + ' ' + radius + ' 0 0 1 ' + (x + radius) + ' ' + y + ' Z'
+  }
+
   var ready = false
   var skipped = false
   var finished = false
@@ -156,7 +191,7 @@
   var waited = 0
   var began = performance.now()
   var last = began
-  var frame = 0
+  var raf = 0
 
   function render() {
     var time = clock
@@ -181,13 +216,26 @@
     door.style.transform = 'translate(-50%, -50%) translate(' + (start.x * (1 - move)).toFixed(2) + 'px,' + (start.y * (1 - move)).toFixed(2) + 'px) scale(' + scale.toFixed(4) + ')'
     door.style.opacity = String(Math.min(1, time / 160))
     var shut = skipped ? 1 : slam(progress(time, CLOSE_START, CLOSE))
-    // 5. It opens wider than in the icon and the view passes through the doorway.
+    // 5. It swings fully open, then the frame unfolds from the middle past the screen's edges and
+    // the home page shows through it as the view behind the door fades.
     var open = standard(progress(time, WAIT, OPEN))
-    swing(open > 0 ? 80 * open : 60 * (1 - shut))
-    var depth = plunge(progress(time, ZOOM_START, ZOOM))
-    // Scale grows geometrically so the push through the doorway feels even rather than sudden.
-    zoom.setAttribute('transform', depth ? 'translate(548 470) scale(' + Math.pow(ZOOM_SCALE, depth).toFixed(4) + ') translate(-548 -470)' : '')
-    veil.style.opacity = String(1 - progress(time, VEIL_START, VEIL))
+    var spread = progress(time, EXPAND_START, EXPAND)
+    if (spread > 0) {
+      if (!screen) measureScreen()
+      var amount = unfold(spread)
+      frame = {
+        x: 300 + (screen.x - 300) * amount,
+        y: 236 + (screen.y - 236) * amount,
+        width: 424 + (screen.right - screen.x - 424) * amount,
+        height: 552 + (screen.bottom - screen.y - 552) * amount,
+      }
+      veil.style.background = 'transparent'
+      outside.removeAttribute('display')
+      outside.setAttribute('d', 'M-100000 -100000 H100000 V100000 H-100000 Z ' + roundRect(frame.x, frame.y, frame.width, frame.height, 20))
+    }
+    placeFrame()
+    inside.setAttribute('opacity', (1 - standard(progress(time, EXPAND_START, REVEAL))).toFixed(3))
+    swing(open > 0 ? 90 * open : 60 * (1 - shut))
     // While the app is still loading the shut door breathes a little light through its edge.
     var breathe = time >= WAIT && !ready ? .5 - .5 * Math.cos(waited / 1200 * Math.PI * 2) : 0
     var glowLevel = Math.min(1, waited / 300) * (.5 + .5 * breathe) * (1 - open)
@@ -211,10 +259,11 @@
   function finish(fade) {
     if (finished) return
     finished = true
-    cancelAnimationFrame(frame)
+    cancelAnimationFrame(raf)
     window.removeEventListener('pointerdown', skip, true)
     window.removeEventListener('keydown', skip, true)
     window.removeEventListener('resize', measure)
+    window.removeEventListener('resize', remeasureScreen)
     var remove = function () { veil.remove(); style.remove() }
     if (!fade) { remove(); return }
     veil.animate([{ opacity: Number(veil.style.opacity || 1) }, { opacity: 0 }], { duration: fade, easing: 'ease-out', fill: 'forwards' })
@@ -233,7 +282,7 @@
     if (clock >= HOME_START) homeEntrance()
     render()
     if (clock >= END) { finish(); return }
-    frame = requestAnimationFrame(tick)
+    raf = requestAnimationFrame(tick)
   }
 
   // A click or any key skips: straight to the home page when it is ready, otherwise to the shut door.
@@ -253,8 +302,9 @@
   window.addEventListener('pointerdown', skip, true)
   window.addEventListener('keydown', skip, true)
   window.addEventListener('resize', measure)
+  window.addEventListener('resize', remeasureScreen)
 
   window.newWorldIntro = { ready: function () { ready = true } }
   render()
-  frame = requestAnimationFrame(tick)
+  raf = requestAnimationFrame(tick)
 })()
