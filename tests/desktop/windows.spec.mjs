@@ -11,6 +11,7 @@ import { _electron as electron, expect, test } from '@playwright/test'
 import { createPackage, extractAll } from '@electron/asar'
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { file } from '../fixtures.mjs'
+import { privateWebSmoke } from './web-helpers.mjs'
 import { selectReading, createAnnotation } from '../annotation-helpers.mjs'
 import { checkNativeHeader } from '../header-layout.mjs'
 import { chapterHeading, editorAction, historyCount, saveNow } from '../editor-helpers.mjs'
@@ -1281,5 +1282,13 @@ if (process.platform === 'win32') test('Windows 登录项控制注册表，后�
       await toggle.check()
       await expect.poll(registered).toContain('--background-login')
     }
+  } finally { await stop(app) }
+})
+
+test('网页块永远无痕：安装版关闭网页块后读不到 Cookie，配置目录里没有这个会话的文件', async ({}, testInfo) => {
+  const app = await launch(testInfo)
+  try {
+    const page = await app.firstWindow()
+    await privateWebSmoke(app, page, startWork)
   } finally { await stop(app) }
 })
