@@ -89,6 +89,18 @@ function apply(value: Appearance) {
   else root.style.setProperty('--reading-size', `${value.size}px`)
   // The desktop app opens its next window with this theme's background.
   window.newWorldDesktop?.setWindowTheme?.(value.theme).catch(() => {})
+  showBrandIcons(value.theme)
+}
+
+const darkSystem = window.matchMedia?.('(prefers-color-scheme: dark)')
+
+/** Icons that sit on the page's own background take the light or dark drawing of the current theme. */
+function showBrandIcons(theme: Appearance['theme']) {
+  const dark = theme === 'dark' || (theme === 'system' && Boolean(darkSystem?.matches))
+  for (const image of document.querySelectorAll<HTMLImageElement>('img[data-brand-icon]')) {
+    const source = image.dataset[dark ? 'dark' : 'light']
+    if (source && image.getAttribute('src') !== source) image.setAttribute('src', source)
+  }
 }
 
 export function appearance(): Appearance {
@@ -124,6 +136,7 @@ export function openAppearanceSettings() {
 }
 
 apply(current)
+darkSystem?.addEventListener?.('change', () => showBrandIcons(current.theme))
 // Browser tabs of the web version follow a change made in another tab.
 window.addEventListener('storage', (event) => {
   if (event.key !== key) return
