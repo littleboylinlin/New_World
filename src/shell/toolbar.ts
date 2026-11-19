@@ -83,8 +83,8 @@ export function priorityToolbar(row: HTMLElement, onChange?: () => void) {
       layout()
     },
     /** Menu entries for the items that did not fit, in the order they sit on the bar. */
-    overflowMenu(): ShellMenuItem[] {
-      return items.filter((item) => overflowed.has(item.id) && item.menu).flatMap((item) => item.menu!())
+    overflowMenu(include: (id: string) => boolean = () => true): ShellMenuItem[] {
+      return items.filter((item) => overflowed.has(item.id) && item.menu && include(item.id)).flatMap((item) => item.menu!())
     },
     isOverflowed: (id: string) => overflowed.has(id),
     layout,
