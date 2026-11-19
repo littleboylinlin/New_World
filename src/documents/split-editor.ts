@@ -513,6 +513,8 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     },
     hasSource: (source: ReferenceSource) => [...refs.values()].some((pane) => sameSource(pane.source(), source)),
     focusMain() { if (narrow) setDrawer(false, false); split.focus(mainPane); setFocused(mainPane) },
+    /** Another drawer (chapter list, side panel) is opening over the text; this one steps aside. */
+    closeDrawer() { setDrawer(false, false) },
     refreshPanel: paintPanel,
     /** Lays the panes out now, once the page is in the document (before any scroll is restored). */
     relayout() { split.relayout(); evaluate() },

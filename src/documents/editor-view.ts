@@ -347,6 +347,7 @@ export async function renderEdition(
       label: t('editor.chapterList'), width: 264, minWidth: 220, maxWidth: 320, inlineFrom: 720,
       openWhenInline: () => readEditorPreferences().navOpen !== false,
       onToggle: (open, byUser) => {
+        if (open && wb?.start?.mode() === 'overlay') splitEditor?.closeDrawer()
         navToggle.setAttribute('aria-expanded', String(open))
         navToggle.setAttribute('aria-pressed', String(open))
         if (byUser) updateEditorPreferences({ navOpen: open })
@@ -356,6 +357,7 @@ export async function renderEdition(
       label: t('editor.sidePanel'), width: preferences.sideWidth, minWidth: 260, maxWidth: 560, inlineFrom: 1000, resizable: true,
       openWhenInline: () => readEditorPreferences().sideOpen !== false,
       onToggle: (open, byUser) => {
+        if (open && wb?.end?.mode() === 'overlay') splitEditor?.closeDrawer()
         sideButton.setAttribute('aria-expanded', String(open))
         sideButton.setAttribute('aria-pressed', String(open))
         if (byUser) updateEditorPreferences({ sideOpen: open })

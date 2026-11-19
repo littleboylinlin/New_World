@@ -70,7 +70,7 @@ export function startOpenDrag(options: { label: string; payload: DragPayload; x:
     spread = preview.animate([
       { clipPath: `circle(0px at ${cx}px ${cy}px)`, opacity: .4 },
       { clipPath: `circle(${Math.ceil(radius)}px at ${cx}px ${cy}px)`, opacity: 1 },
-    ], { duration: motionMs('slow'), easing: 'cubic-bezier(.2, .75, .25, 1)' })
+    ], { duration: motionMs('slow'), easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-standard').trim() || 'ease-out' })
   }
 
   function update() {

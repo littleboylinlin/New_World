@@ -139,7 +139,7 @@ test('编辑器侧边的灵感可以插入正文，章节目录右键有章节�
   const chapters = page.getByRole('list', { name: '章节' })
   await chapters.getByRole('button').first().click({ button: 'right' })
   const menu = page.getByRole('menu')
-  await expect(menu.getByRole('menuitem')).toHaveText([/^重命名章节/, '删除章节'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['在右侧打开', '在下方打开', /^重命名章节/, '删除章节'])
   await menu.getByRole('menuitem', { name: '重命名章节' }).click()
   await page.getByRole('textbox', { name: '章节名' }).fill('涨潮')
   await page.getByRole('button', { name: '保存章节名' }).click()

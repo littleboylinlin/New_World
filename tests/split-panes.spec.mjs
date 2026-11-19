@@ -20,11 +20,16 @@ async function closeAll(page) {
 /** Reachable once it has finished sliding or fading into place. */
 const settledReachable = (locator) => expect.poll(() => reachable(locator)).toBe(true)
 
-async function expectRect(locator, expected) {
+/** Compares a rectangle with one worked out from the editing area, both measured afresh each try. */
+async function expectRect(locator, expectedFrom) {
+  let last
   await expect.poll(async () => {
+    const area = await rectOf(editArea(locator.page()))
+    const expected = expectedFrom(area)
     const rect = await rectOf(locator)
+    last = { expected, rect }
     return ['left', 'top', 'right', 'bottom'].every((key) => expected[key] === undefined || near(rect[key], expected[key]))
-  }, { message: JSON.stringify(expected) }).toBe(true)
+  }, { message: 'rect' }).toBe(true).catch((error) => { throw new Error(`${error.message}\n${JSON.stringify(last)}`) })
 }
 
 test.describe('拖拽打开', () => {
@@ -32,33 +37,31 @@ test.describe('拖拽打开', () => {
 
   test('从章节目录拖到右半边：拖动中名字跟着光标，落点预览右半，松手展开只读对照块 @webkit', async ({ page }) => {
     await seedChapters(page, three)
-    const area = await rectOf(editArea(page))
     await dragTo(page, chapterItem(page, '第二章'), await areaPoint(page, .85, .5), { release: false })
     const ghost = page.locator('.open-ghost')
     await expect(ghost).toHaveText('第二章')
     expect(Number(await ghost.evaluate((node) => getComputedStyle(node).opacity))).toBeLessThan(1)
     expect(await ghost.evaluate((node) => getComputedStyle(node).filter)).toContain('blur')
-    await expectRect(page.locator('.drop-preview'), { left: area.left + area.width / 2, top: area.top, right: area.right, bottom: area.bottom })
+    await expectRect(page.locator('.drop-preview'), (area) => ({ left: area.left + area.width / 2, top: area.top, right: area.right, bottom: area.bottom }))
     await page.mouse.up()
     await expect(referencePanes(page)).toHaveCount(1)
     await expect(page.locator('.open-ghost, .drop-preview')).toHaveCount(0)
     await expect(referenceText(page)).toContainText('海雾里的第二章。')
-    await expectRect(referencePanes(page), { left: area.left + area.width / 2, top: area.top, right: area.right, bottom: area.bottom })
-    await expectRect(page.locator('.main-pane'), { left: area.left, right: area.left + area.width / 2 })
+    await expectRect(referencePanes(page), (area) => ({ left: area.left + area.width / 2, top: area.top, right: area.right, bottom: area.bottom }))
+    await expectRect(page.locator('.main-pane'), (area) => ({ left: area.left, right: area.left + area.width / 2 }))
     await expect(chapterText(page)).toContainText('灯塔下的第一章。')
   })
 
   for (const [side, fx, fy] of [['左半', .08, .5], ['上半', .5, .06], ['下半', .5, .94]]) {
     test(`拖到${side}，新块占${side}`, async ({ page }) => {
       await seedChapters(page, three)
-      const area = await rectOf(editArea(page))
       await dragTo(page, chapterItem(page, '第二章'), await areaPoint(page, fx, fy))
       await expect(referencePanes(page)).toHaveCount(1)
-      const expected = {
+      const expected = (area) => ({
         左半: { left: area.left, right: area.left + area.width / 2, top: area.top, bottom: area.bottom },
         上半: { left: area.left, right: area.right, top: area.top, bottom: area.top + area.height / 2 },
         下半: { left: area.left, right: area.right, top: area.top + area.height / 2, bottom: area.bottom },
-      }[side]
+      })[side]
       await expectRect(referencePanes(page), expected)
     })
   }
@@ -69,17 +72,17 @@ test.describe('拖拽打开', () => {
     await dragTo(page, chapterItem(page, '第二章'), await areaPoint(page, .85, .5))
     await expect(referencePanes(page)).toHaveCount(1)
     await dragTo(page, chapterItem(page, '第三章'), await areaPoint(page, .75, .9), { release: false })
-    await expectRect(page.locator('.drop-preview'), { left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right, bottom: area.bottom })
+    await expectRect(page.locator('.drop-preview'), (area) => ({ left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right, bottom: area.bottom }))
     await page.mouse.up()
     await expect(referencePanes(page)).toHaveCount(2)
-    await expectRect(referencePanes(page).nth(1), { left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right, bottom: area.bottom })
-    await expectRect(referencePanes(page).nth(0), { left: area.left + area.width / 2, top: area.top, bottom: area.top + area.height / 2 })
+    await expectRect(referencePanes(page).nth(1), (area) => ({ left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right, bottom: area.bottom }))
+    await expectRect(referencePanes(page).nth(0), (area) => ({ left: area.left + area.width / 2, top: area.top, bottom: area.top + area.height / 2 }))
 
     // Along the whole area's own bottom edge, the new pane spans every column.
     await dragTo(page, chapterItem(page, '第一章'), { x: area.left + area.width * .25, y: area.bottom - 8 })
     await expect(referencePanes(page)).toHaveCount(3)
-    await expectRect(referencePanes(page).nth(2), { left: area.left, right: area.right, top: area.top + area.height / 2, bottom: area.bottom })
-    await expectRect(page.locator('.main-pane'), { left: area.left, top: area.top, bottom: area.top + area.height / 2 })
+    await expectRect(referencePanes(page).nth(2), (area) => ({ left: area.left, right: area.right, top: area.top + area.height / 2, bottom: area.bottom }))
+    await expectRect(page.locator('.main-pane'), (area) => ({ left: area.left, top: area.top, bottom: area.top + area.height / 2 }))
   })
 
   test('拖到编辑区以外松手或按 Esc：名字散开消失，什么都不打开', async ({ page }) => {
@@ -295,8 +298,7 @@ test.describe('菜单与键盘', () => {
     await expect(menu.getByRole('menuitem', { name: '在下方打开' })).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(referencePanes(page)).toHaveCount(1)
-    const area = await rectOf(editArea(page))
-    await expectRect(referencePanes(page), { top: area.top + area.height / 2, bottom: area.bottom, left: area.left, right: area.right })
+    await expectRect(referencePanes(page), (area) => ({ top: area.top + area.height / 2, bottom: area.bottom, left: area.left, right: area.right }))
 
     const panel = await openCompareTab(page)
     await panel.getByRole('button', { name: /第三章/ }).click({ button: 'right' })
@@ -304,7 +306,7 @@ test.describe('菜单与键盘', () => {
     await expect(referencePanes(page)).toHaveCount(2)
     await expect(referencePanes(page).nth(1)).toContainText('潮第 1 段')
     // "Right" splits the focused pane (the one below), so it takes the lower right quarter.
-    await expectRect(referencePanes(page).nth(1), { left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right })
+    await expectRect(referencePanes(page).nth(1), (area) => ({ left: area.left + area.width / 2, top: area.top + area.height / 2, right: area.right }))
     // The web version has no separate windows.
     await panel.getByRole('button', { name: /第一章/ }).click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: '在新窗口打开' })).toHaveCount(0)

@@ -330,3 +330,5 @@
 .reading-window-spacer { flex: 1 1 auto; }
 .reading-window-bar .toolbar-row { padding-inline: 14px 8px; }
 .reading-window-bar .work-name { cursor: default; }
+/* The corner buttons never sit on the first line of text. */
+.reference-paper { padding-top: max(38px, clamp(14px, 3vw, 38px)); }
