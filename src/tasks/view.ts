@@ -350,12 +350,26 @@ function sectionDialog(data: TaskData, projectId: string) {
   )
 }
 
-export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute: string) {
-  const page = element('section', 'task-workspace'),
+/**
+ * The task list shown somewhere else than the tasks page (the editor's side panel): the same rows,
+ * dialogs and reminders, without the page's navigation, view switches and import tools.
+ */
+export interface TaskEmbed {
+  /** The work tasks added here belong to. */
+  link: () => TaskWorkLink
+  /** The chapter being written: its tasks come first. */
+  chapter: () => { editionId: string; chapterId: string } | undefined
+  /** The work's open tasks, after every change. */
+  onCount?: (open: number) => void
+}
+
+export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute: string, embed?: TaskEmbed) {
+  const page = element('section', embed ? 'task-workspace task-embedded' : 'task-workspace'),
     nav = element('nav', 'task-nav'),
     content = element('div', 'task-content')
   const layout = element('div', 'task-layout')
-  layout.append(nav, content)
+  if (embed) layout.append(content)
+  else layout.append(nav, content)
   page.append(layout)
   root.append(page)
   let data = emptyTasks(),
@@ -385,6 +399,16 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
   const add = button(labelKey('add'), 'button button-primary')
   add.type = 'submit'
   quick.append(input, add)
+  if (embed)
+    quick.append(
+      // Opens the full dialog (dates, reminders, labels) with what was typed so far.
+      b('addDetailed', () =>
+        taskDialog(data, undefined, {
+          title: input.value.trim(),
+          ...(contextLink ? { link: contextLink } : {}),
+        }),
+      ),
+    )
   quick.addEventListener('submit', (event) => {
     event.preventDefault()
     add.disabled = true
@@ -489,6 +513,8 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
           const filter = data.taskFilters.find((f) => f.id === current.slice(7))
           return Boolean(filter && matchesFilter(task, filter.group))
         }
+        // Beside the text only what is still to do shows.
+        if (embed && (task.deletedAt !== null || task.completedAt !== null)) return false
         if (current.startsWith('work/'))
           return (
             !task.link?.unconfirmed &&
@@ -733,12 +759,17 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
     const top = element('div', 'task-toolbar')
     top.append(
       query.wrapper,
-      b('add', () =>
-        taskDialog(data, undefined, {
-          projectId: project?.id ?? null,
-          ...(contextLink ? { link: contextLink } : {}),
-        }),
-      ),
+      // Beside the text the full dialog opens from the quick-add row instead.
+      ...(embed
+        ? []
+        : [
+            b('add', () =>
+              taskDialog(data, undefined, {
+                projectId: project?.id ?? null,
+                ...(contextLink ? { link: contextLink } : {}),
+              }),
+            ),
+          ]),
       b('undo', () => undoTaskChange()),
     )
     if (project) {
@@ -793,9 +824,9 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
       )
       return
     }
-    if (contextLink) top.prepend(element('h2', '', contextLink.title))
+    if (contextLink && !embed) top.prepend(element('h2', '', contextLink.title))
     let view = project?.view ?? defaultTaskView()
-    if (!project) {
+    if (!project && !embed) {
       try {
         const stored = data.taskSettings.find((s) => s.id === 'view:' + current)
         if (stored) {
@@ -830,7 +861,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
       void saveView({ sort: sort.input.value as TaskView['sort'] }).catch((e) =>
         showNotice(storageError(e)),
       )
-    top.append(mode.wrapper, sort.wrapper)
+    if (!embed) top.append(mode.wrapper, sort.wrapper)
     if (view.mode === 'calendar') {
       const period = choices(
         labelKey('calendarPeriod'),
@@ -902,12 +933,28 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
         return !day || (day >= from && day < until)
       })
     }
-    if (view.mode === 'list')
-      for (const task of tasks.filter((t) => !t.parentId || !visible.has(t.parentId)))
+    const roots = tasks.filter((t) => !t.parentId || !visible.has(t.parentId))
+    // Beside the text, the chapter being written has its tasks first, under their own heading.
+    const chapter = embed?.chapter()
+    const here = (task: Task) =>
+      Boolean(chapter && task.link?.editionId === chapter.editionId && task.link.chapterId === chapter.chapterId)
+    const grouped = Boolean(embed && current.startsWith('work/') && roots.some(here))
+    let visualList: HTMLElement = list
+    if (grouped) {
+      const rest = element('ul', 'task-list')
+      rest.setAttribute('aria-label', labelKey('otherInWork'))
+      list.setAttribute('aria-label', labelKey('thisChapter'))
+      for (const task of roots.filter(here)) if (rendered < displayLimit) list.append(taskRow(task, 0, visible))
+      for (const task of roots.filter((task) => !here(task))) if (rendered < displayLimit) rest.append(taskRow(task, 0, visible))
+      visualList = element('div', 'task-groups')
+      visualList.append(element('h3', 'task-group-heading', labelKey('thisChapter')), list)
+      if (rest.childElementCount) visualList.append(element('h3', 'task-group-heading', labelKey('otherInWork')), rest)
+    } else if (view.mode === 'list')
+      for (const task of roots)
         if (rendered < displayLimit) list.append(taskRow(task, 0, visible))
     const visual =
       view.mode === 'list'
-        ? list
+        ? visualList
         : taskVisuals(
             data,
             tasks.slice(0, displayLimit),
@@ -933,12 +980,13 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
           paintContent()
         }),
       )
-    content.append(
-      taskTransferControls(),
-      reminderControls(
-        data.taskSettings.find((s) => s.id === 'reminders:enabled')?.value === 'true',
-      ),
-    )
+    if (!embed)
+      content.append(
+        taskTransferControls(),
+        reminderControls(
+          data.taskSettings.find((s) => s.id === 'reminders:enabled')?.value === 'true',
+        ),
+      )
     if (selection && focused instanceof HTMLInputElement) {
       focused.focus({ preventScroll: true })
       focused.setSelectionRange(selection[0], selection[1])
@@ -998,8 +1046,20 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
       const next = await readTasks()
       if (signal.aborted || turn !== request) return
       data = next
-      contextLink = undefined
-      if (currentRoute.startsWith('work/')) {
+      contextLink = embed?.link()
+      if (embed) {
+        const work = embed.link()
+        embed.onCount?.(
+          data.tasks.filter(
+            (task) =>
+              task.deletedAt === null &&
+              task.completedAt === null &&
+              !task.link?.unconfirmed &&
+              task.link?.library === work.library &&
+              task.link.bookId === work.bookId,
+          ).length,
+        )
+      } else if (currentRoute.startsWith('work/')) {
         const [, library, id] = currentRoute.split('/')
         if (library === 'original' || library === 'reference') {
           const stored = await readBook(library, id)
@@ -1014,7 +1074,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
         repaintAfterDrag = true
         return
       }
-      paintNav()
+      if (!embed) paintNav()
       paintContent()
     } catch (e) {
       ready = false
@@ -1031,7 +1091,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
       dragging = false
       if (!repaintAfterDrag || signal.aborted) return
       repaintAfterDrag = false
-      paintNav()
+      if (!embed) paintNav()
       paintContent()
     },
     { capture: true, signal },
@@ -1049,7 +1109,7 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
     }
   }, 30_000)
   signal.addEventListener('abort', () => window.clearInterval(clock), { once: true })
-  window.addEventListener(
+  if (!embed) window.addEventListener(
     'keydown',
     (event) => {
       if (
@@ -1084,4 +1144,17 @@ export function renderTasks(root: HTMLElement, signal: AbortSignal, currentRoute
     { signal },
   )
   void refresh()
+  return {
+    /** Shows another list (such as `work/…` or `all`) in the same place. */
+    setRoute(next: string) {
+      if (next === currentRoute) return
+      currentRoute = next
+      selected.clear()
+      displayLimit = 200
+      void refresh()
+    },
+    refresh: () => void refresh(),
+    repaint: () => { if (ready && !dragging) paintContent() },
+    focusQuick: () => input.focus(),
+  }
 }

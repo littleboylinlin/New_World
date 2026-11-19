@@ -41,6 +41,7 @@ import { isWebPane, mountSplitEditor } from './split-editor'
 import { canBrowse } from './web-pane'
 import { keepFromWeb, linkedText } from './web-keep'
 import { webTab } from './web-tab'
+import { renderTasks } from '../tasks/view'
 import type { SplitEditor } from './split-editor'
 import type { SelectionTarget } from './selection-toolbar'
 import { rememberEdition, takeOpenRequest } from './compare'
@@ -421,7 +422,54 @@ export async function renderEdition(
   const notesHint = element('p', 'dialog-help notes-hint', t('editor.notesInReadingMode'))
   const annotationTools = element('div', 'notes-host')
   notesPanel.append(notesHint, annotationTools)
-  tabs.add({ id: 'ideas', label: t('ideas.title'), panel: ideasPanel })
+  // ——— 灵感与待办: the work's ideas and its tasks, one at a time ———
+  const ideasTasks = element('section', 'ideas-tasks-panel')
+  ideasTasks.setAttribute('aria-label', t('editor.ideasAndTasks'))
+  const parts = createTabs(t('editor.ideasAndTasks'), (id) => updateEditorPreferences({ ideasPart: id === 'tasks' ? 'tasks' : 'ideas' }))
+  parts.element.classList.add('shell-tabs-segmented')
+  const tasksPanel = element('section', 'side-tasks-panel')
+  tasksPanel.setAttribute('aria-label', t('editor.tasksForWork'))
+  parts.add({ id: 'ideas', label: t('ideas.title'), panel: ideasPanel })
+  parts.add({ id: 'tasks', label: t('editor.tasksPart'), panel: tasksPanel })
+  parts.select(preferences.ideasPart)
+  ideasTasks.append(parts.element)
+
+  // This work's tasks (the chapter's first), or every task: the tasks page's own list, rows and dialogs.
+  const scope = element('div', 'task-scope')
+  scope.setAttribute('role', 'group')
+  scope.setAttribute('aria-label', t('editor.taskScope'))
+  const scopeButtons = (['work', 'all'] as const).map((value) => {
+    const choice = button(value === 'work' ? t('editor.taskScopeWork') : t('editor.taskScopeAll'), 'task-scope-button')
+    choice.dataset.scope = value
+    choice.addEventListener('click', () => setTaskScope(value))
+    return choice
+  })
+  scope.append(...scopeButtons)
+  const tasksHost = element('div', 'side-tasks-host')
+  tasksPanel.append(scope, tasksHost)
+  let taskScope = preferences.taskScope
+  let openTasks = 0
+  let ideas: Idea[] = []
+  const workTasks = `work/${edition.library}/${edition.bookId}`
+  const sideTasks = renderTasks(tasksHost, signal, taskScope === 'all' ? 'all' : workTasks, {
+    link: () => ({ library: edition.library, bookId: edition.bookId, title: book.title }),
+    chapter: () => ({ editionId: edition.id, chapterId: chapter.id }),
+    onCount: (open) => { openTasks = open; paintCounts() },
+  })
+  function setTaskScope(value: 'work' | 'all') {
+    taskScope = value
+    updateEditorPreferences({ taskScope: value })
+    for (const choice of scopeButtons) choice.setAttribute('aria-pressed', String(choice.dataset.scope === value))
+    sideTasks.setRoute(value === 'all' ? 'all' : workTasks)
+  }
+  setTaskScope(taskScope)
+  /** Shows the tasks half of the tab, for a task just made from the chapter or a selection. */
+  function showTasks() {
+    parts.select('tasks')
+    openSide('ideas')
+  }
+
+  const ideasTab = tabs.add({ id: 'ideas', label: t('editor.ideasAndTasks'), panel: ideasTasks })
   tabs.add({ id: 'notes', label: t('editor.notesTab'), panel: notesPanel })
   tabs.add({ id: 'compare', label: t('compare.tab'), panel: splitEditor.panel })
   // Private web pages are a desktop feature; the web version shows no 网页 tab at all.
@@ -502,7 +550,7 @@ export async function renderEdition(
     void createLinkedTask({
       library: edition.library, bookId: edition.bookId, title: book.title, editionId: edition.id, chapterId: chapter.id,
       position: { from, to, quote: editor.state.doc.textBetween(from, to, '\n').slice(0, 2000), contentHash: hashDocumentContent(content) },
-    }).catch((cause) => showNotice(storageError(cause)))
+    }, {}, showTasks).catch((cause) => showNotice(storageError(cause)))
   }
 
   function report(cause: unknown, saving = false) {
@@ -715,8 +763,9 @@ export async function renderEdition(
     editor?.destroy()
     paper.replaceChildren()
     chapter = next
-    // The comparison list marks the chapter being edited.
+    // The comparison list marks the chapter being edited; the tasks put this chapter's first.
     splitEditor.refreshPanel()
+    sideTasks.repaint()
     change = saved = 0
     status.textContent = t('editor.saved')
     error.hidden = recover.hidden = true
@@ -849,7 +898,6 @@ export async function renderEdition(
   }, { signal })
 
   // ——— Ideas for this work ———
-  let ideas: Idea[] = []
   let ideasRequest = 0
   let ideasBody: HTMLElement | undefined
   const capture = button(t('ideas.capture'), 'button button-quiet button-small ideas-capture-button', 'plus')
@@ -863,10 +911,19 @@ export async function renderEdition(
     editor.chain().focus().insertContent(paragraphs).run()
     void setIdeaUsed(idea, true).catch(report)
   }
+  /** The tab and the toolbar button count both halves; each half counts its own. */
+  function paintCounts() {
+    const waiting = ideas.filter((idea) => !idea.usedAt).length
+    const total = waiting + openTasks
+    ideasCount.textContent = total ? String(total) : ''
+    tabs.setCount('ideas', total ? String(total) : '')
+    parts.setCount('ideas', waiting ? String(waiting) : '')
+    parts.setCount('tasks', openTasks ? String(openTasks) : '')
+    ideasTab.title = total ? t('editor.ideasAndTasksCount', [waiting, openTasks]) : ''
+  }
   function paintIdeas() {
     const waiting = ideas.filter((idea) => !idea.usedAt)
-    ideasCount.textContent = waiting.length ? String(waiting.length) : ''
-    tabs.setCount('ideas', waiting.length ? String(waiting.length) : '')
+    paintCounts()
     let nextBody: HTMLElement
     if (ideas.length) {
       const list = element('ul', 'ideas-panel-list')

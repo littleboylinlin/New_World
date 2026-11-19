@@ -54,11 +54,15 @@ export async function chapterTitles(page) {
   return chapterList(page).locator('.chapter-title').allTextContents()
 }
 
-/** Opens the side panel on the named tab (灵感 or 批注). */
+/** Opens the side panel on the named tab (灵感, 待办, 批注 or 对照). 灵感 and 待办 share one tab. */
 export async function openSidePanel(page, tab) {
   const toggle = page.locator('.side-toggle')
   if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click()
-  if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click()
+  if (!tab) return
+  if (tab === '灵感' || tab === '待办') {
+    await page.getByRole('tab', { name: /^灵感与待办/ }).click()
+    await page.getByRole('tablist', { name: '灵感与待办' }).getByRole('tab', { name: new RegExp(`^${tab}`) }).click()
+  } else await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click()
 }
 
 /** Makes sure the chapter list beside the text is showing. */

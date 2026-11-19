@@ -201,6 +201,9 @@ export interface TabDefinition {
  * A row of tabs over swappable panels. New tabs can be added at any time, which is how later
  * features (such as side-by-side reading) join the side panel.
  */
+// Tab ids are unique across the page: one set of tabs can sit inside another's panel.
+let tabSerial = 0
+
 export function createTabs(label: string, onSelect: (id: string) => void) {
   const root = element('div', 'shell-tabs')
   const list = element('div', 'shell-tablist')
@@ -213,7 +216,6 @@ export function createTabs(label: string, onSelect: (id: string) => void) {
   root.append(list, stage)
   const tabs = new Map<string, { button: HTMLButtonElement; panel: HTMLElement; count: HTMLElement }>()
   let selected = ''
-  let serial = 0
 
   function paintIndicator() {
     const current = tabs.get(selected)?.button
@@ -262,7 +264,7 @@ export function createTabs(label: string, onSelect: (id: string) => void) {
   return {
     element: root,
     add(definition: TabDefinition) {
-      const id = `shell-tab-${++serial}`
+      const id = `shell-tab-${++tabSerial}`
       // The tab panel wraps the content, so the content keeps its own role and name.
       const content = definition.panel
       const wrapper = element('div')

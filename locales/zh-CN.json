@@ -1296,5 +1296,15 @@
   "compare.editing": "编辑中",
   "compare.currentVersion": "当前版本",
   "compare.chapterCount": "{0} 章",
-  "compare.switchSource": "换一个对照"
+  "compare.switchSource": "换一个对照",
+  "editor.ideasAndTasks": "灵感与待办",
+  "editor.ideasAndTasksCount": "{0} 条灵感 · {1} 项待办",
+  "editor.tasksPart": "待办",
+  "editor.tasksForWork": "这部作品的待办",
+  "editor.taskScope": "待办范围",
+  "editor.taskScopeWork": "本作品",
+  "editor.taskScopeAll": "全部",
+  "tasks.thisChapter": "本章",
+  "tasks.otherInWork": "本作品其他",
+  "tasks.addDetailed": "详细添加"
 }

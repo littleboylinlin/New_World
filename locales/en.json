@@ -1296,5 +1296,15 @@
   "compare.editing": "Editing",
   "compare.currentVersion": "Current version",
   "compare.chapterCount": "{0} chapters",
-  "compare.switchSource": "Read something else"
+  "compare.switchSource": "Read something else",
+  "editor.ideasAndTasks": "Ideas & to-dos",
+  "editor.ideasAndTasksCount": "{0} ideas · {1} to-dos",
+  "editor.tasksPart": "To-dos",
+  "editor.tasksForWork": "To-dos for this work",
+  "editor.taskScope": "Which to-dos",
+  "editor.taskScopeWork": "This work",
+  "editor.taskScopeAll": "All",
+  "tasks.thisChapter": "This chapter",
+  "tasks.otherInWork": "Rest of this work",
+  "tasks.addDetailed": "Add with details"
 }
