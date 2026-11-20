@@ -106,7 +106,16 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   const routingBody = element('div', 'aip-routing')
   const routingStatus = element('p', 'settings-state')
   routingStatus.setAttribute('role', 'status')
-  routingCard.append(element('p', 'dialog-help', t('aiProvider.routingHint')), routingBody, routingStatus)
+  // The book summary keeps each chapter's summary until that chapter changes; this forgets them all.
+  const cacheRow = element('div', 'settings-actions aip-cache')
+  const clearCache = button(t('aiProvider.clearSummaryCache'), 'button button-quiet button-small')
+  cacheRow.append(clearCache, element('span', 'aip-hint', t('aiProvider.clearSummaryCacheHint')))
+  clearCache.addEventListener('click', async () => {
+    if (!await confirmDialog(t('aiProvider.clearSummaryCacheTitle'), [t('aiProvider.clearSummaryCacheCopy')], t('aiProvider.clearSummaryCache'), true)) return
+    const result = await safely(() => ai.clearSummaryCache())
+    routingStatus.textContent = result.ok ? t('aiProvider.summaryCacheCleared') : errorLines(result.error).join(' ')
+  })
+  routingCard.append(element('p', 'dialog-help', t('aiProvider.routingHint')), routingBody, cacheRow, routingStatus)
 
   function say(message: string) {
     status.textContent = message

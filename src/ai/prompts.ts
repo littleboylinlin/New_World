@@ -1,7 +1,7 @@
 import type { Feature } from '../ai-provider'
 import { locale } from '../i18n'
 
-export type AssistAction = 'polish' | 'rewrite' | 'expand' | 'shorten' | 'tone' | 'continue' | 'ask'
+export type AssistAction = 'polish' | 'rewrite' | 'expand' | 'shorten' | 'tone' | 'continue' | 'ask' | 'proofread' | 'summary'
 export type Tone = 'formal' | 'casual' | 'gentle' | 'cold' | 'humorous' | 'tense'
 
 export const assistFeatures: Record<AssistAction, Feature> = {
@@ -12,6 +12,8 @@ export const assistFeatures: Record<AssistAction, Feature> = {
   tone: 'extension:tone',
   continue: 'extension:continue',
   ask: 'ask',
+  proofread: 'proofread',
+  summary: 'extension:summary',
 }
 
 /** Actions a writing style applies to. */
@@ -67,7 +69,8 @@ const en = {
 }
 
 export interface PromptInput {
-  action: AssistAction
+  /** Proofreading and summaries have their own prompts in review.ts. */
+  action: Exclude<AssistAction, 'proofread' | 'summary'>
   /** The selected paragraphs, one per line. */
   text: string
   paragraphs: number

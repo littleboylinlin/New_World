@@ -60,3 +60,4 @@
 }
 .aip-field > .editor-select, .aip-field > .title-input { width: 100%; max-width: none; }
 .aip-grid:not(:has(> :not([hidden]))) { display: none; }
+.aip-cache { align-items: center; }

@@ -9,6 +9,12 @@ import { assistFeatures, assistMessages, editingActions, styledActions, wasTrunc
 import { allStyles, isBuiltin, setWorkStyle, styleInstructions, workStyle } from '../ai/styles'
 import type { WritingStyle } from '../ai/styles'
 import type { LibraryId } from '../library'
+import { addIdea } from '../ideas'
+import { bookMessages, chapterSummaries, collect, parseProofread, proofreadChunks, proofreadMessages, summaryMessages } from '../ai/review'
+import type { ProofreadEdit } from '../ai/review'
+import type { Feature } from '../ai-provider'
+import { chapterText } from './model'
+import type { DocumentContent } from './model'
 import type { AssistAction, Tone } from '../ai/prompts'
 import { t } from '../i18n'
 import { afterTransition } from '../motion'
@@ -19,7 +25,7 @@ import { showNotice } from '../undo'
 import { button, element, icon } from '../ui'
 import {
   acceptAll, acceptSuggestion, blocksText, clearSuggestions, currentSuggestions, insertParagraphsAfter,
-  readBlocks, rejectSuggestion, replyParagraphs, showSuggestions, suggestionsFor,
+  readBlocks, rejectSuggestion, replyParagraphs, showSuggestions, suggestionsFor, suggestionsFromEdits,
 } from './ai-suggest'
 import type { TextBlock } from './ai-suggest'
 import './ai-assist.css'
@@ -34,6 +40,10 @@ export interface AssistOptions {
   area: () => HTMLElement
   /** The work being edited, whose default writing style the panel starts with. */
   work: () => { library: LibraryId; bookId: string }
+  /** The work's and the open chapter's names, for summaries. */
+  titles: () => { book: string; chapter: string }
+  /** Every chapter of the version being edited, with the open one as it is on screen. */
+  chapters: () => Promise<{ title: string; content: DocumentContent }[]>
   /**
    * Runs once per panel before its first change to the text: the editor saves, and the chapter as
    * it was is kept in its history.
@@ -63,7 +73,15 @@ interface Session {
   style?: WritingStyle
   /** Counts requests, so a reply that was replaced by a newer one is ignored. */
   turn: number
+  /** What a proofread or a summary covers. */
+  scope: Scope
+  /** Set by the stop button, so a run of several requests ends too. */
+  halted: boolean
+  /** A remark kept beside the review, e.g. parts the proofreading could not read. */
+  remark?: string
 }
+
+export type Scope = 'selection' | 'chapter' | 'book'
 
 /**
  * Asking AI about selected text: the actions offered by the selection tools, and the panel that
@@ -221,19 +239,24 @@ export function aiAssist(options: AssistOptions) {
   }
 
   // ——— Running ———
-  async function start(next: AssistAction, tone?: Tone) {
+  const featureOf = (next: AssistAction, scope: Scope): Feature => next === 'summary' && scope === 'book' ? 'bookSummary' : assistFeatures[next]
+
+  async function start(next: AssistAction, tone?: Tone, scope: Scope = 'selection') {
     const editor = options.editor()
     if (!editor || editor.isDestroyed) return
-    if (next !== 'ask' && !options.editing()) return
-    const { from, to } = editor.state.selection
-    const blocks = readBlocks(editor.state.doc, from, to)
-    if (!blocks.length) { showNotice(t('aiAssist.selectFirst')); return }
-    const profile = await requireAi(assistFeatures[next])
+    if (next !== 'ask' && next !== 'summary' && !options.editing()) return
+    const whole = scope !== 'selection'
+    const from = whole ? 0 : editor.state.selection.from
+    const to = whole ? editor.state.doc.content.size : editor.state.selection.to
+    const blocks = scope === 'book' ? [] : readBlocks(editor.state.doc, from, to)
+    if (!blocks.length && scope !== 'book') { showNotice(scope === 'chapter' ? t('aiAssist.chapterEmpty') : t('aiAssist.selectFirst')); return }
+    const profile = await requireAi(featureOf(next, scope))
     if (!profile || editor.isDestroyed) return
     closePanel()
     finish?.()
     const current: Session = {
       action: next, tone, blocks, from, to, mapping: new Mapping(), touched: false, profile, reply: '', prepared: false, accepted: 0, turn: 0,
+      scope, halted: false,
     }
     styleRow.hidden = !styledActions.includes(next)
     if (!styleRow.hidden) {
@@ -251,7 +274,7 @@ export function aiAssist(options: AssistOptions) {
     }
     session = current
     stopListening = follow(editor, current)
-    title.textContent = label(next, tone)
+    title.textContent = next === 'proofread' || next === 'summary' ? t(`aiAssist.${next}.${scope}`) : label(next, tone)
     via.textContent = profile.config.name
     via.title = t('aiAssist.via', [profile.config.name])
     outputText.textContent = ''
@@ -333,16 +356,60 @@ export function aiAssist(options: AssistOptions) {
     outputText.classList.add('ai-assist-streaming')
     showOutput(true)
     setMessage(t('aiAssist.waiting'))
-    const stop = action(t('aiAssist.stop'), () => current.run?.cancel())
+    current.halted = false
+    current.remark = undefined
+    const stop = action(t('aiAssist.stop'), () => { current.halted = true; current.run?.cancel() })
     stop.classList.add('ai-assist-stop')
     setActions(stop)
     stop.focus({ preventScroll: true })
-    const messages = assistMessages({
+    const retry = () => action(t('aiAssist.retry'), () => { void run(current) })
+    const dismiss = () => action(t('common.close'), () => { closePanel(); backToText() })
+    const fail = (failure: AiError) => {
+      const detail = failure.message && failure.message !== describeAiError(failure) ? [element('p', 'ai-assist-detail', failure.message)] : []
+      outputText.classList.remove('ai-assist-streaming')
+      setMessage(describeAiError(failure), 'error', detail)
+      setActions(retry(), ...(settingsCodes.has(failure.code) ? [settingsLink()] : []), dismiss())
+    }
+    const halt = () => {
+      outputText.classList.remove('ai-assist-streaming')
+      setMessage(t('aiAssist.stopped'), 'info')
+      setActions(retry(), dismiss())
+    }
+    if (current.action === 'proofread') { await proofread(current, alive, fail, halt); return }
+    let book: { title: string; summary: string }[] | undefined
+    if (current.action === 'summary' && current.scope === 'book') {
+      // Chapters are split to fit the model, which needs its context size.
+      if (!current.profile?.config.generation?.contextTokens) {
+        outputText.classList.remove('ai-assist-streaming')
+        showOutput(false)
+        setMessage(t('aiAssist.needContext', [current.profile?.config.name ?? '']), 'warning')
+        setActions(settingsLink(), dismiss())
+        return
+      }
+      const chapters = (await options.chapters()).map((chapter) => ({ title: chapter.title, text: chapterText(chapter.content, '\n') }))
+      if (!alive()) return
+      const result = await chapterSummaries(chapters, {
+        profileId: current.profile?.id,
+        track: (live) => { current.run = live },
+        stopped: () => !alive() || current.halted,
+        progress: ({ done, total, cached, title: name }) => {
+          if (alive()) setMessage(done < total ? t('aiAssist.bookProgress', [done + 1, total, name, cached]) : t('aiAssist.bookJoining', [total, cached]))
+        },
+      })
+      if (!alive()) return
+      if (!result.ok) { if (result.cancelled || current.halted) halt(); else if (result.error) fail(result.error); return }
+      book = result.summaries
+      current.remark = t('aiAssist.bookCached', [result.cached, chapters.length])
+    }
+    const titles = options.titles()
+    const messages = book ? bookMessages(titles.book, book)
+      : current.action === 'summary' ? summaryMessages(current.scope === 'chapter' ? 'chapter' : 'selection', blocksText(current.blocks), current.scope === 'chapter' ? titles.chapter : undefined)
+      : assistMessages({
       action: current.action, text: blocksText(current.blocks), paragraphs: current.blocks.length,
       tone: current.tone ? t(`aiAssist.tone.${current.tone}`) : undefined, question: current.question,
       system: current.style && styledActions.includes(current.action) ? styleInstructions(current.style) : undefined,
     })
-    const live = ai.generate({ feature: assistFeatures[current.action], profileId: current.profile?.id, messages })
+    const live = ai.generate({ feature: featureOf(current.action, current.scope), profileId: current.profile?.id, messages })
     current.run = live
     let finishReason: string | undefined
     let failure: AiError | undefined
@@ -368,20 +435,10 @@ export function aiAssist(options: AssistOptions) {
     outputText.classList.remove('ai-assist-streaming')
     outputText.textContent = current.reply
     current.run = undefined
-    const retry = () => action(t('aiAssist.retry'), () => { void run(current) })
-    const dismiss = () => action(t('common.close'), () => { closePanel(); backToText() })
-    if (failure) {
-      const detail = failure.message && failure.message !== describeAiError(failure) ? [element('p', 'ai-assist-detail', failure.message)] : []
-      setMessage(describeAiError(failure), 'error', detail)
-      setActions(retry(), ...(settingsCodes.has(failure.code) ? [settingsLink()] : []), dismiss())
-      return
-    }
-    if (stopped) {
-      setMessage(t('aiAssist.stopped'), 'info')
-      setActions(retry(), dismiss())
-      return
-    }
+    if (failure) { fail(failure); return }
+    if (stopped) { halt(); return }
     const truncated = wasTruncated(finishReason)
+    if (current.action === 'summary') { finishSummary(current, truncated); return }
     if (current.action === 'ask' || current.action === 'continue') { finishAnswer(current, truncated); return }
     if (truncated) {
       setMessage(t('aiAssist.truncated'), 'warning')
@@ -389,6 +446,86 @@ export function aiAssist(options: AssistOptions) {
       return
     }
     finishEdit(current)
+  }
+
+  /**
+   * Proofreads the text a few paragraphs at a time; every finding becomes a change to take or
+   * decline, located by its paragraph and the words around it.
+   */
+  async function proofread(current: Session, alive: () => boolean, fail: (error: AiError) => void, halt: () => void) {
+    showOutput(false)
+    const texts = current.blocks.map((block) => block.text)
+    const chunks = proofreadChunks(texts)
+    const edits: ProofreadEdit[] = []
+    let unreadable = 0
+    for (const [index, chunk] of chunks.entries()) {
+      if (!alive()) return
+      if (current.halted) { halt(); return }
+      setMessage(chunks.length > 1 ? t('aiAssist.proofreadProgress', [index + 1, chunks.length]) : t('aiAssist.waiting'))
+      const live = ai.generate({
+        feature: 'proofread', profileId: current.profile?.id, stream: false,
+        messages: proofreadMessages(texts.slice(chunk.start, chunk.start + chunk.count)),
+      })
+      current.run = live
+      const outcome = await collect(live)
+      if (!alive()) return
+      if (!outcome.ok) {
+        if (outcome.cancelled || current.halted) halt()
+        else if (outcome.error) fail(outcome.error)
+        return
+      }
+      try {
+        if (wasTruncated(outcome.finishReason)) throw new Error('truncated')
+        edits.push(...parseProofread(outcome.text, chunk.start, chunk.count))
+      } catch {
+        unreadable++
+      }
+    }
+    current.run = undefined
+    if (unreadable) current.remark = t('aiAssist.proofreadUnreadable', [unreadable, chunks.length])
+    if (current.touched) {
+      setMessage(t('aiAssist.textChanged'), 'warning')
+      setActions(action(t('aiAssist.retry'), () => { void restart(current) }), action(t('common.close'), () => closePanel()))
+      return
+    }
+    const editor = options.editor()
+    const items = suggestionsFromEdits(current.blocks, edits).map((item) => {
+      const from = current.mapping.map(item.from, 1)
+      return { ...item, from, to: Math.max(from, current.mapping.map(item.to, -1)) }
+    })
+    if (!items.length) {
+      setMessage([t('aiAssist.proofreadClean'), current.remark].filter(Boolean).join(' '), unreadable ? 'warning' : 'info')
+      setActions(action(unreadable ? t('aiAssist.retry') : t('common.close'), () => { if (unreadable) void run(current); else closePanel() }, !unreadable),
+        ...(unreadable ? [action(t('common.close'), () => closePanel())] : []))
+      return
+    }
+    showSuggestions(editor.view, items, {
+      accept: (id) => { void adopt(current, () => acceptSuggestion(editor.view, id)) },
+      reject: (id) => rejectSuggestion(editor.view, id),
+      changed: () => { if (session === current) paintReview(current) },
+    })
+    paintReview(current)
+  }
+
+  function finishSummary(current: Session, truncated: boolean) {
+    const notes = [truncated ? t('aiAssist.truncatedAnswer') : '', current.remark ?? ''].filter(Boolean)
+    setMessage(notes.join(' '), truncated ? 'warning' : 'info')
+    const keep = action(t('aiAssist.saveIdea'), async () => {
+      const titles = options.titles()
+      const heading = current.scope === 'book' ? t('aiAssist.ideaBook', [titles.book])
+        : current.scope === 'chapter' ? t('aiAssist.ideaChapter', [titles.chapter]) : t('aiAssist.ideaSelection', [titles.chapter])
+      try {
+        await addIdea(`${heading}\n${current.reply.trim()}`, options.work())
+        keep.disabled = true
+        showNotice(t('aiAssist.ideaSaved'))
+      } catch (cause) {
+        showNotice(cause instanceof Error ? cause.message : String(cause))
+      }
+    }, true)
+    const copy = action(t('aiAssist.copy'), () => {
+      void navigator.clipboard?.writeText(current.reply).then(() => showNotice(t('aiAssist.copied')), () => showNotice(t('aiAssist.copyFailed')))
+    })
+    setActions(keep, copy, action(t('aiAssist.retry'), () => { void run(current) }), action(t('common.close'), () => closePanel()))
   }
 
   function finishAnswer(current: Session, truncated: boolean) {
@@ -436,7 +573,9 @@ export function aiAssist(options: AssistOptions) {
   /** Builds the request again from the selection as it is now. */
   async function restart(current: Session) {
     const editor = options.editor()
-    const blocks = readBlocks(editor.state.doc, current.from, current.to)
+    const blocks = current.scope === 'chapter'
+      ? readBlocks(editor.state.doc, 0, editor.state.doc.content.size)
+      : readBlocks(editor.state.doc, current.from, current.to)
     if (!blocks.length) { closePanel(); return }
     current.blocks = blocks
     current.mapping = new Mapping()
@@ -452,6 +591,7 @@ export function aiAssist(options: AssistOptions) {
     if (current.accepted) notes.push(t('aiAssist.changesTaken', [current.accepted]))
     if (stale) notes.push(t('aiAssist.changesStale', [stale]))
     if (!items.length && !current.accepted) notes.push(t('aiAssist.allRejected'))
+    if (current.remark) notes.push(current.remark)
     setMessage(notes.join(' '), stale ? 'warning' : 'info', items.length ? [element('p', 'ai-assist-hint', t('aiAssist.reviewHint'))] : [])
     const undo = action(t('aiAssist.undo'), () => {
       editor.commands.undo()
@@ -516,7 +656,18 @@ export function aiAssist(options: AssistOptions) {
       },
       item('continue'),
       { label: '', separator: true },
+      { label: t('aiAssist.proofread.selection'), disabled: !editing, action: () => { void start('proofread') } },
+      { label: t('aiAssist.summary.selection'), action: () => { void start('summary') } },
       { label: t('aiAssist.action.ask'), icon: 'ai', action: () => { void start('ask') } },
+    ]
+  }
+
+  /** Whole-chapter and whole-book entries, for the editor's own menu. */
+  function chapterItems(): ShellMenuItem[] {
+    return [
+      { label: t('aiAssist.proofread.chapter'), disabled: !options.editing(), action: () => { void start('proofread', undefined, 'chapter') } },
+      { label: t('aiAssist.summary.chapter'), action: () => { void start('summary', undefined, 'chapter') } },
+      { label: t('aiAssist.summary.book'), action: () => { void start('summary', undefined, 'book') } },
     ]
   }
 
@@ -524,6 +675,7 @@ export function aiAssist(options: AssistOptions) {
 
   return {
     menuItems,
+    chapterItems,
     start,
     /** Ends the panel, e.g. when the chapter or the mode changes. */
     close: closePanel,

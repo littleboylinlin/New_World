@@ -58,3 +58,5 @@
 .ai-assist-style[hidden] { display: none; }
 .ai-assist-style-label { display: flex; flex: 1 1 240px; align-items: center; gap: 8px; min-width: 0; font-size: .84rem; font-weight: 750; }
 .ai-assist-style-select { flex: 1 1 auto; min-height: 36px; padding-block: 4px; }
+/* A proofreading note sits before its change as a small tag; the full text is on hover. */
+.ai-sg-note { display: inline-block; max-width: 12em; margin-inline: 2px; padding: 0 5px; overflow: hidden; border-radius: 5px; color: var(--muted); background: var(--field); font: 650 .7rem/1.6 system-ui, sans-serif; text-overflow: ellipsis; text-indent: 0; vertical-align: 2px; white-space: nowrap; }
