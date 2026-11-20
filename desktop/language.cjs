@@ -4,6 +4,12 @@ const { join } = require('node:path')
 const { cleanLanguageCache } = require('./cleanup.cjs')
 let formatMessage = (messages, key) => messages[key] ?? key
 
+/** Where a release's language pack can be downloaded, in the order to try. */
+const languagePackUrls = (version, file) => [
+  `https://dl.writenewworld.com/v${version}/${file}`,
+  `https://github.com/littleboylinlin/New_World/releases/download/v${version}/${file}`,
+]
+
 let activeMessages = {}
 const t = (key, values) => formatMessage(activeMessages, key, values)
 
@@ -31,6 +37,39 @@ async function createLanguageStore({ root, manifest, request, developmentRoot })
     return parseLanguagePack(bytes, manifest, locale)
   }
 
+  async function fetchPack(url, metadata) {
+    const response = await request(url, {
+      redirect: 'follow', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok || !response.body) throw new Error('Language pack download failed')
+    const chunks = []
+    let size = 0
+    for await (const chunk of response.body) {
+      size += chunk.byteLength
+      if (size > metadata.size) {
+        await response.body.cancel().catch(() => {})
+        throw new Error('Language pack exceeds expected size')
+      }
+      chunks.push(Buffer.from(chunk))
+    }
+    return Buffer.concat(chunks)
+  }
+
+  // The mirror first, which mainland China reaches quickly, then GitHub. Each copy must pass the checksum.
+  async function download(metadata, locale) {
+    let failure
+    for (const url of languagePackUrls(manifest.version, metadata.file)) {
+      try {
+        const bytes = await fetchPack(url, metadata)
+        verify(bytes, locale)
+        return bytes
+      } catch (error) {
+        failure = error
+      }
+    }
+    throw failure ?? new Error('Language pack download failed')
+  }
+
   async function prepare(locale) {
     if (!isLocale(locale)) throw new Error('Unsupported language')
     const metadata = manifest.packs[locale]
@@ -42,21 +81,7 @@ async function createLanguageStore({ root, manifest, request, developmentRoot })
     if (developmentRoot) {
       bytes = await readFile(join(developmentRoot, metadata.file))
     } else {
-      const response = await request(`https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/${metadata.file}`, {
-        redirect: 'follow', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(30_000),
-      })
-      if (!response.ok || !response.body) throw new Error('Language pack download failed')
-      const chunks = []
-      let size = 0
-      for await (const chunk of response.body) {
-        size += chunk.byteLength
-        if (size > metadata.size) {
-          await response.body.cancel().catch(() => {})
-          throw new Error('Language pack exceeds expected size')
-        }
-        chunks.push(Buffer.from(chunk))
-      }
-      bytes = Buffer.concat(chunks)
+      bytes = await download(metadata, locale)
     }
     const pack = verify(bytes, locale)
     await mkdir(cache, { recursive: true })
@@ -91,4 +116,4 @@ async function createLanguageStore({ root, manifest, request, developmentRoot })
   return { initialize, activate, prepare, cleanup: () => cleanLanguageCache(root, manifest.version), get current() { return current } }
 }
 
-module.exports = { t, createLanguageStore }
+module.exports = { t, createLanguageStore, languagePackUrls }

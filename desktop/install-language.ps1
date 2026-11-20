@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Root,
     [Parameter(Mandatory = $true)][string]$Manifest,
     [string]$Locale = '',
-    [string]$Selection = ''
+    [string]$Selection = '',
+    [string]$Bundled = ''
 )
 
 $env:PSModulePath = "$PSHOME\Modules"
@@ -41,9 +42,26 @@ try {
     }
     if (!(Test-Pack $target)) {
         $temporary = Join-Path $cache ("download-" + [Guid]::NewGuid().ToString('N') + '.tmp')
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $url = "https://github.com/littleboylinlin/New_World/releases/download/v$($metadata.version)/$($pack.file)"
-        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temporary -TimeoutSec 30
+        # The installer carries both packs, so installing and updating need no network at all.
+        $bundledPack = if ($Bundled) { Join-Path $Bundled $pack.file } else { '' }
+        if ($bundledPack -and (Test-Pack $bundledPack)) {
+            Copy-Item -LiteralPath $bundledPack -Destination $temporary -Force
+        } else {
+            # Otherwise the mirror first, which mainland China reaches quickly, then GitHub.
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            $sources = @(
+                "https://dl.writenewworld.com/v$($metadata.version)/$($pack.file)",
+                "https://github.com/littleboylinlin/New_World/releases/download/v$($metadata.version)/$($pack.file)"
+            )
+            $downloaded = $false
+            foreach ($url in $sources) {
+                try {
+                    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temporary -TimeoutSec 15
+                    if (Test-Pack $temporary) { $downloaded = $true; break }
+                } catch { }
+            }
+            if (!$downloaded) { throw 'Language pack could not be downloaded' }
+        }
         if (!(Test-Pack $temporary)) { throw 'Language pack checksum mismatch' }
         Move-Item -LiteralPath $temporary -Destination $target -Force
         $temporary = $null

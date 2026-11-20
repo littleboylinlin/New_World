@@ -1,4 +1,4 @@
-const { t, createLanguageStore } = require('./language.cjs')
+const { t, createLanguageStore, languagePackUrls } = require('./language.cjs')
 const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, protocol, safeStorage, screen, session, shell, Tray } = require('electron')
 const { mkdirSync, readFileSync } = require('node:fs')
 const { readFile, stat, writeFile } = require('node:fs/promises')
@@ -131,8 +131,7 @@ function dispatchToRenderer(payload) {
 
 function languageNetworkFor(manifest, partition) {
   const network = session.fromPartition(partition)
-  const prefix = `https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/`
-  const allowedFiles = Object.values(manifest.packs).map((pack) => prefix + pack.file)
+  const allowedFiles = Object.values(manifest.packs).flatMap((pack) => languagePackUrls(manifest.version, pack.file))
   network.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (request, done) => {
     const url = new URL(request.url)
     done({ cancel: request.method !== 'GET' || url.protocol !== 'https:' || Boolean(url.username || url.password)
