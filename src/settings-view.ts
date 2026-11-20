@@ -5,6 +5,7 @@ import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
 import { mountAiSettings } from './ai/settings-view'
+import { mountProviderSettings } from './ai/provider-settings-view'
 import { mountBackupView } from './backup-view'
 import { mountCaptureSettings } from './idea-capture'
 import { readSearchEngine, saveSearchEngine, searchEngines } from './web-search'
@@ -245,8 +246,11 @@ export function mountSettingsView(
   const storageCard = createCard(panelBodies.get('storage')!, t('settings.storage'), 'storage-settings-title')
   // Category 5: Backup & Restore
   const backupCard = createCard(panelBodies.get('backup')!, t('backup.title'), 'backup-settings-title')
-  // Category 6: AI Integration
-  const aiCard = createCard(panelBodies.get('ai')!, t('ai.settingsTitle'), 'ai-settings-title')
+  // Category 6: AI Integration — services the app calls, which feature uses which, then the v1 local endpoint
+  const aiBody = panelBodies.get('ai')!
+  const providerCard = createCard(aiBody, t('aiProvider.title'), 'ai-provider-title')
+  const routingCard = createCard(aiBody, t('aiProvider.routingTitle'), 'ai-routing-title')
+  const aiCard = createCard(aiBody, t('ai.settingsTitle'), 'ai-settings-title')
   // Category 7: Updates & About
   const updatesBody = panelBodies.get('updates')!
   const updateCard = createCard(updatesBody, t('settings.updates'), 'update-settings-title')
@@ -298,6 +302,7 @@ export function mountSettingsView(
     void refreshCapture?.()
     void refreshLogin?.()
     void refreshAi()
+    void refreshProviders()
   }
 
   function showCategory(category: SettingsCategory, fromWithinSettings: boolean, focusHeading = false) {
@@ -345,6 +350,7 @@ export function mountSettingsView(
   mountUpdateView(updateCard, saveBeforeLeaving, () => openCategory('updates'), setBusy)
   const refreshBackups = mountBackupView(backupCard, saveBeforeLeaving, setBusy)
   const refreshAi = mountAiSettings(aiCard)
+  const refreshProviders = mountProviderSettings(providerCard, routingCard)
 
   language.addEventListener('change', () => { applyLanguage.disabled = language.value === locale })
   applyLanguage.addEventListener('click', async () => {
