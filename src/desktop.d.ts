@@ -242,7 +242,7 @@ interface AiDispatchPacket {
   payload: Record<string, unknown>
 }
 
-type WebPaneAction = 'create' | 'navigate' | 'back' | 'forward' | 'reload' | 'stop' | 'place' | 'capture' | 'selection' | 'keep' | 'focus' | 'openOutside' | 'state' | 'close'
+type WebPaneAction = 'create' | 'navigate' | 'back' | 'forward' | 'reload' | 'stop' | 'place' | 'capture' | 'selection' | 'pageText' | 'keep' | 'focus' | 'openOutside' | 'state' | 'close'
 
 interface WebPaneState {
   id: string

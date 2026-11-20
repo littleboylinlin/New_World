@@ -23,6 +23,7 @@ import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './mo
 import { checkDocument, documentExtensions } from './schema'
 import { countChapterRevisions, saveAssistSnapshot } from './revisions'
 import { aiAssist } from './ai-assist'
+import { summarizeWeb } from './web-summary'
 import { AiSuggestions } from './ai-suggest'
 import { showRevisionsDialog } from './revisions-view'
 import { SearchHighlight } from './search'
@@ -419,6 +420,7 @@ export async function renderEdition(
       paintTarget()
     },
     onKeep: (kind, entry) => keepFromWeb(kind, entry, { library: edition.library, bookId: edition.bookId, title: book.title }),
+    onSummarize: (entry) => { void summarizeWeb(entry, { library: edition.library, bookId: edition.bookId, title: book.title }) },
   })
   right.insertBefore(bar.add({ id: 'compare', node: splitEditor.toggle, priority: 73, menu: () => [{ label: t('compare.drawer'), icon: 'compare', action: () => splitEditor.toggle.click() }] }), sideButton)
 

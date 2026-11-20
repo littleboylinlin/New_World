@@ -1617,5 +1617,11 @@
   "aiProvider.clearSummaryCacheTitle": "清空章节摘要缓存？",
   "aiProvider.clearSummaryCacheCopy": "下次总结整本时，所有章节都会重新总结。",
   "aiProvider.summaryCacheCleared": "章节摘要缓存已清空。",
-  "aiAssist.needContext": "总结整本要按模型能处理的长度分段，请先在 AI 设置里为配置「{0}」填写「上下文窗口 token」（在「生成参数」里）。"
+  "aiAssist.needContext": "总结整本要按模型能处理的长度分段，请先在 AI 设置里为配置「{0}」填写「上下文窗口 token」（在「生成参数」里）。",
+  "web.summarize": "总结",
+  "web.summarizeSelection": "总结选中内容",
+  "web.summarizePage": "总结整页",
+  "web.pageEmpty": "这一页没有可以总结的文字。",
+  "webSummary.sent": "只发送了这一页的 {0} 个字到配置「{1}」，没有发送网址。",
+  "webSummary.sentCut": "网页较长，只发送了开头 {0} 字（共 {1} 字）到配置「{2}」，没有发送网址。"
 }

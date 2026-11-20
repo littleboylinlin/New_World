@@ -21,6 +21,9 @@ function isWebUrl(value) {
 const isCertificateError = (code) => code <= -200 && code > -300
 
 /** A pane id from the app's own page: short, plain characters only. */
+/** The most text a page summary reads from one page. */
+const maxPageText = 200000
+
 const isPaneId = (value) => typeof value === 'string' && /^[a-z0-9-]{1,64}$/i.test(value)
 
 function readBounds(value) {
@@ -171,6 +174,18 @@ function createWebPanes({ electron, window, send, command, t }) {
     return typeof text === 'string' ? text.trim().slice(0, 20000) : ''
   }
 
+  /**
+   * Reads the visible text of the whole page with a one-off expression, only when the writer asks
+   * for a summary of it. Nothing stays in the page and nothing else is read.
+   */
+  async function pageText(id) {
+    const pane = paneOf(id)
+    const contents = pane.view.webContents
+    const text = await contents.executeJavaScript('String(document.body ? (document.body.innerText || document.body.textContent || "") : "")', false).catch(() => '')
+    const clean = typeof text === 'string' ? text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, maxPageText) : ''
+    return { text: clean, title: contents.getTitle().slice(0, 300), url: isWebUrl(contents.getURL()) ? contents.getURL() : '' }
+  }
+
   async function keep(pane, kind) {
     const text = await selection(pane.id)
     if (!text) return
@@ -214,6 +229,7 @@ function createWebPanes({ electron, window, send, command, t }) {
       return image.isEmpty() ? '' : image.toDataURL()
     },
     selection,
+    pageText,
     keep: (id, kind) => keep(paneOf(id), kind === 'task' ? 'task' : 'idea'),
     focus: (id) => paneOf(id).view.webContents.focus(),
     openOutside(id) {

@@ -569,7 +569,7 @@ const webPanes = createWebPanes({
   command: (entry) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('new-world:web-keep', entry) },
   t: (key, values) => t(key, values),
 })
-const webActions = new Set(['create', 'navigate', 'back', 'forward', 'reload', 'stop', 'place', 'capture', 'selection', 'keep', 'focus', 'openOutside', 'state', 'close'])
+const webActions = new Set(['create', 'navigate', 'back', 'forward', 'reload', 'stop', 'place', 'capture', 'selection', 'pageText', 'keep', 'focus', 'openOutside', 'state', 'close'])
 
 ipcMain.handle('new-world:web', (event, action, id, ...args) => {
   if (!trustedMainRenderer(event) || !webActions.has(action)) throw new Error(t('main.invalidSettingsRequest'))

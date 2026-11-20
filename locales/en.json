@@ -1617,5 +1617,11 @@
   "aiProvider.clearSummaryCacheTitle": "Clear the chapter summary cache?",
   "aiProvider.clearSummaryCacheCopy": "The next book summary will summarize every chapter again.",
   "aiProvider.summaryCacheCleared": "Chapter summary cache cleared.",
-  "aiAssist.needContext": "A book summary splits chapters to fit the model. First set “Context window tokens” for profile “{0}” in AI settings (under Generation)."
+  "aiAssist.needContext": "A book summary splits chapters to fit the model. First set “Context window tokens” for profile “{0}” in AI settings (under Generation).",
+  "web.summarize": "Summarize",
+  "web.summarizeSelection": "Summarize selection",
+  "web.summarizePage": "Summarize page",
+  "web.pageEmpty": "This page has no text to summarize.",
+  "webSummary.sent": "Only this page's {0} characters were sent to profile “{1}”; the address was not sent.",
+  "webSummary.sentCut": "The page is long: only its first {0} of {1} characters were sent to profile “{2}”; the address was not sent."
 }
