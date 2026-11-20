@@ -39,17 +39,14 @@ async function fetchResponse({ url, init, transport }, signal, diagnose = false)
     signal.throwIfAborted()
     const corsPossible = Boolean(transport.origin && url.origin !== transport.origin && error instanceof TypeError)
     if (diagnose && corsPossible) {
-      try {
-        // An opaque response only establishes reachability. It carries no status,
-        // credentials or user data and is never used as a generation response.
-        const probe = await transport.fetch(new URL(url.origin), {
-          ...requestOptions, method: 'HEAD', mode: 'no-cors', signal,
-        })
-        if (probe.type === 'opaque') throw new ProviderFailure('cors')
-      } catch (probeError) {
-        if (probeError instanceof ProviderFailure) throw probeError
-        signal.throwIfAborted()
-      }
+      // An opaque response only establishes reachability. It carries no status,
+      // credentials or user data and is never used as a generation response.
+      // Browsers require follow mode for an anonymous no-cors fetch.
+      const probe = await transport.fetch(new URL(url.origin), {
+        ...requestOptions, redirect: 'follow', method: 'HEAD', mode: 'no-cors', signal,
+      }).catch(() => undefined)
+      if (probe?.type === 'opaque' || probe?.ok) throw new ProviderFailure('cors')
+      signal.throwIfAborted()
     }
     throw new ProviderFailure('network', undefined, { transient: !corsPossible, corsPossible: corsPossible || undefined })
   }

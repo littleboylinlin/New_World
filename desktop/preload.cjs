@@ -62,6 +62,13 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
       ipcRenderer.send('new-world:close-result', saved === true)
     })
   },
+  aiProvider: {
+    call: (method, ...args) => ipcRenderer.invoke('new-world:ai-provider-call', method, args),
+    start: (id, request) => ipcRenderer.invoke('new-world:ai-provider-start', id, request),
+    next: (id) => ipcRenderer.invoke('new-world:ai-provider-next', id),
+    cancel: (id) => ipcRenderer.send('new-world:ai-provider-cancel', id),
+    release: (id) => ipcRenderer.send('new-world:ai-provider-release', id),
+  },
   getAiState: () => ipcRenderer.invoke('new-world:ai-state'),
   setAiEnabled: (enabled) => ipcRenderer.invoke('new-world:ai-set-enabled', enabled === true),
   setAiPort: (port) => ipcRenderer.invoke('new-world:ai-set-port', port),

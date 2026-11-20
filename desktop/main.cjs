@@ -15,6 +15,7 @@ const login = loginItems(app, process.platform)
 const projectFiles = require('./project-files.cjs')
 const { createAiStore } = require('./ai-store.cjs')
 const { createAiBridge } = require('./ai-bridge.cjs')
+const { installAiProvider } = require('./ai-provider.cjs')
 const {
   isTrustedMainRenderer,
   isTrustedTaskNotification,
@@ -999,6 +1000,7 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     protocol.handle('new-world', serveApp)
+    installAiProvider({ ipcMain, profile, safeStorage, trustedMainRenderer })
     aiStore = createAiStore(appData)
     const testConfirmTimeout = !app.isPackaged && Number(process.env.NEW_WORLD_AI_TEST_TIMEOUT_MS) >= 500
       ? Number(process.env.NEW_WORLD_AI_TEST_TIMEOUT_MS)
