@@ -688,7 +688,7 @@ test('英语语言包按需获取，切换菜单与界面后离线重开仍保�
     expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map((item) => item.label))).toEqual(['Edit', 'View'])
     if (installer) {
       expect(await app.evaluate(() => globalThis.testLanguageRequests)).toEqual([
-        `${releaseBase}/download/v${version}/New-World-lang-en.json`,
+        `https://dl.writenewworld.com/v${version}/New-World-lang-en.json`,
       ])
     }
     await page.screenshot({ path: testInfo.outputPath('windows-english-settings.png') })

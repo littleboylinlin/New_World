@@ -32,13 +32,30 @@ test('首次只下载系统所需的一个语言包，重开和断网时复用�
   try {
     const store = await createLanguageStore({ root, manifest, request: network(requests) })
     await store.initialize('en-US')
-    expect(requests).toEqual([`https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/New-World-lang-en.json`])
+    expect(requests).toEqual([`https://dl.writenewworld.com/v${manifest.version}/New-World-lang-en.json`])
     expect(await readdir(join(root, 'packs', manifest.version))).toEqual(['en.json'])
     const offline = await createLanguageStore({ root, manifest, request: () => { throw new Error('offline') } })
     expect((await offline.initialize('zh-CN')).locale).toBe('en')
     expect(offline.current.messages['settings.title']).toBe('Settings')
     expect(requests).toHaveLength(1)
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('镜像下载失败或内容不对时改从 GitHub 下载', async () => {
+  for (const mirror of [() => { throw new Error('offline') }, () => new Response(null, { status: 503 }), () => new Response('broken')]) {
+    const root = await sandbox()
+    const requests = []
+    try {
+      const store = await createLanguageStore({ root, manifest, request: (url) => url.startsWith('https://dl.writenewworld.com/')
+        ? (requests.push(url), mirror()) : network(requests)(url) })
+      expect((await store.initialize('en-US')).locale).toBe('en')
+      expect(requests).toEqual([
+        `https://dl.writenewworld.com/v${manifest.version}/New-World-lang-en.json`,
+        `https://github.com/littleboylinlin/New_World/releases/download/v${manifest.version}/New-World-lang-en.json`,
+      ])
+      expect(await readdir(join(root, 'packs', manifest.version))).toEqual(['en.json'])
+    } finally { await rm(root, { recursive: true, force: true }) }
+  }
 })
 
 test('损坏的下载或缓存不会切换语言，重试后只取得所选语言', async () => {
