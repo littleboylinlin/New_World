@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import { startWork } from '../navigation-helpers.mjs'
+import { fakeAiService } from '../helpers/fake-ai.mjs'
 import { exists, inWebView, openWebPane, partitionFiles, startSite, waitForView, webViews } from './web-helpers.mjs'
 
 // The opening animation stays off in desktop tests; windows.spec.mjs checks that it ends by itself.
@@ -217,6 +218,71 @@ test('摘进灵感、转成待办：带上网页标题，「附带链接」默�
     await pane.getByRole('button', { name: '摘进灵感' }).click()
     await expect(page.getByRole('dialog', { name: '摘进灵感' }).getByRole('checkbox', { name: '附带链接' })).not.toBeChecked()
   } finally { await app.close() }
+})
+
+test('总结整页或选中内容：只发送这一页的文字，不发网址，结果可摘进灵感，链接由用户决定', async () => {
+  const fake = await fakeAiService({ reply: () => '- 灯塔在雾里转动。\n- 守夜人数着浪声。' })
+  const { app, page } = await launch()
+  try {
+    // An AI profile in the desktop store, used by default.
+    await page.evaluate(async (url) => {
+      const bridge = window.newWorldDesktop.aiProvider
+      const saved = await bridge.call('saveProfile', { config: { name: 'Loopback', baseUrl: url + '/v1', protocol: 'openai-chat', auth: { kind: 'none' }, model: 'example' } })
+      await bridge.call('setRouting', { defaultProfileId: saved.data.id, byFeature: {} })
+    }, fake.url)
+    await newNovel(page)
+    const pane = await openWebPane(page, `${site.url}/page?title=雾港札记`)
+    await waitForView(app, (item) => item.title === '雾港札记')
+    await expect(fake.requests).toHaveLength(0)
+
+    await pane.getByRole('button', { name: '总结' }).click()
+    await page.getByRole('menuitem', { name: '总结整页' }).click()
+    await page.getByRole('dialog', { name: '发送前确认' }).getByRole('button', { name: '知道了，继续' }).click()
+    let dialog = page.getByRole('dialog', { name: '总结整页' })
+    await expect(dialog.locator('.web-summary-output')).toHaveText('- 灯塔在雾里转动。\n- 守夜人数着浪声。')
+    await expect(dialog).toContainText('没有发送网址')
+    expect(fake.requests).toHaveLength(1)
+    const sent = JSON.stringify(fake.requests[0].body)
+    expect(sent).toContain('海边的灯塔在雾里一圈一圈地转。')
+    expect(sent).toContain('第二段：守夜人数着浪声。')
+    expect(sent).toContain('雾港札记')
+    expect(sent).not.toContain(site.url)
+    expect(sent).not.toContain('/page?')
+
+    await dialog.getByRole('button', { name: '摘进灵感' }).click()
+    const keep = page.getByRole('dialog', { name: '摘进灵感' })
+    await expect(keep).toContainText('灯塔在雾里转动。')
+    await expect(keep.getByRole('checkbox', { name: '附带链接' })).not.toBeChecked()
+    await keep.getByRole('button', { name: '存为灵感' }).click()
+    await expect(keep).toBeHidden()
+    if (await page.locator('.side-toggle').getAttribute('aria-expanded') !== 'true') await page.locator('.side-toggle').click()
+    await page.getByRole('tab', { name: /^灵感与待办/ }).click()
+    await page.getByRole('tablist', { name: '灵感与待办' }).getByRole('tab', { name: /^灵感/ }).click()
+    const idea = page.locator('.ideas-panel .idea-text').first()
+    await expect(idea).toContainText('灯塔在雾里转动。')
+    await expect(idea).toContainText('摘自《雾港札记》')
+    await expect(idea).not.toContainText(site.url)
+
+    // A selection sends only the selected text.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.focus())
+    await selectInPage(app)
+    await expect(pane.getByRole('button', { name: '摘进灵感' })).toBeVisible()
+    await pane.getByRole('button', { name: '总结' }).click()
+    await page.getByRole('menuitem', { name: '总结选中内容' }).click()
+    dialog = page.getByRole('dialog', { name: '总结选中内容' })
+    await expect(dialog.locator('.web-summary-output')).not.toBeEmpty()
+    const selected = JSON.stringify(fake.requests[1].body)
+    expect(selected).toContain('海边的灯塔在雾里一圈一圈地转。')
+    expect(selected).not.toContain('第二段')
+    await dialog.getByRole('button', { name: '关闭' }).click()
+    await expect(dialog).toBeHidden()
+    // The pane is still private: its session is in memory only.
+    const [view] = await webViews(app)
+    expect(view.persistent).toBe(false)
+  } finally {
+    await app.close()
+    await fake.close()
+  }
 })
 
 test('覆盖层出现时网页换成截图，收起后恢复；拖动分隔线后原生视图的位置和大小跟着块走', async () => {

@@ -3,6 +3,7 @@ import { button, element, icon } from '../ui'
 import type { IconName } from '../ui'
 import { dismissNotice, showNotice } from '../undo'
 import { addressFor } from '../web-search'
+import { menuButton } from '../shell/popover'
 import type { ShellMenuItem } from '../shell/popover'
 import type { ChapterInfo, Edition } from './model'
 import type { PaneSource, ReferenceSource } from './compare'
@@ -36,6 +37,8 @@ interface WebPaneOptions {
   onFocus: () => void
   /** Selected text to keep as an idea or a task, with the page's title and address. */
   onKeep: (kind: 'idea' | 'task', entry: { text: string; title: string; url: string }) => void
+  /** Text to summarise: what is selected, or the whole page, read only now that it was asked for. */
+  onSummarize?: (entry: { scope: 'selection' | 'page'; text: string; title: string; url: string }) => void
 }
 
 type Mode = 'hidden' | 'live' | 'snapshot'
@@ -118,9 +121,16 @@ export function webPane(options: WebPaneOptions) {
   keepIdea.append(element('span', 'web-tool-label', t('web.toIdea')))
   keepTask.append(element('span', 'web-tool-label', t('web.toTask')))
   keepIdea.hidden = keepTask.hidden = true
+  const summarize = tool(t('web.summarize'), 'ai', () => {}, 'web-summarize')
+  summarize.append(element('span', 'web-tool-label', t('web.summarize')))
+  summarize.hidden = !options.onSummarize
+  menuButton(summarize, t('web.summarize'), () => [
+    { label: t('web.summarizeSelection'), disabled: !selected, action: () => { void summarizePage('selection') } },
+    { label: t('web.summarizePage'), action: () => { void summarizePage('page') } },
+  ])
   const outside = tool(t('web.openOutside'), 'window', () => { void call('openOutside') })
   const close = tool(t('web.close'), 'close', () => options.onClose(), 'web-close')
-  bar.append(back, forward, reload, form, keepIdea, keepTask, outside, close)
+  bar.append(back, forward, reload, form, keepIdea, keepTask, summarize, outside, close)
 
   const stage = element('div', 'web-stage')
   stage.tabIndex = -1
@@ -196,6 +206,20 @@ export function webPane(options: WebPaneOptions) {
     if (!created) return ''
     try { return String(await call('selection') ?? '') } catch { return '' }
   }
+  async function summarizePage(scope: 'selection' | 'page') {
+    if (!created || !options.onSummarize) return
+    if (scope === 'selection') {
+      const text = await readSelection()
+      if (!text) { showNotice(t('web.selectFirst')); return }
+      options.onSummarize({ scope, text, title: state.title ?? '', url: state.url ?? '' })
+      return
+    }
+    let page: { text?: string; title?: string; url?: string } = {}
+    try { page = await call('pageText') ?? {} } catch { /* Reported as empty below. */ }
+    if (!page.text) { showNotice(t('web.pageEmpty')); return }
+    options.onSummarize({ scope, text: page.text, title: page.title ?? state.title ?? '', url: page.url ?? state.url ?? '' })
+  }
+
   async function keep(kind: 'idea' | 'task') {
     const text = await readSelection()
     if (!text) { showNotice(t('web.selectFirst')); return }

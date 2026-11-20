@@ -43,6 +43,7 @@ interface SplitEditorOptions {
   onReferenceChange: (pane: SidePane) => void
   /** Text selected in a web page, to keep as an idea or a task. */
   onKeep: (kind: 'idea' | 'task', entry: { text: string; title: string; url: string }) => void
+  onSummarize?: (entry: { scope: 'selection' | 'page'; text: string; title: string; url: string }) => void
   /** Before something opens: drawers over the text (chapter list, side panel) step aside. */
   beforeOpen: () => void
   signal: AbortSignal
@@ -229,6 +230,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
         onChange: () => { options.onReferenceChange(page); paintDots() },
         onFocus: () => { if (!narrow) split.focus(id); setFocused(id) },
         onKeep: options.onKeep,
+        onSummarize: options.onSummarize,
       })
       refs.set(id, page)
       paintToggle()

@@ -1,0 +1,8 @@
+.web-summary-dialog { width: min(560px, calc(100% - 32px)); }
+.web-summary-sent { padding: 6px 10px; border-inline-start: 4px solid var(--yellow); background: var(--field); }
+.web-summary-output { max-height: min(45vh, 360px); min-height: 3em; margin-top: 10px; padding: 10px 12px; overflow: auto; border: 1.5px solid var(--hair); border-radius: 10px; background: var(--field); font-size: .92rem; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.web-summary-streaming::after { content: ''; display: inline-block; width: .5em; height: 1em; margin-inline-start: 2px; vertical-align: -2px; background: currentColor; animation: ai-caret 900ms steps(1) infinite; }
+.web-summary-status { margin: 8px 0 0; font-size: .86rem; }
+.web-summary-status:empty { display: none; }
+.web-summary-controls { flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { .web-summary-streaming::after { animation: none; } }
