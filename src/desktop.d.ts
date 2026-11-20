@@ -124,6 +124,7 @@ interface Window {
     importSpellingDictionaries?: () => Promise<SpellingResult>
     downloadSpellingDictionary?: (link: string) => Promise<SpellingResult>
     removeSpellingDictionary?: (language: string) => Promise<SpellingState>
+    aiProvider: import('../shared/ai-provider/types.mjs').AiProviderDesktopBridge
     getAiState?: () => Promise<AiSettingsState>
     setAiEnabled?: (enabled: boolean) => Promise<AiSettingsState>
     setAiPort?: (port: number) => Promise<AiSettingsState>

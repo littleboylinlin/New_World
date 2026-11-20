@@ -91,3 +91,82 @@ export interface ModelPage {
   models: { id: string; displayName?: string }[]
   nextCursor?: string
 }
+
+export type BuiltinFeature = 'ask' | 'polish' | 'proofread' | 'bookSummary'
+export type Feature = BuiltinFeature | `extension:${string}`
+
+export type Route = {
+  feature: Feature
+  profileId?: string
+  expectedProfileRevision?: string
+}
+
+export type GenerateRequest = CompletionRequest & Route
+
+export interface AiRun {
+  id: string
+  events: AsyncIterable<RunEvent>
+  cancel(): void
+}
+
+export type ProfileRecord = { id: string; config: ProfileConfig }
+
+export type SavedProfile = ProfileRecord & {
+  hasApiKey: boolean
+  savedSecretRefs: string[]
+  rememberCredentials: boolean
+}
+
+export type Routing = {
+  defaultProfileId: string | null
+  byFeature: Partial<Record<Feature, string | null>>
+}
+
+export type ConfigFile = {
+  format: 'new-world-ai-providers'
+  version: 1
+  profiles: ProfileRecord[]
+  routing: Routing
+}
+
+export type ConfigState = Omit<ConfigFile, 'profiles'> & {
+  profiles: SavedProfile[]
+  credentialStorage: 'system' | 'web'
+}
+
+export type SaveProfileInput = {
+  id?: string
+  config: ProfileConfig
+  credentials?: CredentialPatch
+  rememberCredentials?: boolean
+}
+
+export type ConnectionTarget =
+  | { profileId: string }
+  | { draft: ProfileConfig; credentials?: CredentialPatch; reuseCredentialsFrom?: string }
+
+export type ConnectionTestOptions = { stream?: boolean }
+
+export interface AiProviderApi {
+  getConfig(): Promise<Result<ConfigState>>
+  saveProfile(input: SaveProfileInput): Promise<Result<SavedProfile>>
+  deleteProfile(id: string): Promise<Result<void>>
+  setRouting(routing: Routing): Promise<Result<void>>
+  listPresets(): readonly ProfileRecord[]
+  exportConfig(): Promise<Result<ConfigFile>>
+  importConfig(file: unknown): Promise<Result<{ profiles: SavedProfile[]; routing: Routing }>>
+
+  generate(request: GenerateRequest): AiRun
+  testConnection(target: ConnectionTarget, options?: ConnectionTestOptions): Promise<ConnectionTest>
+  listModels(target: ConnectionTarget, cursor?: string): Promise<Result<ModelPage>>
+}
+
+export type ProviderMethods = Omit<AiProviderApi, 'generate' | 'listPresets'>
+
+export interface AiProviderDesktopBridge {
+  call<M extends keyof ProviderMethods>(method: M, ...args: Parameters<ProviderMethods[M]>): ReturnType<ProviderMethods[M]>
+  start(id: string, request: GenerateRequest): Promise<boolean>
+  next(id: string): Promise<RunEvent | null>
+  cancel(id: string): void
+  release(id: string): void
+}
