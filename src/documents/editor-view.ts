@@ -539,6 +539,8 @@ export async function renderEdition(
     editing: () => editing,
     area: () => scroller,
     work: () => ({ library: edition.library, bookId: edition.bookId }),
+    titles: () => ({ book: book.title, chapter: chapterInfo().title }),
+    chapters: () => currentChapters(),
     signal,
     beforeChange: async ({ action, profile }) => {
       if (!await flush()) throw new Error(t('aiAssist.saveFirst'))
@@ -1094,6 +1096,7 @@ export async function renderEdition(
       { label: t('editor.export'), icon: 'download', action: exportVersion },
       { label: t('revisions.button'), icon: 'history', hint: historyTotal ? String(historyTotal) : undefined, action: showHistory },
       { label: t('tasks.addChapterTask'), icon: 'check', action: chapterTask },
+      { label: t('aiAssist.chapterMenu'), icon: 'ai', children: assist.chapterItems },
       ...(edition.notes.length ? [{ label: t('editor.viewConversionNotes'), icon: 'file' as const, action: () => { information.hidden = false; information.open = true } }] : []),
       { label: formatCollapsed ? t('editor.showFormatting') : t('editor.hideFormatting'), icon: 'format', action: () => {
         formatCollapsed = !formatCollapsed

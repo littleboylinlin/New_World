@@ -19,6 +19,8 @@ export interface Suggestion {
   to: number
   insert: string
   paragraphs?: string[]
+  /** Why the change is suggested, e.g. a proofreading note. */
+  note?: string
 }
 
 interface SuggestionState {
@@ -67,7 +69,14 @@ function widget(view: EditorView, item: Suggestion, index: number) {
   box.className = 'ai-sg-widget'
   box.contentEditable = 'false'
   box.dataset.suggestion = item.id
+  if (item.note) box.title = item.note
   const text = item.paragraphs ? item.paragraphs.join('\n') : item.insert
+  if (item.note) {
+    const note = document.createElement('span')
+    note.className = 'ai-sg-note'
+    note.textContent = item.note
+    box.append(note)
+  }
   if (text) {
     const added = document.createElement('ins')
     added.className = item.paragraphs ? 'ai-sg-ins ai-sg-block' : 'ai-sg-ins'
@@ -77,7 +86,7 @@ function widget(view: EditorView, item: Suggestion, index: number) {
   const actions = document.createElement('span')
   actions.className = 'ai-sg-actions'
   for (const [kind, label, glyph] of [
-    ['accept', t('aiAssist.acceptOne', [index + 1]), '✓'],
+    ['accept', t('aiAssist.acceptOne', [index + 1]) + (item.note ? `：${item.note}` : ''), '✓'],
     ['reject', t('aiAssist.rejectOne', [index + 1]), '✕'],
   ] as const) {
     const control = document.createElement('button')
@@ -234,7 +243,7 @@ export function suggestionsFor(blocks: readonly TextBlock[], reply: string): Sug
  * Suggestions located by quoting: each names the paragraph (by index among `blocks`) and the exact
  * original text, optionally with text before it to pick the right occurrence. Used by proofreading.
  */
-export function suggestionsFromEdits(blocks: readonly TextBlock[], edits: readonly { block: number; original: string; replacement: string; before?: string }[]) {
+export function suggestionsFromEdits(blocks: readonly TextBlock[], edits: readonly { block: number; original: string; replacement: string; before?: string; reason?: string }[]) {
   const items: Suggestion[] = []
   for (const edit of edits) {
     const block = blocks[edit.block]
@@ -252,7 +261,7 @@ export function suggestionsFromEdits(blocks: readonly TextBlock[], edits: readon
     for (const hunk of diffText(edit.original, edit.replacement)) {
       const shifted = { from: hunk.from + at, to: hunk.to + at, insert: hunk.insert }
       for (const piece of splitAtBoundaries(block.text, shifted, block.boundaries)) {
-        items.push({ id: nextId(), ...docRange(block, piece.from, piece.to), insert: piece.insert })
+        items.push({ id: nextId(), ...docRange(block, piece.from, piece.to), insert: piece.insert, ...(edit.reason ? { note: edit.reason } : {}) })
       }
     }
   }
