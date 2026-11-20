@@ -199,6 +199,11 @@ export function createProviderService(store, client = createProviderClient()) {
       return { profiles: profiles.map((profile) => publicProfile(profile, credentialInfo({}))), routing }
     })),
 
+    resolveProfile: (route) => result(() => store.read((state) => {
+      const { id, revision, config } = resolveRoute(state, route)
+      return { id, revision, config }
+    })),
+
     async *generate(request, signal) {
       try {
         if (!signal.aborted) {

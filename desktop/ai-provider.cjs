@@ -3,7 +3,7 @@ const { failureResult, ProviderFailure } = require('../shared/ai-provider/errors
 const { createDesktopProviderStore } = require('./ai-provider-store.cjs')
 
 const methods = new Set([
-  'getConfig', 'saveProfile', 'deleteProfile', 'setRouting', 'exportConfig', 'importConfig', 'testConnection', 'listModels',
+  'getConfig', 'saveProfile', 'deleteProfile', 'setRouting', 'exportConfig', 'importConfig', 'testConnection', 'listModels', 'resolveProfile',
 ])
 
 function installAiProvider({ ipcMain, profile, safeStorage, trustedMainRenderer }) {

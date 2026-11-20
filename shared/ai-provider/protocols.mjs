@@ -93,7 +93,9 @@ function textBlocks(parts, select) {
 function openAiResult(value) {
   const choice = value?.choices?.[0]
   if (!choice?.message) invalidResponse()
-  return completion(choice.message.content ?? choice.message.refusal ?? '', choice.finish_reason)
+  const text = choice.message.content ?? choice.message.refusal ?? ''
+  if (typeof text !== 'string') invalidResponse()
+  return completion(text, choice.finish_reason)
 }
 
 function responsesResult(value) {
@@ -216,9 +218,9 @@ export function requestBody(config, request, streaming, probe) {
   const model = config.model?.trim()
   if (!nonempty(model)) invalid('Enter a model name for this AI profile.')
   const { messages, generation } = request
-  if (!Array.isArray(messages) || !messages.some((message) => message?.role === 'user')
+  if (!Array.isArray(messages) || !messages.length
     || messages.some((message) => !isRecord(message) || !['system', 'user', 'assistant'].includes(message.role) || typeof message.text !== 'string')) {
-    invalid('Provide text messages, including a user message.')
+    invalid('Provide at least one text message.')
   }
   validateGeneration(generation)
   const options = { ...config.generation, ...omitUndefined(generation ?? {}) }

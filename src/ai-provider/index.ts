@@ -1,11 +1,12 @@
 import { createProviderClient } from '../../shared/ai-provider/client.mjs'
-import { publicError, ProviderFailure } from '../../shared/ai-provider/errors.mjs'
+import { failureResult, publicError, ProviderFailure } from '../../shared/ai-provider/errors.mjs'
 import { listPresets } from '../../shared/ai-provider/presets.mjs'
 import { createProviderService } from '../../shared/ai-provider/service.mjs'
 import type {
   AiProviderApi, AiProviderDesktopBridge, AiRun, GenerateRequest, ProviderMethods, RunEvent,
 } from '../../shared/ai-provider/types.mjs'
 import { createWebStore } from './web-store'
+import { createSummaryApi } from './summaries'
 export type * from '../../shared/ai-provider/types.mjs'
 
 async function* desktopEvents(
@@ -58,7 +59,9 @@ function run(source: RunSource, request: GenerateRequest): AiRun {
 function desktopApi(bridge: AiProviderDesktopBridge): AiProviderApi {
   const call = <M extends keyof ProviderMethods>(method: M) =>
     (...args: Parameters<ProviderMethods[M]>) => bridge.call(method, ...args)
+      .catch((error) => failureResult(error)) as ReturnType<ProviderMethods[M]>
   return {
+    ...createSummaryApi(call('resolveProfile')),
     getConfig: call('getConfig'),
     saveProfile: call('saveProfile'),
     deleteProfile: call('deleteProfile'),
@@ -74,10 +77,12 @@ function desktopApi(bridge: AiProviderDesktopBridge): AiProviderApi {
 
 function webApi(): AiProviderApi {
   const service = createProviderService(createWebStore(), createProviderClient({ browserOrigin: location.origin }))
+  const { resolveProfile, generate, ...calls } = service
   return {
-    ...service,
+    ...calls,
+    ...createSummaryApi(resolveProfile),
     listPresets,
-    generate: (request) => run((input, _id, signal) => service.generate(input, signal), request),
+    generate: (request) => run((input, _id, signal) => generate(input, signal), request),
   }
 }
 
