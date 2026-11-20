@@ -6,6 +6,7 @@ import { mountUpdateView } from './update-view'
 import { mountAppearanceSettings } from './appearance-view'
 import { mountAiSettings } from './ai/settings-view'
 import { mountProviderSettings } from './ai/provider-settings-view'
+import { mountStyleLibrary } from './ai/styles-view'
 import { mountBackupView } from './backup-view'
 import { mountCaptureSettings } from './idea-capture'
 import { readSearchEngine, saveSearchEngine, searchEngines } from './web-search'
@@ -250,6 +251,7 @@ export function mountSettingsView(
   const aiBody = panelBodies.get('ai')!
   const providerCard = createCard(aiBody, t('aiProvider.title'), 'ai-provider-title')
   const routingCard = createCard(aiBody, t('aiProvider.routingTitle'), 'ai-routing-title')
+  const styleCard = createCard(aiBody, t('styles.title'), 'ai-styles-title')
   const aiCard = createCard(aiBody, t('ai.settingsTitle'), 'ai-settings-title')
   // Category 7: Updates & About
   const updatesBody = panelBodies.get('updates')!
@@ -303,6 +305,7 @@ export function mountSettingsView(
     void refreshLogin?.()
     void refreshAi()
     void refreshProviders()
+    void refreshStyles()
   }
 
   function showCategory(category: SettingsCategory, fromWithinSettings: boolean, focusHeading = false) {
@@ -351,6 +354,7 @@ export function mountSettingsView(
   const refreshBackups = mountBackupView(backupCard, saveBeforeLeaving, setBusy)
   const refreshAi = mountAiSettings(aiCard)
   const refreshProviders = mountProviderSettings(providerCard, routingCard)
+  const refreshStyles = mountStyleLibrary(styleCard)
 
   language.addEventListener('change', () => { applyLanguage.disabled = language.value === locale })
   applyLanguage.addEventListener('click', async () => {

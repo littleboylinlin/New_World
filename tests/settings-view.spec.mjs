@@ -209,6 +209,8 @@ test('切换设置分类保留异步任务状态、已显露 AI 令牌与进行�
 
   const settingsPage = page.locator('.settings-page')
   const aiPanel = settingsPage.locator('.settings-panel[data-category="ai"]')
+  // The cards above load on their own; wait until the page stops moving.
+  await expect(aiPanel.locator('.styles-item')).toHaveCount(4)
   await aiPanel.getByLabel('AI 配置名称').fill('TokenPersistAgent')
   await aiPanel.getByRole('button', { name: '添加 AI 配置' }).click()
   await expect(aiPanel.locator('.ai-token-banner')).toBeVisible()

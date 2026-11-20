@@ -15,10 +15,12 @@ export interface FeatureGroup {
 export const featureGroups: readonly FeatureGroup[] = [
   { feature: 'ask', label: 'aiProvider.featureAsk', members: [] },
   { feature: 'polish', label: 'aiProvider.featurePolish', members: ['extension:rewrite', 'extension:expand', 'extension:shorten', 'extension:tone'] },
+  { feature: 'extension:continue', label: 'aiProvider.featureContinue', members: [] },
   { feature: 'proofread', label: 'aiProvider.featureProofread', members: [] },
   { feature: 'extension:summary', label: 'aiProvider.featureSummary', members: [] },
   { feature: 'bookSummary', label: 'aiProvider.featureBookSummary', members: [] },
   { feature: 'extension:webSummary', label: 'aiProvider.featureWebSummary', members: [], desktopOnly: true },
+  { feature: 'extension:styleAnalysis', label: 'aiProvider.featureStyleAnalysis', members: [] },
 ]
 
 /** The row a feature name belongs to. */

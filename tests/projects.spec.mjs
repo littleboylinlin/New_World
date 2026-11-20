@@ -294,7 +294,7 @@ test('ZIP 重复路径、异常压缩率和超过 10000 条目被拒绝', async 
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
 })
 
-test('现有 v7 书库升级到 v10 后完整保留数据和索引主键', async ({ page }) => {
+test('现有 v7 书库升级到最新版本后完整保留数据和索引主键', async ({ page }) => {
   await page.goto('/appearance.js')
   await page.evaluate(createLegacyDatabase, 7)
   const seeded = await page.evaluate(seedProject, projectFixture('reference', pixel.toString('base64')))
@@ -307,8 +307,8 @@ test('现有 v7 书库升级到 v10 后完整保留数据和索引主键', async
     const books = db.transaction('books').objectStore('books')
     const result = { version: db.version, unique: books.index('byLibraryDigest').unique, keyPath: books.keyPath }; db.close(); return result
   })
-  expect(version).toEqual({ version: 10, unique: false, keyPath: ['library', 'id'] })
-  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments']) before[name] = []
+  expect(version).toEqual({ version: 11, unique: false, keyPath: ['library', 'id'] })
+  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments','writingStyles']) before[name] = []
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')
