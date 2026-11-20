@@ -34,8 +34,8 @@ export function parseBaseUrl(value) {
 
 export function endpointUrl(config, path, model = '') {
   const base = parseBaseUrl(config.baseUrl)
-  const trimmed = model.replace(/^models\//, '')
-  const resolvedPath = path.replaceAll('{model}', encodeURIComponent(trimmed))
+  const modelId = config.protocol === 'gemini-generate-content' ? model.replace(/^models\//, '') : model
+  const resolvedPath = path.replaceAll('{model}', encodeURIComponent(modelId))
   const query = new URLSearchParams(base.search)
   base.search = ''
   base.pathname = base.pathname.replace(/\/*$/, '/')

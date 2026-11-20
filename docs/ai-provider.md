@@ -43,3 +43,9 @@ for await (const event of run.events) {
 - `testConnection({ profileId }, { stream })` 测已保存的配置。也可传 `{ draft, credentials, reuseCredentialsFrom }` 测草稿。可选的 `reuseCredentialsFrom` 只复用同源已保存的凭据。测试发送一次最小 `ping`，读取到的状态码和上游错误正文在 `httpStatus` 和 `rawErrorBody` 原样返回。
 - `listModels(target, cursor?)` 使用相同的目标参数。成功返回 `{ models, nextCursor? }`，将模型的 `id` 填入配置即可，手填模型可直接用于生成。
 - 错误有稳定的 `code`，包括 `unauthorized`、`forbidden`、`timeout`、`rate_limited` 和 `quota_exceeded`。浏览器拦截响应时，状态码和正文不可读。测试连接的 `cors` 表示有可达性证据的疑似跨域拦截。证据不足时使用 `network`，并在适用时附上 `corsPossible`。
+
+## 长文分段和章节摘要
+
+- `splitText({ feature, profileId?, text, reservedPromptTokens?, reservedOutputTokens? })` 按配置的 `contextTokens` 做本地分段。返回文本、原文 UTF-16 偏移 `[start, end)` 和估算 token 数。用 UTF-8 字节数保守估算，优先保留段落、句子和字素边界。预留输出默认使用该协议实际配置的最大输出 token 数。调用方知道本次提示词和输出预算时可显式传入。
+- 整本总结逐章调用 `prepareChapterSummary({ ...splitRequest, promptVersion })`。命中直接用 `summary`。未命中时将返回的 `route` 和每段提示词传给 `generate`，得到完整单章摘要后调用 `saveChapterSummary(cacheToken, summary)`。如配置在分段后改变，`generate` 返回 `profile_changed`，重新准备该章。如果提示词包含章节标题，把标题计入传给准备接口的文本。
+- 缓存按章节文本 SHA-256、实际模型与服务端点、提示词版本匹配。修改总结提示词或分段合并规则时更新 `promptVersion`。两端均在独立的本地 IndexedDB 保存摘要，作品备份范围仍以作品库为准。调用 `clearSummaryCache()` 清空摘要并使此前发出的写入凭据失效。

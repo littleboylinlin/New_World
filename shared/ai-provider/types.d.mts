@@ -147,7 +147,39 @@ export type ConnectionTarget =
 
 export type ConnectionTestOptions = { stream?: boolean }
 
-export interface AiProviderApi {
+export type SplitRequest = Route & {
+  text: string
+  reservedPromptTokens?: number
+  reservedOutputTokens?: number
+}
+
+export type TextChunk = {
+  text: string
+  start: number
+  end: number
+  estimatedTokens: number
+}
+
+type SummaryRoute = Route & { profileId: string; expectedProfileRevision: string }
+
+export type ChapterSummaryPlan =
+  | { hit: true; summary: string }
+  | { hit: false; route: SummaryRoute; chunks: TextChunk[]; cacheToken: string }
+
+export interface SummaryApi {
+  splitText(request: SplitRequest): Promise<Result<TextChunk[]>>
+  prepareChapterSummary(request: SplitRequest & { promptVersion: string }): Promise<Result<ChapterSummaryPlan>>
+  saveChapterSummary(cacheToken: string, summary: string): Promise<Result<void>>
+  clearSummaryCache(): Promise<Result<void>>
+}
+
+export type ResolvedProfile = {
+  id: string
+  revision: string
+  config: ProfileConfig
+}
+
+export interface AiProviderApi extends SummaryApi {
   getConfig(): Promise<Result<ConfigState>>
   saveProfile(input: SaveProfileInput): Promise<Result<SavedProfile>>
   deleteProfile(id: string): Promise<Result<void>>
@@ -161,7 +193,9 @@ export interface AiProviderApi {
   listModels(target: ConnectionTarget, cursor?: string): Promise<Result<ModelPage>>
 }
 
-export type ProviderMethods = Omit<AiProviderApi, 'generate' | 'listPresets'>
+export type ProviderMethods = Omit<AiProviderApi, 'generate' | 'listPresets' | keyof SummaryApi> & {
+  resolveProfile(route: Route): Promise<Result<ResolvedProfile>>
+}
 
 export interface AiProviderDesktopBridge {
   call<M extends keyof ProviderMethods>(method: M, ...args: Parameters<ProviderMethods[M]>): ReturnType<ProviderMethods[M]>

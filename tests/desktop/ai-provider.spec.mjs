@@ -31,12 +31,14 @@ test('Electron 主进程请求无需 CORS，取消关闭连接，v1 仍独立', 
       const delta = await bridge.next(id)
       bridge.cancel(id)
       const stopped = await bridge.next(id)
-      return { saved, test, delta, stopped, v1: await desktop.getAiState() }
+      const summaryProfile = await bridge.call('resolveProfile', { feature: 'bookSummary', profileId: saved.data.id })
+      return { saved, test, delta, stopped, summaryProfile, v1: await desktop.getAiState() }
     }, fake.url)
     expect(result.saved.data.rememberCredentials).toBe(true)
     expect(result.test).toEqual({ ok: true, httpStatus: 200 })
     expect(result.delta).toEqual({ type: 'delta', text: fakeText })
     expect(result.stopped).toEqual({ type: 'cancelled' })
+    expect(result.summaryProfile.data).toMatchObject({ id: result.saved.data.id, revision: expect.any(String) })
     expect(result.v1.enabled).toBe(false)
     expect(await page.evaluate(() => window.newWorldDesktop.aiProvider.call('getAiState'))).toMatchObject({ ok: false })
     await expect.poll(() => fake.requests.at(-1)?.closed).toBe(true)
