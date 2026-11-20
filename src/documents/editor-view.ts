@@ -21,7 +21,9 @@ import { cleanMarkup, inertMarkup, rasterData } from './markup'
 import { countText, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './model'
 import { checkDocument, documentExtensions } from './schema'
-import { countChapterRevisions } from './revisions'
+import { countChapterRevisions, saveAssistSnapshot } from './revisions'
+import { aiAssist } from './ai-assist'
+import { AiSuggestions } from './ai-suggest'
 import { showRevisionsDialog } from './revisions-view'
 import { SearchHighlight } from './search'
 import { mountFindPanel } from './find-panel'
@@ -531,10 +533,31 @@ export async function renderEdition(
     return { kind: 'chapter', library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: id }
   }
 
+  // ——— Asking AI about the selected text ———
+  const assist = aiAssist({
+    editor: () => editor,
+    editing: () => editing,
+    area: () => scroller,
+    signal,
+    beforeChange: async ({ action, profile }) => {
+      if (!await flush()) throw new Error(t('aiAssist.saveFirst'))
+      await saveAssistSnapshot({ edition, chapterId: chapter.id, profileName: profile.config.name, action: `assist.${action}` })
+      void refreshHistoryCount()
+    },
+  })
+  /** The menu's entries first put the selection tools away. */
+  const assistMenu = (): ShellMenuItem[] => assist.menuItems().map(function wrap(item): ShellMenuItem {
+    return {
+      ...item,
+      ...(item.action ? { action: () => { selection.hide(); item.action!() } } : {}),
+      ...(item.children ? { children: () => item.children!().map(wrap) } : {}),
+    }
+  })
+
   const selection = selectionToolbar({
     strip, signal,
     targets: () => [
-      { root: editor.view.dom, scroller, editor, editing, kinds: editing ? ['bold', 'italic', 'idea', 'task'] : ['idea', 'task', 'annotate'] },
+      { root: editor.view.dom, scroller, editor, editing, kinds: editing ? ['bold', 'italic', 'ai', 'idea', 'task'] : ['ai', 'idea', 'task', 'annotate'] },
       ...splitEditor.references().flatMap((pane): SelectionTarget[] => {
         const root = pane.textRoot()
         return root ? [{ root, scroller: pane.scroller, editor: pane.editor(), editing: false, kinds: ['idea'] }] : []
@@ -546,6 +569,7 @@ export async function renderEdition(
       idea: (text) => openCaptureDialog({ library: edition.library, bookId: edition.bookId }, text),
       task: () => chapterTask(),
       annotate: () => addNote(),
+      ai: assistMenu,
     },
   })
 
@@ -720,6 +744,7 @@ export async function renderEdition(
   }
 
   function applyMode() {
+    assist.close()
     annotations?.()
     annotations = undefined
     editor.setEditable(editing, false)
@@ -757,6 +782,7 @@ export async function renderEdition(
 
   function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous', restore = true) {
     checkDocument(next.content)
+    assist.close()
     if (editor) { find.beforeChapterChange(); window.clearTimeout(placeTimer); capturePlace() }
     annotations?.()
     annotations = undefined
@@ -775,7 +801,7 @@ export async function renderEdition(
     status.textContent = t('editor.saved')
     error.hidden = recover.hidden = true
     editor = new Editor({
-      element: paper, extensions: [...documentExtensions, SearchHighlight, AnnotationDecorations], content: next.content, editable: editing,
+      element: paper, extensions: [...documentExtensions, SearchHighlight, AnnotationDecorations, AiSuggestions], content: next.content, editable: editing,
       editorProps: {
         handleScrollToSelection: () => caret?.handlesScroll() ?? false,
         attributes: { class: 'novel-body', 'aria-label': t('editor.chapterText'), 'aria-multiline': 'true', ...(turn ? { 'data-turn': turn } : {}) },

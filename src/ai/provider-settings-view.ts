@@ -243,8 +243,8 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     return wrap
   }
 
+  /** Opens or closes a block; a call matching where it is already heading does nothing. */
   function reveal(node: HTMLElement, show: boolean) {
-    if (show === !node.hidden) return
     setExpanded(node, show)
   }
 
@@ -880,5 +880,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     renderRouting()
   }
 
+  // Loaded once now as well: the settings page skips its refresh while another task holds it busy.
+  void refresh()
   return () => refresh()
 }

@@ -15,6 +15,8 @@ async function addPreset(page, card, name) {
   await card.getByRole('button', { name: '新建配置' }).click()
   await card.getByRole('button', { name, exact: true }).click()
   await expect(card.getByLabel('配置名称')).toHaveValue(name)
+  // Wait for the preset list to fold away, so the form stops moving.
+  await expect(card.locator('.aip-presets')).toBeHidden()
 }
 
 test('配置 AI 服务：预设、保存、测试连接显示状态码与原文、跨域提示和模型列表 @webkit', async ({ page }) => {
