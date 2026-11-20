@@ -1,0 +1,56 @@
+/* AI suggestions inside the text: removed text struck through in red, added text underlined in green. */
+.novel-body {
+  --ai-del: color-mix(in srgb, var(--red) 20%, transparent);
+  --ai-del-line: var(--danger-text);
+  --ai-ins: color-mix(in srgb, #1f9d55 22%, transparent);
+  --ai-ins-line: #1f8a4c;
+}
+.ai-sg-del { background: var(--ai-del); text-decoration: line-through; text-decoration-color: var(--ai-del-line); text-decoration-thickness: 2px; border-radius: 3px; }
+.ai-sg-widget { display: inline; white-space: pre-wrap; }
+.ai-sg-ins { padding: 0 1px; border-radius: 3px; color: inherit; background: var(--ai-ins); text-decoration: underline; text-decoration-color: var(--ai-ins-line); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.ai-sg-block { display: block; margin: 4px 0; padding: 4px 8px; white-space: pre-wrap; }
+.ai-sg-actions { display: inline-flex; gap: 2px; margin-inline: 3px; vertical-align: 2px; user-select: none; text-indent: 0; }
+.ai-sg-actions button { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1.5px solid var(--ink); border-radius: 6px; color: var(--ink); background: var(--sheet); font: 800 .72rem/1 system-ui, sans-serif; cursor: pointer; transition: transform var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+.ai-sg-actions .ai-sg-accept:hover { color: #fff; background: #1f8a4c; border-color: #1f8a4c; }
+.ai-sg-actions .ai-sg-reject:hover { color: var(--danger-text); background: var(--danger-bg); }
+.ai-sg-actions button:active { transform: scale(.92); }
+
+/* The panel under the text. */
+.ai-assist {
+  position: fixed; z-index: 31; display: grid; gap: 10px; max-height: min(60vh, 520px); padding: 12px 14px;
+  border: 2px solid var(--pop-border); border-radius: 14px; color: var(--ink); background: var(--sheet);
+  box-shadow: 4px 4px 0 var(--pop-hard), 0 18px 40px -18px var(--pop-soft);
+  transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard);
+}
+.ai-assist[data-state="closed"] { opacity: 0; transform: translateY(calc(var(--motion-shift) * 2)) scale(var(--motion-scale)); }
+.ai-assist[data-state="closing"] { opacity: 0; pointer-events: none; transform: translateY(var(--motion-shift)) scale(var(--motion-scale)); transition-duration: var(--motion-fast); transition-timing-function: var(--ease-exit); }
+.ai-assist-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ai-assist-head > svg { flex: none; width: 18px; height: 18px; }
+.ai-assist-title { margin: 0; font-size: .95rem; font-weight: 850; }
+.ai-assist-via { min-width: 0; overflow: hidden; color: var(--muted); font-size: .78rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.ai-assist-close { display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin-inline-start: auto; padding: 0; border: 0; border-radius: 8px; color: var(--ink); background: transparent; cursor: pointer; }
+.ai-assist-close:hover { background: var(--menu-hover); }
+.ai-assist-close svg { width: 16px; height: 16px; }
+.ai-assist-ask { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.ai-assist-question { min-height: 44px; resize: vertical; }
+.ai-assist-output { max-height: 220px; overflow: auto; padding: 8px 10px; border: 1.5px solid var(--hair); border-radius: 10px; background: var(--field); }
+.ai-assist-text { margin: 0; font-size: .92rem; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-assist-streaming::after { content: ''; display: inline-block; width: .5em; height: 1em; margin-inline-start: 2px; vertical-align: -2px; background: currentColor; animation: ai-caret 900ms steps(1) infinite; }
+@keyframes ai-caret { 50% { opacity: 0; } }
+.ai-assist-message { display: grid; gap: 4px; font-size: .86rem; line-height: 1.6; }
+.ai-assist-message[hidden] { display: none; }
+.ai-assist-message p { margin: 0; }
+.ai-assist-error { padding: 7px 10px; border-inline-start: 5px solid var(--red); color: var(--danger-text); background: var(--danger-bg); font-weight: 650; }
+.ai-assist-warning { padding: 7px 10px; border-inline-start: 5px solid var(--yellow); background: var(--field); font-weight: 650; }
+.ai-assist-detail { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; font-weight: 500; opacity: .85; overflow-wrap: anywhere; }
+.ai-assist-hint { color: var(--muted); font-size: .8rem; }
+.ai-assist-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-assist-actions:empty { display: none; }
+
+@media (max-width: 640px) {
+  .ai-assist { max-height: 55vh; padding: 10px 12px; }
+  .ai-assist-ask { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-assist-streaming::after { animation: none; }
+}

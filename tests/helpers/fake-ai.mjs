@@ -16,14 +16,14 @@ function jsonResponse(res, value, status = 200) {
   res.end(typeof value === 'string' ? value : JSON.stringify(value))
 }
 
-const responses = {
+const responsesFor = (text) => ({
   chat: { choices: [{ message: { content: text }, finish_reason: 'stop' }] },
   responses: { status: 'completed', error: null, output: [{ type: 'message', content: [{ type: 'output_text', text }] }] },
   anthropic: { content: [{ type: 'text', text }], stop_reason: 'end_turn' },
   gemini: { candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }] },
-}
+})
 
-const events = {
+const eventsFor = (text) => ({
   chat: [{ choices: [{ delta: { content: text } }] }, { choices: [{ delta: {}, finish_reason: 'stop' }] }, '[DONE]'],
   responses: [{ type: 'response.output_text.delta', delta: text }, { type: 'response.completed', response: { status: 'completed' } }],
   anthropic: [
@@ -32,7 +32,7 @@ const events = {
     { type: 'message_stop' },
   ],
   gemini: [{ candidates: [{ content: { parts: [{ text: 'private reasoning', thought: true }, { text }] }, finishReason: 'STOP' }] }],
-}
+})
 
 function encode(value) {
   if (typeof value === 'string') return `data: ${value}\r\n\r\n`
@@ -40,7 +40,8 @@ function encode(value) {
   return `${event}data: ${JSON.stringify(value)}\r\n\r\n`
 }
 
-export async function fakeAiService() {
+/** `reply` may choose the text for each generate request (default: the fixed fake text). */
+export async function fakeAiService({ reply } = {}) {
   const requests = []
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost')
@@ -100,9 +101,10 @@ export async function fakeAiService() {
     }
 
     const protocol = protocolFor(path)
-    if (request.body?.stream !== true && !path.includes(':streamGenerateContent')) return jsonResponse(res, responses[protocol])
+    const answer = reply?.(request) ?? text
+    if (request.body?.stream !== true && !path.includes(':streamGenerateContent')) return jsonResponse(res, responsesFor(answer)[protocol])
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
-    const frames = events[protocol].map(encode)
+    const frames = eventsFor(answer)[protocol].map(encode)
     const prefix = Buffer.from(`: comment\r\n\r\n${frames[0]}`)
     const middle = prefix.indexOf(Buffer.from('你')) + 1
     res.write(prefix.subarray(0, middle))

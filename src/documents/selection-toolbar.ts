@@ -2,14 +2,15 @@ import type { Editor } from '@tiptap/core'
 import { t } from '../i18n'
 import { afterTransition } from '../motion'
 import { setExpanded } from '../shell/collapse'
-import { visibleArea } from '../shell/popover'
+import { menuButton, visibleArea } from '../shell/popover'
+import type { ShellMenuItem } from '../shell/popover'
 import { button, element, icon } from '../ui'
 import type { IconName } from '../ui'
 
 /** How long a finished selection waits before its tools appear. */
 export const selectionDelay = 200
 
-export type SelectionToolKind = 'bold' | 'italic' | 'idea' | 'task' | 'annotate'
+export type SelectionToolKind = 'bold' | 'italic' | 'ai' | 'idea' | 'task' | 'annotate'
 
 /** A block of text the tools work on, such as the editable chapter or a read-only pane beside it. */
 export interface SelectionTarget {
@@ -34,11 +35,17 @@ interface SelectionToolbarOptions {
     idea: (text: string) => void
     task: () => void
     annotate: () => void
+    /** The AI actions for the selected text, shown as a menu under the AI tool. */
+    ai?: () => ShellMenuItem[]
   }
   signal: AbortSignal
 }
 
 type Key = { root: HTMLElement; start: Node | null; end: Node | null; from: number; to: number }
+
+/** The AI menu belongs to the tools: pressing or typing in it keeps them open. */
+const aiMenuClass = 'selection-ai-menu'
+const inAiMenu = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest(`.${aiMenuClass}`))
 
 const navigation = /^(Arrow(Left|Right|Up|Down)|Home|End|Page(Up|Down))$/
 
@@ -74,13 +81,18 @@ export function selectionToolbar({ targets, strip, actions, signal }: SelectionT
       host.append(node)
       return node
     }
-    return [
+    const made = [
       make(t('editor.bold'), { glyph: 'B', className: 'format-bold' }, actions.bold, 'bold'),
       make(t('editor.italic'), { glyph: 'I', className: 'format-italic' }, actions.italic, 'italic'),
+      make(t('aiAssist.tool'), 'ai', () => {}, 'ai'),
       make(t('ideas.capture'), 'idea', () => { const text = currentText(); hide(); actions.idea(text) }, 'idea'),
       make(t('editor.newTask'), 'check', () => { hide(); actions.task() }, 'task'),
       make(t('annotations.add'), 'edit', () => { hide(); actions.annotate() }, 'annotate'),
     ]
+    const aiTool = made[2]!
+    if (actions.ai) menuButton(aiTool, t('aiAssist.tool'), actions.ai, aiMenuClass)
+    else aiTool.remove()
+    return made
   }
   const floatingTools = tools(floating)
   const stripTools = tools(strip)
@@ -219,7 +231,7 @@ export function selectionToolbar({ targets, strip, actions, signal }: SelectionT
   document.addEventListener('pointerdown', (event) => {
     lastPointer = event.pointerType === 'touch' || event.pointerType === 'pen' ? 'touch' : 'mouse'
     const target = event.target as Node
-    if (floating.contains(target) || strip.contains(target)) return
+    if (floating.contains(target) || strip.contains(target) || inAiMenu(target)) return
     hide()
     if (targetOf(target) && event.button === 0) pointerDown = true
   }, { capture: true, signal })
@@ -248,6 +260,7 @@ export function selectionToolbar({ targets, strip, actions, signal }: SelectionT
     schedule()
   }, { signal })
   document.addEventListener('keydown', (event) => {
+    if (inAiMenu(event.target)) return
     if (event.isComposing) { hide(); return }
     if (event.key === 'Escape' && isVisible()) {
       event.preventDefault()

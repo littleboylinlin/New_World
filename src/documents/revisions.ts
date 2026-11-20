@@ -976,3 +976,42 @@ export async function applyAiEditionReplaceBatch(params: {
   }
   throw new Error(t('library.theLocalLibraryOperationFailedTryAgain'))
 }
+
+/**
+ * Keeps the chapter as it is now in its history, before the editor applies an AI suggestion. The
+ * chapter itself is not changed; the editor's own save follows with the new text.
+ */
+export async function saveAssistSnapshot(params: { edition: EditionKey; chapterId: string; profileName: string; action: string }) {
+  const db = await openDatabase()
+  const key = [params.edition.library, params.edition.bookId, params.edition.id]
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const before = await resultOf<ChapterRecord | undefined>(db.transaction('chapters').objectStore('chapters').get([...key, params.chapterId]))
+    if (!before) throw new Error(t('store.theChapterWasNotFoundInThisEditable'))
+    const prepared = await prepareChapterPayload(before.content)
+    const tx = db.transaction(['editions', 'chapters', 'revisions', 'revisionBlobs'], 'readwrite', { durability: 'strict' })
+    const { step, done } = writing<ChapterRevision>(tx)
+    const editionReq = tx.objectStore('editions').get(key)
+    const chapterReq = tx.objectStore('chapters').get([...key, params.chapterId])
+    const blobReq = tx.objectStore('revisionBlobs').get(prepared.blob.hash)
+    blobReq.onsuccess = step(() => {
+      const edition: Edition | undefined = editionReq.result
+      const chapter: ChapterRecord | undefined = chapterReq.result
+      const info = edition?.chapters.find((item) => item.id === params.chapterId)
+      if (!edition || !chapter || !info) throw new Error(t('store.theChapterWasNotFoundInThisEditable'))
+      if (hashDocumentContent(chapter.content) !== prepared.blob.hash) throw new RetryRevisionPrepError()
+      if (!blobReq.result) tx.objectStore('revisionBlobs').put(prepared.blob)
+      const snapshot = buildDeduplicatedRevision({
+        edition, chapter, chapterTitle: info.title, source: 'ai', action: params.action, clientName: params.profileName,
+      }, prepared)
+      tx.objectStore('revisions').add(snapshot)
+      return snapshot
+    })
+    try {
+      return await announced(done())
+    } catch (error) {
+      if (error instanceof RetryRevisionPrepError && attempt < 2) continue
+      throw error
+    }
+  }
+  throw new Error(t('library.theLocalLibraryOperationFailedTryAgain'))
+}
