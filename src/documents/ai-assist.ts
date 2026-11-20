@@ -5,7 +5,10 @@ import { ai } from '../ai-provider'
 import type { AiError, AiRun, SavedProfile } from '../ai-provider'
 import { aiSettingsHash, requireAi } from '../ai/access'
 import { describeAiError } from '../ai/errors'
-import { assistFeatures, assistMessages, editingActions, wasTruncated } from '../ai/prompts'
+import { assistFeatures, assistMessages, editingActions, styledActions, wasTruncated } from '../ai/prompts'
+import { allStyles, isBuiltin, setWorkStyle, styleInstructions, workStyle } from '../ai/styles'
+import type { WritingStyle } from '../ai/styles'
+import type { LibraryId } from '../library'
 import type { AssistAction, Tone } from '../ai/prompts'
 import { t } from '../i18n'
 import { afterTransition } from '../motion'
@@ -29,6 +32,8 @@ export interface AssistOptions {
   editing: () => boolean
   /** The pane the panel centres on. */
   area: () => HTMLElement
+  /** The work being edited, whose default writing style the panel starts with. */
+  work: () => { library: LibraryId; bookId: string }
   /**
    * Runs once per panel before its first change to the text: the editor saves, and the chapter as
    * it was is kept in its history.
@@ -54,6 +59,10 @@ interface Session {
   reply: string
   prepared: boolean
   accepted: number
+  /** The writing style the request asks for, if any. */
+  style?: WritingStyle
+  /** Counts requests, so a reply that was replaced by a newer one is ignored. */
+  turn: number
 }
 
 /**
@@ -91,7 +100,18 @@ export function aiAssist(options: AssistOptions) {
   const message = element('div', 'ai-assist-message')
   message.setAttribute('role', 'status')
   const actions = element('div', 'ai-assist-actions')
-  panel.append(head, ask, output, message, actions)
+  // The writing style, for the actions that write text.
+  const styleRow = element('div', 'ai-assist-style')
+  const styleLabel = element('label', 'ai-assist-style-label')
+  const styleSelect = element('select', 'editor-select ai-assist-style-select')
+  styleLabel.append(element('span', '', t('aiAssist.style')), styleSelect)
+  const makeDefault = button(t('aiAssist.styleMakeDefault'), 'button button-quiet button-small')
+  makeDefault.addEventListener('mousedown', (event) => event.preventDefault())
+  styleRow.append(styleLabel, makeDefault)
+  let styleChoices: WritingStyle[] = []
+  let workDefault: string | undefined
+
+  panel.append(head, styleRow, ask, output, message, actions)
   document.body.append(panel)
 
   let session: Session | undefined
@@ -213,7 +233,21 @@ export function aiAssist(options: AssistOptions) {
     closePanel()
     finish?.()
     const current: Session = {
-      action: next, tone, blocks, from, to, mapping: new Mapping(), touched: false, profile, reply: '', prepared: false, accepted: 0,
+      action: next, tone, blocks, from, to, mapping: new Mapping(), touched: false, profile, reply: '', prepared: false, accepted: 0, turn: 0,
+    }
+    styleRow.hidden = !styledActions.includes(next)
+    if (!styleRow.hidden) {
+      try {
+        const work = options.work()
+        const [choices, preferred] = await Promise.all([allStyles(), workStyle(work.library, work.bookId)])
+        styleChoices = choices
+        workDefault = preferred?.id
+        current.style = preferred
+      } catch {
+        styleChoices = []
+        workDefault = undefined
+      }
+      paintStyles(current)
     }
     session = current
     stopListening = follow(editor, current)
@@ -236,6 +270,50 @@ export function aiAssist(options: AssistOptions) {
     void run(current)
   }
 
+  function paintStyles(current: Session) {
+    styleSelect.replaceChildren()
+    const none = element('option', '', t('aiAssist.styleNone'))
+    none.value = ''
+    styleSelect.append(none)
+    const own = element('optgroup')
+    own.label = t('aiAssist.styleOwn')
+    const builtin = element('optgroup')
+    builtin.label = t('aiAssist.styleBuiltin')
+    for (const style of styleChoices) {
+      const option = element('option', '', style.name)
+      option.value = style.id
+      ;(isBuiltin(style.id) ? builtin : own).append(option)
+    }
+    if (own.children.length) styleSelect.append(own)
+    styleSelect.append(builtin)
+    styleSelect.value = current.style?.id ?? ''
+    makeDefault.hidden = (current.style?.id ?? undefined) === workDefault
+  }
+
+  styleSelect.addEventListener('change', () => {
+    const current = session
+    if (!current) return
+    current.style = styleChoices.find((style) => style.id === styleSelect.value)
+    makeDefault.hidden = (current.style?.id ?? undefined) === workDefault
+    // A new style asks again, unless some of the last reply was already taken.
+    if (current.accepted || current.prepared) return
+    clearSuggestions(options.editor().view)
+    if (current.action === 'continue' || editingActions.includes(current.action)) void run(current)
+  })
+  makeDefault.addEventListener('click', async () => {
+    const current = session
+    if (!current) return
+    const work = options.work()
+    try {
+      await setWorkStyle(work.library, work.bookId, current.style?.id ?? null)
+      workDefault = current.style?.id
+      makeDefault.hidden = true
+      showNotice(current.style ? t('aiAssist.styleDefaultSet', [current.style.name]) : t('aiAssist.styleDefaultCleared'))
+    } catch (cause) {
+      showNotice(cause instanceof Error ? cause.message : String(cause))
+    }
+  })
+
   ask.addEventListener('submit', (event) => {
     event.preventDefault()
     const current = session
@@ -247,6 +325,9 @@ export function aiAssist(options: AssistOptions) {
 
   async function run(current: Session) {
     if (session !== current) return
+    current.run?.cancel()
+    const turn = ++current.turn
+    const alive = () => session === current && current.turn === turn
     current.reply = ''
     outputText.textContent = ''
     outputText.classList.add('ai-assist-streaming')
@@ -259,6 +340,7 @@ export function aiAssist(options: AssistOptions) {
     const messages = assistMessages({
       action: current.action, text: blocksText(current.blocks), paragraphs: current.blocks.length,
       tone: current.tone ? t(`aiAssist.tone.${current.tone}`) : undefined, question: current.question,
+      system: current.style && styledActions.includes(current.action) ? styleInstructions(current.style) : undefined,
     })
     const live = ai.generate({ feature: assistFeatures[current.action], profileId: current.profile?.id, messages })
     current.run = live
@@ -267,7 +349,7 @@ export function aiAssist(options: AssistOptions) {
     let stopped = false
     try {
       for await (const event of live.events) {
-        if (session !== current) return
+        if (!alive()) return
         if (event.type === 'delta') {
           if (!current.reply) setMessage(t('aiAssist.writing'))
           current.reply += event.text
@@ -282,7 +364,7 @@ export function aiAssist(options: AssistOptions) {
     } catch (cause) {
       failure = { code: 'network', message: cause instanceof Error ? cause.message : String(cause) }
     }
-    if (session !== current) return
+    if (!alive()) return
     outputText.classList.remove('ai-assist-streaming')
     outputText.textContent = current.reply
     current.run = undefined
@@ -300,7 +382,7 @@ export function aiAssist(options: AssistOptions) {
       return
     }
     const truncated = wasTruncated(finishReason)
-    if (current.action === 'ask') { finishAnswer(current, truncated); return }
+    if (current.action === 'ask' || current.action === 'continue') { finishAnswer(current, truncated); return }
     if (truncated) {
       setMessage(t('aiAssist.truncated'), 'warning')
       setActions(retry(), settingsLink(), dismiss())
@@ -316,11 +398,14 @@ export function aiAssist(options: AssistOptions) {
     })
     const insert = action(t('aiAssist.insertAfter'), () => { void insertAfter(current) }, true)
     insert.hidden = !options.editing()
-    setActions(insert, copy, action(t('aiAssist.askAgain'), () => {
-      current.question = undefined
-      question.value = ''
-      setExpanded(ask, true, () => question.focus())
-    }), action(t('common.close'), () => closePanel()))
+    const again = current.action === 'ask'
+      ? action(t('aiAssist.askAgain'), () => {
+        current.question = undefined
+        question.value = ''
+        setExpanded(ask, true, () => question.focus())
+      })
+      : action(t('aiAssist.retry'), () => { void run(current) })
+    setActions(insert, copy, again, action(t('common.close'), () => closePanel()))
   }
 
   function finishEdit(current: Session) {
@@ -429,6 +514,7 @@ export function aiAssist(options: AssistOptions) {
         label: t('aiAssist.action.tone'), disabled: !editing,
         children: () => tones.map((tone) => ({ label: t(`aiAssist.tone.${tone}`), action: () => { void start('tone', tone) } })),
       },
+      item('continue'),
       { label: '', separator: true },
       { label: t('aiAssist.action.ask'), icon: 'ai', action: () => { void start('ask') } },
     ]

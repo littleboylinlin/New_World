@@ -538,6 +538,7 @@ export async function renderEdition(
     editor: () => editor,
     editing: () => editing,
     area: () => scroller,
+    work: () => ({ library: edition.library, bookId: edition.bookId }),
     signal,
     beforeChange: async ({ action, profile }) => {
       if (!await flush()) throw new Error(t('aiAssist.saveFirst'))

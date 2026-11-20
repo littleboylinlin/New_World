@@ -1,7 +1,7 @@
 import type { Feature } from '../ai-provider'
 import { locale } from '../i18n'
 
-export type AssistAction = 'polish' | 'rewrite' | 'expand' | 'shorten' | 'tone' | 'ask'
+export type AssistAction = 'polish' | 'rewrite' | 'expand' | 'shorten' | 'tone' | 'continue' | 'ask'
 export type Tone = 'formal' | 'casual' | 'gentle' | 'cold' | 'humorous' | 'tense'
 
 export const assistFeatures: Record<AssistAction, Feature> = {
@@ -10,8 +10,12 @@ export const assistFeatures: Record<AssistAction, Feature> = {
   expand: 'extension:expand',
   shorten: 'extension:shorten',
   tone: 'extension:tone',
+  continue: 'extension:continue',
   ask: 'ask',
 }
+
+/** Actions a writing style applies to. */
+export const styledActions: readonly AssistAction[] = ['polish', 'rewrite', 'expand', 'shorten', 'tone', 'continue']
 
 /** Actions whose reply replaces the selection and is shown as changes to accept one by one. */
 export const editingActions: readonly AssistAction[] = ['polish', 'rewrite', 'expand', 'shorten', 'tone']
@@ -30,6 +34,11 @@ const zh = {
   expand: '扩写这段文字：在不改变情节走向的前提下，补充细节、动作、感官描写和心理活动，篇幅大约扩到原来的一倍半到两倍。',
   shorten: '缩写这段文字：保留关键情节和信息，删去冗余与重复，篇幅大约缩到原来的一半到三分之二。',
   tone: (tone: string) => `调整这段文字的语气，改为「${tone}」，情节和信息不变。`,
+  continue: [
+    '你是一位小说作者的写作搭档。用户给出作品中的一段文字，请紧接着它往下写，写出接下来的情节。',
+    '只输出续写的正文：不要重复给出的文字，不要解释，不要标题或 Markdown。每段占一行，写三到六段，大约三百到八百字。',
+    '保持原文的语言、人称、时态、人物和设定，情节自然衔接。',
+  ].join('\n'),
   ask: '你是一位小说写作助手。用户选中了作品中的一段文字并提出问题。请结合这段文字直接回答，简洁具体；回答用用户提问的语言。不要大段复述原文。',
   askUser: (question: string, text: string) => `选中的文字：\n<<<\n${text}\n>>>\n\n问题：${question}`,
 }
@@ -48,6 +57,11 @@ const en = {
   expand: 'Expand this text without changing where the plot goes: add detail, action, sensory description and inner thoughts, to about one and a half to two times the length.',
   shorten: 'Shorten this text: keep the key events and information, cut redundancy and repetition, to about half to two thirds of the length.',
   tone: (tone: string) => `Change the tone of this text to "${tone}", keeping the events and information.`,
+  continue: [
+    "You are a fiction author's writing partner. The user gives a passage from their work; continue straight on from it with what happens next.",
+    'Output only the new text: do not repeat the given passage, no explanations, headings or Markdown. One paragraph per line, three to six paragraphs, about 200 to 500 words.',
+    "Keep the original's language, point of view, tense, characters and setting, and follow on naturally.",
+  ].join('\n'),
   ask: 'You are a fiction writing assistant. The user selected a passage from their work and asked a question. Answer directly and concretely with that passage in mind, in the language of the question. Do not repeat long parts of the passage.',
   askUser: (question: string, text: string) => `Selected text:\n<<<\n${text}\n>>>\n\nQuestion: ${question}`,
 }
@@ -65,6 +79,12 @@ export interface PromptInput {
 
 export function assistMessages(input: PromptInput) {
   const words = locale === 'zh-CN' ? zh : en
+  if (input.action === 'continue') {
+    return [
+      { role: 'system' as const, text: [words.continue, input.system].filter(Boolean).join('\n\n') },
+      { role: 'user' as const, text: input.text },
+    ]
+  }
   if (input.action === 'ask') {
     return [
       { role: 'system' as const, text: [words.ask, input.system].filter(Boolean).join('\n\n') },

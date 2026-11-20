@@ -54,3 +54,7 @@
 @media (prefers-reduced-motion: reduce) {
   .ai-assist-streaming::after { animation: none; }
 }
+.ai-assist-style { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ai-assist-style[hidden] { display: none; }
+.ai-assist-style-label { display: flex; flex: 1 1 240px; align-items: center; gap: 8px; min-width: 0; font-size: .84rem; font-weight: 750; }
+.ai-assist-style-select { flex: 1 1 auto; min-height: 36px; padding-block: 4px; }

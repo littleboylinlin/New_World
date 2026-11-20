@@ -12,6 +12,7 @@ import type { WritingDay } from './writing-stats'
 import type { Idea } from './ideas'
 import { validateWorkMetadata } from './work-metadata'
 import { taskStores, validateTasks } from './tasks/model'
+import { styleChanges, styleStore } from './ai/styles'
 import type { TaskData } from './tasks/model'
 import { decodeTaskResources, encodeTaskResources } from './tasks/transfer'
 import { validateTaskAssets } from './tasks/resources'
@@ -65,7 +66,12 @@ interface Manifest {
   revisionBlobs?: StoredRevisionBlob[]
   /** Pre-edit idea revision snapshots. Added in v0.15.2. */
   ideaRevisions?: IdeaRevision[]
+  /** Writing styles and each work's default style. Missing from older backups, which then leave the current ones alone. */
+  writingStyles?: StyleRecord[]
 }
+
+/** A row of the writing style store, kept as is. */
+type StyleRecord = { type: 'style' | 'workDefault'; id: string } & Record<string, unknown>
 
 export interface BackupSummary {
   createdAt: number
@@ -88,6 +94,7 @@ export interface BackupContents {
   revisions?: ChapterRevision[]
   revisionBlobs?: RevisionBlobRecord[]
   ideaRevisions?: IdeaRevision[]
+  writingStyles?: StyleRecord[]
 }
 
 export type BackupProblem = 'password' | 'format' | 'newer' | 'tooLarge'
@@ -123,7 +130,8 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', ...taskStores])
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', styleStore, ...taskStores])
+  const styleRows: Promise<StyleRecord[]> = resultOf(tx.objectStore(styleStore).getAll())
   const taskReads = Promise.all(taskStores.map(async name => [name, await resultOf(tx.objectStore(name).getAll())]))
   const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions]: [
     Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[],
@@ -184,6 +192,7 @@ export async function createBackup(password?: string) {
     editions, chapters, writingDays, ideas, revisions,
     revisionBlobs: storedRevisionBlobs,
     ideaRevisions,
+    writingStyles: await styleRows,
     books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
     trash: trash.map((entry) => ({
@@ -384,6 +393,9 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       ideaRevisions: Array.isArray(manifest.ideaRevisions)
         ? manifest.ideaRevisions.filter((rev) => typeof rev?.id === 'string' && typeof rev.ideaId === 'string' && typeof rev.text === 'string')
         : undefined,
+      writingStyles: Array.isArray(manifest.writingStyles)
+        ? manifest.writingStyles.filter((row) => typeof row?.id === 'string' && (row.type === 'style' || row.type === 'workDefault'))
+        : undefined,
     }
   } finally {
     await zip.close()
@@ -395,8 +407,13 @@ export async function restoreBackup(contents: BackupContents) {
   const incomingTasks = contents.taskData === undefined ? undefined : structuredClone(contents.taskData)
   if (incomingTasks) { validateTasks(incomingTasks); await validateTaskAssets(incomingTasks) }
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', ...taskStores], 'readwrite', { durability: 'strict' })
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', styleStore, ...taskStores], 'readwrite', { durability: 'strict' })
   try {
+    if (contents.writingStyles) {
+      const styles = tx.objectStore(styleStore)
+      styles.clear()
+      for (const row of contents.writingStyles) styles.put(row)
+    }
     if (incomingTasks) for (const name of taskStores) {
       tx.objectStore(name).clear()
       for (const row of incomingTasks[name]) tx.objectStore(name).add(row)
@@ -446,5 +463,6 @@ export async function restoreBackup(contents: BackupContents) {
     throw error
   }
   libraryChanges.dispatchEvent(new Event('update'))
+  if (contents.writingStyles) styleChanges.dispatchEvent(new Event('change'))
   announceTasks()
 }
