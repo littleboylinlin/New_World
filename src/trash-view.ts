@@ -3,7 +3,7 @@ import { formDialog } from './dialogs'
 import { libraryChanges, storageError } from './library'
 import { emptyTrash, listTrash, restoreTrash } from './trash'
 import type { TrashItem } from './trash'
-import { button, element, icon, libraries, link, notice } from './ui'
+import { button, element, icon, libraries, notice } from './ui'
 import { stagger } from './motion'
 import { trashKinds } from './undo'
 
@@ -47,22 +47,17 @@ function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (messa
 
 export function renderTrash(root: HTMLElement, signal: AbortSignal) {
   const panel = element('section', 'trash-page')
-  const nav = element('nav', 'breadcrumbs')
-  nav.setAttribute('aria-label', t('trash.currentLocation'))
-  const current = element('span', '', t('trash.title'))
-  current.setAttribute('aria-current', 'page')
-  nav.append(link('#/', t('navigation.home')), element('span', 'crumb-separator', '/'), current)
 
   const header = element('div', 'page-heading')
-  const heading = element('div')
-  heading.append(element('p', 'eyebrow', 'TRASH'), element('h1', '', t('trash.title')),
-    element('p', 'intro-copy', t('trash.keptUntilDeletedPermanently')))
+  const heading = element('div', 'page-heading-copy')
+  heading.append(element('h1', '', t('trash.title')),
+    element('p', 'page-heading-desc', t('trash.keptUntilDeletedPermanently')))
   const clear = button(t('trash.emptyTrash'), 'button button-quiet remove-button', 'trash')
   header.append(heading, clear)
   const message = element('div', 'version-message')
   const content = element('div')
   content.append(notice(t('trash.loadingTrash')))
-  panel.append(nav, header, message, content)
+  panel.append(header, message, content)
   root.append(panel)
 
   function report(text: string, error = false) {

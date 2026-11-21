@@ -46,20 +46,15 @@ function archivedRow(book: Book, report: (message: string, error?: boolean) => v
 /** Works taken off the shelves. They keep everything and can still be opened, edited and exported. */
 export function renderArchive(root: HTMLElement, signal: AbortSignal) {
   const panel = element('section', 'trash-page archive-page')
-  const nav = element('nav', 'breadcrumbs')
-  nav.setAttribute('aria-label', t('trash.currentLocation'))
-  const current = element('span', '', t('archive.title'))
-  current.setAttribute('aria-current', 'page')
-  nav.append(link('#/', t('navigation.home')), element('span', 'crumb-separator', '/'), current)
 
   const header = element('div', 'page-heading')
-  const heading = element('div')
-  heading.append(element('p', 'eyebrow', 'ARCHIVE'), element('h1', '', t('archive.title')), element('p', 'intro-copy', t('archive.intro')))
+  const heading = element('div', 'page-heading-copy')
+  heading.append(element('h1', '', t('archive.title')), element('p', 'page-heading-desc', t('archive.intro')))
   header.append(heading)
   const message = element('div', 'version-message')
   const content = element('div')
   content.append(notice(t('archive.loading')))
-  panel.append(nav, header, message, content)
+  panel.append(header, message, content)
   root.append(panel)
 
   function report(text: string, error = false) {

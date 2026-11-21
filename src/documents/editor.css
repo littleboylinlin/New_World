@@ -4,7 +4,7 @@
 .editor-host > .notice { margin: 16px; }
 
 .editor-toolbar { position: relative; z-index: 4; flex: none; border-bottom: 2px solid var(--ink); background: var(--sheet); }
-.toolbar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; height: 56px; padding: 0 8px; overflow: hidden; }
+.toolbar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; height: var(--editor-topbar-height, 52px); padding: 0 8px; overflow: hidden; }
 .toolbar-group { display: flex; flex: none; flex-wrap: nowrap; align-items: center; gap: 2px; }
 .toolbar-group:not(:has(> :not([hidden]))) { display: none; }
 .toolbar-end { margin-inline-start: auto; padding-inline-start: 6px; gap: 2px; }
@@ -22,11 +22,11 @@
 .word-count { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 .dropdown-caret { flex: none; color: var(--muted); font-size: .64rem; line-height: 1; }
 
-.format-button, .editor-select { flex: none; min-height: 38px; border: 2px solid transparent; border-radius: 8px; color: var(--ink); background: transparent; white-space: nowrap; font-size: .82rem; font-weight: 700; transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease; }
+.format-button, .editor-toolbar .editor-select { flex: none; min-height: 38px; border: 2px solid transparent; border-radius: 8px; color: var(--ink); background: transparent; white-space: nowrap; font-size: .82rem; font-weight: 700; transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease; }
 .format-button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 38px; padding: 4px 7px; }
 .format-button svg { width: 1.3em; height: 1.3em; }
 .format-button.more-toggle svg, .chapter-more svg { stroke-width: 3.2; }
-.editor-select { width: auto; max-width: 8.5em; padding: 4px 6px; border-color: var(--field-border); background: var(--field); }
+.editor-toolbar .editor-select { width: auto; max-width: 8.5em; padding: 4px 6px; border: 1px solid var(--surface-line-strong); background: var(--field); }
 .format-glyph { font-family: Georgia, "Times New Roman", serif; font-size: 1.08rem; font-weight: 700; line-height: 1; }
 .format-bold { font-weight: 900; }
 .format-italic { font-style: italic; }
@@ -158,7 +158,7 @@
   .format-button, .editor-select { min-height: 42px; }
   .format-button { min-width: 42px; }
   .chapter-jump, .outline-jump, .chapter-add { min-height: 44px; }
-  .toolbar-row { height: 58px; }
+  .toolbar-row { height: calc(var(--editor-topbar-height, 52px) + 2px); }
 }
 @media (max-width: 640px) {
   .toolbar-row { padding-inline: 4px; gap: 2px; }
@@ -177,7 +177,7 @@
 .focus-writing .toolbar-row:is(:hover, :focus-within, :has([aria-expanded="true"])) { opacity: 1; }
 .focus-writing .editor-paper { background: transparent; }
 
-.editor-paper { position: relative; min-height: 100%; padding: clamp(14px, 3vw, 38px) clamp(11px, 2.4vw, 28px); background: var(--surface); }
+.editor-paper { position: relative; min-height: 100%; padding: clamp(14px, 3vw, 38px) clamp(14px, 2.4vw, var(--page-gutter, 32px)); background: var(--surface); }
 .novel-body { max-width: var(--text-width, 44rem); min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: var(--text-line-height, 1.95); overflow-wrap: anywhere; caret-color: var(--accent); }
 .novel-body::selection, .novel-body ::selection { background: var(--tint); }
 .smooth-writing:not(.native-caret, .plain-caret) .novel-body { caret-color: transparent; }
