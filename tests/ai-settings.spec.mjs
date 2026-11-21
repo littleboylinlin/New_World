@@ -133,6 +133,85 @@ test('功能分配、自定义请求头和导入导出；改写等功能跟随�
   await expect(card.locator('.aip-item')).toHaveCount(1)
 })
 
+test('高级设置默认折叠，测试连接报错涉及折叠字段时自动展开并定位到该字段', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const card = await openAiSettings(page)
+  await addPreset(page, card, 'OpenAI Chat Completions')
+
+  const generationToggle = card.getByRole('button', { name: '生成参数' })
+  const advancedToggle = card.getByRole('button', { name: /高级/ })
+  await expect(generationToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false')
+
+  await card.getByLabel('Base URL').fill('https://relay.example.test/v1')
+  await card.getByLabel('API Key').fill('sk-test')
+  await card.getByLabel('模型', { exact: true }).fill('example')
+
+  // 1. Custom header name invalid while Advanced is folded -> auto-expands and focuses header name.
+  await advancedToggle.click()
+  await card.getByRole('button', { name: '添加请求头' }).click()
+  const headerName = card.getByLabel('请求头名')
+  const headerValue = card.getByLabel('值', { exact: true })
+  await headerName.fill('X-Bad Header')
+  await headerValue.fill('team-a')
+  await advancedToggle.click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false')
+
+  await card.getByRole('button', { name: '测试连接' }).click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(headerName).toBeVisible()
+  await expect(headerName).toBeFocused()
+  await expect(headerName).toHaveAttribute('aria-invalid', 'true')
+  await expect(card.locator('.aip-test-located')).toContainText('自定义请求头')
+
+  // 2. Upstream 400 rejecting a configured custom header while Advanced is folded -> auto-expands and focuses value.
+  await headerName.fill('X-Team-Token')
+  await advancedToggle.click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false')
+  await page.route('https://relay.example.test/**', (route) => route.fulfill({
+    status: 400,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: { message: 'Header X-Team-Token is invalid for this relay' } }),
+  }))
+
+  await card.getByRole('button', { name: '测试连接' }).click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(headerValue).toBeFocused()
+  await expect(headerValue).toHaveAttribute('aria-invalid', 'true')
+  await expect(card.locator('.aip-test-located')).toContainText('自定义请求头')
+
+  // 3. Invalid JSON in extraBody while Advanced is folded -> caught on Test Connection, auto-expands and focuses extraBody.
+  const extraBody = card.getByLabel('自定义请求体参数')
+  await extraBody.fill('{ bad json')
+  await advancedToggle.click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false')
+
+  await card.getByRole('button', { name: '测试连接' }).click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(extraBody).toBeFocused()
+  await expect(extraBody).toHaveAttribute('aria-invalid', 'true')
+  await expect(card.locator('.aip-test-located')).toContainText('自定义请求体参数')
+
+  // 4. Upstream 404 when a custom generate path is configured -> auto-expands Advanced and focuses generate path.
+  await extraBody.fill('')
+  const genPath = card.getByLabel('生成路径')
+  await genPath.fill('custom/wrong-path')
+  await advancedToggle.click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false')
+  await page.unroute('https://relay.example.test/**')
+  await page.route('https://relay.example.test/**', (route) => route.fulfill({
+    status: 404,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: { message: 'Not Found' } }),
+  }))
+
+  await card.getByRole('button', { name: '测试连接' }).click()
+  await expect(advancedToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(genPath).toBeFocused()
+  await expect(genPath).toHaveAttribute('aria-invalid', 'true')
+  await expect(card.locator('.aip-test-located')).toContainText('生成路径')
+})
+
 pageTest('第一次使用 AI 前告知发送目标，没配置时引导去设置页', async ({ page, providerPageUrl }) => {
   await page.goto(providerPageUrl)
   await page.evaluate(() => {

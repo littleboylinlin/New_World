@@ -1432,6 +1432,7 @@
   "aiProvider.testOk": "Connected (HTTP {0}).",
   "aiProvider.testStatus": "HTTP status: {0}",
   "aiProvider.testBody": "Error returned by the provider:",
+  "aiProvider.locatedField": "Expanded “{0}” and jumped to “{1}”.",
   "aiProvider.corsTitle": "The browser's cross-origin rules seem to have blocked the request. You can:",
   "aiProvider.corsTipEndpoint": "Use an endpoint that allows cross-origin (CORS) browser requests;",
   "aiProvider.corsTipProxy": "Run your own reverse proxy that forwards requests and adds CORS headers;",
