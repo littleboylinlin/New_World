@@ -151,10 +151,10 @@ for (const library of ['original', 'reference'])
       expect(parent.labelIds).not.toContain(work.label)
       await clean.page.goto(`/#/tasks/work/${library}/${newWork.id}`)
       await clean.page.getByRole('button', { name: parent.title, exact: true }).click()
-      const form = clean.page.getByRole('dialog', { name: '编辑任务', exact: true })
-      await form.getByLabel('任务备注', { exact: true }).fill('继续编辑导入任务')
-      await form.getByRole('button', { name: '保存任务', exact: true }).click()
-      await expect(form).toBeHidden()
+      const card = clean.page.locator(`[data-task-id="${parent.id}"] .task-card`)
+      await card.getByLabel('任务备注', { exact: true }).fill('继续编辑导入任务')
+      await card.getByRole('button', { name: '保存任务', exact: true }).click()
+      await expect(card).toHaveCount(0)
       await clean.page.reload()
       expect(
         (await clean.page.evaluate(databaseSnapshot)).tasks.find((t) => t.id === parent.id).notes,
@@ -263,18 +263,27 @@ test('周期成员后来移为个人任务时只保留断开历史身份，不�
     0,
   )
   const parent = page.locator(`[data-task-id="${work.parent}"]`)
-  await parent.getByRole('button', { name: '完成任务', exact: true }).first().click()
+  await parent.getByRole('checkbox', { name: '完成任务', exact: true }).first().click()
   await expect
     .poll(async () => (await page.evaluate(databaseSnapshot)).taskCompletions.length)
     .toBe(2)
-  await page.getByRole('button', { name: '已完成子任务', exact: true }).click()
-  const form = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await form.getByLabel('父任务', { exact: true }).selectOption('')
-  await form.getByLabel('关联作品', { exact: true }).selectOption('')
-  await form.getByLabel('任务标题', { exact: true }).fill('PRIVATE-MOVED-CURRENT')
-  await form.getByLabel('任务备注', { exact: true }).fill('PRIVATE-MOVED-NOTES')
-  await form.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(form).toBeHidden()
+  await page.evaluate(async (childId) => {
+    const db = await new Promise((r) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => r(q.result)
+    })
+    const tx = db.transaction('tasks', 'readwrite')
+    const store = tx.objectStore('tasks')
+    const child = await new Promise((r) => {
+      const q = store.get(childId)
+      q.onsuccess = () => r(q.result)
+    })
+    const updated = { ...child, parentId: null, title: 'PRIVATE-MOVED-CURRENT', notes: 'PRIVATE-MOVED-NOTES', revision: child.revision + 1 }
+    delete updated.link
+    store.put(updated)
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+  }, work.child)
   const path = info.outputPath('detached-history.newworld')
   await exportWork(page, work, path)
   const entries = await unpack(path),
@@ -298,10 +307,10 @@ test('周期成员后来移为个人任务时只保留断开历史身份，不�
     expect(await clean.page.evaluate(databaseSnapshot)).toEqual(before)
     await clean.page.goto('/#/tasks/all')
     await clean.page.getByRole('button', { name: '作品任务 · ' + work.root, exact: true }).click()
-    const edit = clean.page.getByRole('dialog', { name: '编辑任务', exact: true })
+    const edit = clean.page.locator('.task-card')
     await edit.getByLabel('任务备注', { exact: true }).fill('保留断开历史后继续编辑')
     await edit.getByRole('button', { name: '保存任务', exact: true }).click()
-    await expect(edit).toBeHidden()
+    await expect(edit).toHaveCount(0)
   } finally {
     await clean.context.close()
   }

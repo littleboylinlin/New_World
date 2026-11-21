@@ -13,7 +13,7 @@ test('桌面小窗默认记灵感，Tab 切换提醒，无日期的时间预览�
       constructor(_title, options) { window.notifiedTasks.push(options.body) }
     }
   })
-  await page.goto('/#/notes/tasks')
+  await page.goto('/#/notes/tasks/all')
   await expect(page.locator('.task-quick')).toBeVisible()
   const capture = await context.newPage()
   await capture.addInitScript(() => {

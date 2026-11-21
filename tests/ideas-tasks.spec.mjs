@@ -51,13 +51,12 @@ test('灵感和待办合在一个标签里，顶部切换；新建的待办关�
   await expect(page.locator('.ideas-count')).toHaveText('1')
   await expect(outerTab(page)).toHaveAttribute('title', '0 条灵感 · 1 项待办')
 
-  // The tasks page's own rows: the title opens its edit dialog, and completing takes it off.
+  // The tasks page's own rows: the title expands an inline card, and completing takes it off.
   await panel.getByRole('button', { name: '统一人名' }).click()
-  const dialog = page.getByRole('dialog', { name: '编辑任务' })
-  await expect(dialog.getByLabel('任务标题', { exact: true })).toHaveValue('统一人名')
-  await dialog.getByRole('button', { name: '取消' }).click()
-  await panel.locator('.task-row').hover()
-  await panel.getByRole('button', { name: '完成任务' }).click()
+  const card = panel.locator('.task-card')
+  await expect(card.getByLabel('任务标题', { exact: true })).toHaveValue('统一人名')
+  await card.getByRole('button', { name: '收起', exact: true }).first().click()
+  await panel.getByRole('checkbox', { name: '完成任务' }).click()
   await expect(panel.locator('.task-row')).toHaveCount(0)
   await expect(page.locator('.ideas-count')).toHaveText('')
 })

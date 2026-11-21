@@ -44,21 +44,17 @@ test('接入点：桌面速记小窗的灵感和提醒两种模式 @webkit', asy
   await expect(page.getByLabel('计划日期')).not.toHaveAttribute('data-typing-caret')
 })
 
-test('接入点：任务的快速添加、标题、描述、评论和搜索 @webkit', async ({ page }) => {
+test('接入点：任务的快速添加、行内标题、备注、子任务和搜索 @webkit', async ({ page }) => {
   await quickTask(page, '写第一章')
   await expectFieldTyping(page, page.getByRole('textbox', { name: '快速添加任务', exact: true }))
   await page.getByRole('searchbox', { name: '搜索任务', exact: true }).fill('')
   await expectFieldTyping(page, page.getByRole('searchbox', { name: '搜索任务', exact: true }))
   await page.getByRole('searchbox', { name: '搜索任务', exact: true }).fill('')
   await page.getByRole('button', { name: '写第一章', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await expectFieldTyping(page, dialog.getByLabel('任务标题', { exact: true }))
-  await expectFieldTyping(page, dialog.getByLabel('任务描述', { exact: true }))
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
-  await page.getByRole('button', { name: '评论与附件', exact: true }).first().click()
-  const extras = page.getByRole('dialog', { name: '评论与附件', exact: true })
-  await extras.getByRole('button', { name: '添加评论', exact: true }).click()
-  await expectFieldTyping(page, page.getByRole('dialog', { name: '添加评论', exact: true }).getByLabel('评论内容', { exact: true }))
+  const card = page.locator('.task-card')
+  await expectFieldTyping(page, card.getByLabel('任务标题', { exact: true }))
+  await expectFieldTyping(page, card.getByLabel('任务备注', { exact: true }))
+  await expectFieldTyping(page, card.getByRole('textbox', { name: '添加子任务', exact: true }))
 })
 
 test('接入点：新建作品时的作品名和作品信息、重命名框、书名搜索 @webkit', async ({ page }) => {

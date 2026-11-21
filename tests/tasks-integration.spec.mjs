@@ -117,7 +117,7 @@ test('任务 JSON 真正跨书库导入与副本、模板和过滤器引用映�
     await context.close()
   }
 })
-test('章节位置联动、评论/附件、复制、模板、真实统计及灵感转换不互相改状态', async ({
+test('章节位置联动、旧评论/附件只读展示与下载、复制、灵感转换不改状态、删作品保留任务', async ({
   page,
 }, info) => {
   await page.goto('/#/writing')
@@ -146,54 +146,72 @@ test('章节位置联动、评论/附件、复制、模板、真实统计及灵�
     chapterId: work.first,
   })
   expect(task.link.position.to).toBeGreaterThan(task.link.position.from)
-  await page.goto('/#/tasks/all')
-  await row(page, task.id).getByRole('button', { name: '评论与附件', exact: true }).click()
-  let extras = page.getByRole('dialog', { name: '评论与附件', exact: true })
-  await extras.getByRole('button', { name: '添加评论', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '添加评论', exact: true })
-  const comment = '长评论'.repeat(250) + '\n第二行'
-  await dialog.getByLabel('评论内容', { exact: true }).fill(comment)
-  await dialog.getByRole('button', { name: '保存评论', exact: true }).click()
-  await expect(dialog).toBeHidden()
+
+  // Seed legacy description, comment & attachment to verify read-only inline visibility and download.
+  const comment = '长评论'.repeat(60) + '\n第二行'
   const bytes = Buffer.from('参考原始字节\r\n第二行\n')
-  await extras
-    .getByLabel('添加文件附件', { exact: true })
-    .setInputFiles({ name: '参考✦.txt', mimeType: 'text/plain', buffer: bytes })
-  await expect.poll(async () => (await snapshot(page)).taskAttachments.length).toBe(1)
-  await extras.getByLabel('添加文件附件', { exact: true }).setInputFiles({
-    name: 'unsafe.js',
-    mimeType: 'text/javascript',
-    buffer: Buffer.from('alert(1)'),
-  })
-  await expect(page.locator('.undo-toast')).toBeVisible()
-  expect((await snapshot(page)).taskAttachments).toHaveLength(1)
+  const sha = createHash('sha256').update(bytes).digest('hex')
+  await page.evaluate(
+    async ({ taskId, commentText, rawBytes, hash }) => {
+      const db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      })
+      const tx = db.transaction(['tasks', 'taskAttachments'], 'readwrite')
+      const store = tx.objectStore('tasks')
+      const current = await new Promise((r) => {
+        const q = store.get(taskId)
+        q.onsuccess = () => r(q.result)
+      })
+      const now = Date.now()
+      store.put({
+        ...current,
+        description: '旧任务描述内容',
+        comments: [{ id: crypto.randomUUID(), text: commentText, createdAt: now, updatedAt: now, deletedAt: null }],
+        revision: current.revision + 1,
+      })
+      const blob = new Blob([new Uint8Array(rawBytes)], { type: 'text/plain' })
+      tx.objectStore('taskAttachments').put({
+        id: crypto.randomUUID(),
+        taskId,
+        name: '参考✦.txt',
+        type: 'text/plain',
+        bytes: blob.size,
+        sha256: hash,
+        content: blob,
+      })
+      await new Promise((r) => (tx.oncomplete = r))
+      db.close()
+    },
+    { taskId: task.id, commentText: comment, rawBytes: [...bytes], hash: sha },
+  )
+
+  await page.goto('/#/tasks/all')
+  await row(page, task.id).getByRole('button', { name: '修订开篇', exact: true }).click()
+  const card = row(page, task.id).locator('.task-card')
+  await expect(card.locator('.task-legacy-box')).toContainText('旧任务描述内容')
+  await expect(card.locator('.task-legacy-box')).toContainText(comment)
+  await expect(card.locator('.task-legacy-box')).toContainText('参考✦.txt')
   const download = page.waitForEvent('download')
-  await extras.getByRole('button', { name: '下载附件', exact: true }).click()
+  await card.getByRole('button', { name: '下载附件', exact: true }).click()
   const path = info.outputPath('attachment.txt')
   await (await download).saveAs(path)
   expect(await readFile(path)).toEqual(bytes)
-  await extras.getByRole('button', { name: '关闭', exact: true }).click()
-  await row(page, task.id).getByRole('button', { name: '复制任务', exact: true }).click()
+  await card.getByRole('button', { name: '收起', exact: true }).first().click()
+
+  // Copy via ⋯ menu clones comments with new ID and keeps attachment sha256.
+  await row(page, task.id).hover()
+  await row(page, task.id).getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '复制任务', exact: true }).click()
   await expect.poll(async () => (await snapshot(page)).tasks.length).toBe(2)
   state = await snapshot(page)
   const copy = state.tasks.find((t) => t.id !== task.id)
   expect(copy.comments[0].id).not.toBe(state.tasks.find((t) => t.id === task.id).comments[0].id)
-  expect(state.taskAttachments.find((a) => a.taskId === copy.id).sha256).toBe(
-    createHash('sha256').update(bytes).digest('hex'),
-  )
-  await row(page, task.id).getByRole('button', { name: '保存为任务模板', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '保存为任务模板', exact: true })
-  await dialog.getByLabel('模板名称', { exact: true }).fill('开篇模板')
-  await dialog.getByRole('button', { name: '保存为任务模板', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await page.getByRole('link', { name: '任务模板', exact: true }).click()
-  await page.getByRole('button', { name: '使用模板', exact: true }).click()
-  await expect.poll(async () => (await snapshot(page)).tasks.length).toBe(3)
-  await row(page, task.id).getByRole('button', { name: '完成任务', exact: true }).click()
-  await page.getByRole('link', { name: '效率统计', exact: true }).click()
-  await expect(page.locator('.task-stats')).toContainText('有效完成记录：1')
-  await page.getByLabel('统计粒度', { exact: true }).selectOption('month')
-  await expect(page.locator('.task-stats')).toContainText('有效完成记录：1')
+  expect(state.taskAttachments.find((a) => a.taskId === copy.id).sha256).toBe(sha)
+
+  await row(page, task.id).getByRole('checkbox', { name: '完成任务', exact: true }).click()
+  await expect.poll(async () => (await snapshot(page)).taskCompletions.length).toBe(1)
+
   state = await snapshot(page)
   const originalIdeas = state.ideas,
     originalHistory = state.ideaRevisions
@@ -209,9 +227,10 @@ test('章节位置联动、评论/附件、复制、模板、真实统计及灵�
   state = await snapshot(page)
   expect(state.ideas).toEqual(originalIdeas)
   expect(state.ideaRevisions).toEqual(originalHistory)
-  expect(state.tasks).toHaveLength(4)
+  expect(state.tasks).toHaveLength(3)
+
   await page.goto('/#/tasks/completed')
-  await row(page, task.id).getByRole('button', { name: '取消完成', exact: true }).click()
+  await row(page, task.id).getByRole('checkbox', { name: '取消完成', exact: true }).click()
   await page.goto('/#/tasks/all')
   await row(page, task.id)
     .getByRole('button', { name: /打开关联/ })
@@ -220,10 +239,10 @@ test('章节位置联动、评论/附件、复制、模板、真实统计及灵�
   await expect(page.locator('.chapter-jump[aria-current]')).toHaveText('第一章 · 雾港')
   const count = (await snapshot(page)).tasks.length
   await page.goto('/#/original')
-  const card = page
+  const cardBook = page
     .locator('.book-card')
     .filter({ has: page.locator(`a[href="#/original/${work.root}"]`) })
-  await card.locator('.book-menu-toggle').click()
+  await cardBook.locator('.book-menu-toggle').click()
   await page.getByRole('menuitem', { name: '删除', exact: true }).click()
   dialog = page.getByRole('dialog', { name: '删除作品？', exact: true })
   await expect(dialog).toContainText('关联任务和完成历史会保留')
@@ -241,14 +260,33 @@ test('4 MiB 附件经真实任务 JSON 导出导入校验并按原字节下载',
   await page.goto('/#/tasks')
   await page.getByLabel('快速添加任务', { exact: true }).fill('大附件验收')
   await page.locator('.task-quick button').click()
-  await page.getByRole('button', { name: '评论与附件', exact: true }).click()
-  let extras = page.getByRole('dialog', { name: '评论与附件', exact: true })
+  await expect(page.getByRole('button', { name: '大附件验收', exact: true })).toBeVisible()
+  const taskId = (await snapshot(page)).tasks[0].id
   const bytes = Buffer.alloc(4 * 1024 * 1024, 65)
-  await extras
-    .getByLabel('添加文件附件', { exact: true })
-    .setInputFiles({ name: 'large.txt', mimeType: 'text/plain', buffer: bytes })
-  await expect(extras).toContainText('large.txt', {timeout:15000})
-  await extras.getByRole('button', { name: '关闭', exact: true }).click()
+  const sha = createHash('sha256').update(bytes).digest('hex')
+  await page.evaluate(
+    async ({ taskId, hash }) => {
+      const db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      })
+      const blob = new Blob([new Uint8Array(4 * 1024 * 1024).fill(65)], { type: 'text/plain' })
+      const tx = db.transaction('taskAttachments', 'readwrite')
+      tx.objectStore('taskAttachments').put({
+        id: crypto.randomUUID(),
+        taskId,
+        name: 'large.txt',
+        type: 'text/plain',
+        bytes: blob.size,
+        sha256: hash,
+        content: blob,
+      })
+      await new Promise((r) => (tx.oncomplete = r))
+      db.close()
+    },
+    { taskId, hash: sha },
+  )
+
   let download = page.waitForEvent('download')
   await page.getByRole('button', { name: '导出任务数据（JSON）', exact: true }).click()
   const path = info.outputPath('large-tasks.json')
@@ -261,10 +299,9 @@ test('4 MiB 附件经真实任务 JSON 导出导入校验并按原字节下载',
     const preview = clean.getByRole('dialog', { name: '任务导入预览', exact: true })
     await preview.getByRole('button', { name: '确认导入任务', exact: true }).click()
     await expect(preview).toBeHidden()
-    await clean.getByRole('button', { name: '评论与附件', exact: true }).click()
-    extras = clean.getByRole('dialog', { name: '评论与附件', exact: true })
+    await clean.getByRole('button', { name: '大附件验收', exact: true }).click()
     download = clean.waitForEvent('download')
-    await extras.getByRole('button', { name: '下载附件', exact: true }).click()
+    await clean.locator('.task-card').getByRole('button', { name: '下载附件', exact: true }).click()
     const restored = info.outputPath('large-restored.txt')
     await (await download).saveAs(restored)
     expect(await readFile(restored)).toEqual(bytes)

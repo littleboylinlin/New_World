@@ -58,6 +58,7 @@ test('从旧书库启动，浏览两类作品、灵感与任务保留全部记�
   await expect(page.locator('.idea-text')).toHaveCount(2)
   await page.goto('/#/tasks')
   await expect(page).toHaveURL(/#\/notes\/tasks$/)
+  await page.locator('.task-nav a[href="#/notes/tasks/later"]').click()
   await expect(page.locator('.task-title')).toHaveText('核对雾港的潮汐表')
   // The upgrade only adds the empty writing style store.
   expect(await page.evaluate(databaseSnapshot)).toEqual({ ...before, writingStyles: [] })
@@ -158,20 +159,20 @@ test('两边独立保留查询、任务筛选和视图，转换后直接定位�
   await page.getByLabel('搜索灵感正文').fill('旅人')
   await expect(page.locator('.idea-row')).toHaveCount(1)
   await page.getByRole('link', { name: '任务', exact: true }).click()
-  const allTasks = page.locator('.task-nav a[href="#/notes/tasks/all"]')
-  await allTasks.click()
-  await expect(allTasks).toHaveAttribute('aria-current', 'page')
-  const query = page.locator('.task-toolbar input[type=search]')
+  const laterTasks = page.locator('.task-nav a[href="#/notes/tasks/later"]')
+  await laterTasks.click()
+  await expect(laterTasks).toHaveAttribute('aria-current', 'page')
+  const query = page.locator('.task-search-input')
   await query.fill('雾港')
   await expect(query).toHaveValue('雾港')
-  await page.getByLabel('任务视图', { exact: true }).selectOption('table')
-  await expect(page.getByRole('table')).toBeVisible()
   await page.getByRole('link', { name: '灵感', exact: true }).click()
+  await expect(page.getByLabel('搜索灵感正文')).toBeVisible()
   await expect(page.getByLabel('搜索灵感正文')).toHaveValue('旅人')
   await page.getByRole('link', { name: '任务', exact: true }).click()
-  await expect(page).toHaveURL(/#\/notes\/tasks\/all$/)
+  await expect(page).toHaveURL(/#\/notes\/tasks\/later$/)
+  await expect(query).toBeVisible()
   await expect(query).toHaveValue('雾港')
-  await expect(page.getByRole('table')).toContainText('核对雾港的潮汐表')
+  await expect(page.getByRole('button', { name: '核对雾港的潮汐表', exact: true })).toBeVisible()
   await page.goto('/#/notes')
   await expect(page.locator('.segment[aria-current]')).toHaveText('任务')
   await page.getByRole('link', { name: '灵感', exact: true }).click()
@@ -195,7 +196,7 @@ for (const theme of ['white', 'dark']) test('导航截图 · ' + theme, async ({
   }
   for (const [view, route, ready] of [
     ['home', '#/', '.recent-list time'], ['writing', '#/writing', '.book-link'],
-    ['notes', '#/notes/ideas', '.idea-row'], ['tasks', '#/notes/tasks', '.task-row'],
+    ['notes', '#/notes/ideas', '.idea-row'], ['tasks', '#/notes/tasks/later', '.task-row'],
   ]) {
     await page.goto('/' + route)
     await expect(page.locator(ready).first()).toBeVisible()

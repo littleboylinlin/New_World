@@ -1,6 +1,9 @@
 import { test, expect } from './app-test.mjs'
+import { seedProject, projectFixture } from './project-fixture.mjs'
+import { pixel } from './fixtures.mjs'
 
 test.setTimeout(90000)
+
 export async function taskSnapshot(page) {
   return page.evaluate(async () => {
     const db = await new Promise((r, j) => {
@@ -24,15 +27,26 @@ export async function taskSnapshot(page) {
     return Object.fromEntries(result)
   })
 }
+
 async function quick(page, title) {
   await page.getByRole('textbox', { name: '快速添加任务', exact: true }).fill(title)
   await page.locator('.task-quick').getByRole('button', { name: '添加任务', exact: true }).click()
   await expect(page.getByRole('button', { name: title, exact: true })).toBeVisible()
 }
+
 const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
+
 async function task(page, title) {
   return (await taskSnapshot(page)).tasks.find((t) => t.title === title)
 }
+
+async function openRowMenu(page, id) {
+  const target = row(page, id)
+  await target.hover()
+  await target.getByRole('button', { name: '更多操作', exact: true }).click()
+  return page.getByRole('menu', { name: '更多操作', exact: true })
+}
+
 // Rows slide in with the page, so wait until they rest, then move in several steps so the drop follows dragover.
 async function dragTask(page, sourceId, targetId) {
   await page.evaluate(() =>
@@ -50,63 +64,103 @@ async function dragTask(page, sourceId, targetId) {
   await page.mouse.up()
 }
 
-test('任务 CRUD、三层子任务、完成历史、复制、删除恢复和撤销持久化', async ({ page }) => {
+test('任务 CRUD、行内展开、单层子任务清单与旧多层摊平、完成历史、复制、删除恢复和撤销持久化', async ({ page }) => {
   await page.goto('/#/tasks')
   await quick(page, '写第一章')
-  let parent = await task(page, '写第一章')
+  const parent = await task(page, '写第一章')
   const id = parent.id
-  await row(page, id).getByRole('button', { name: '添加子任务', exact: true }).click()
-  let dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
-  await dialog.getByLabel('任务标题', { exact: true }).fill('整理人物')
-  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
+
+  // Clicking title expands in-place card (no modal dialog).
+  await row(page, id).getByRole('button', { name: '写第一章', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const card = row(page, id).locator('.task-card')
+  await expect(card).toBeVisible()
+
+  // Add a 1-level subtask directly inside the inline checklist.
+  await card.getByRole('textbox', { name: '添加子任务', exact: true }).fill('整理人物')
+  await card.getByRole('textbox', { name: '添加子任务', exact: true }).press('Enter')
+  await expect.poll(async () => (await task(page, '整理人物'))?.parentId).toBe(id)
   const child = await task(page, '整理人物')
-  await row(page, child.id).getByRole('button', { name: '添加子任务', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
-  await dialog.getByLabel('任务标题', { exact: true }).fill('确定动机')
-  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  const grandchild = await task(page, '确定动机')
-  expect(grandchild.parentId).toBe(child.id)
-  await row(page, id).getByRole('button', { name: '收起子任务', exact: true }).first().click()
-  await expect(page.getByRole('button', { name: '确定动机', exact: true })).toBeHidden()
+
+  // Seed a legacy 3rd-level grandchild with legacy fields to verify flattened display & field preservation.
+  const grandchildId = await page.evaluate(async (childId) => {
+    const gcId = crypto.randomUUID()
+    const now = Date.now()
+    const db = await new Promise((r) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => r(q.result)
+    })
+    const tx = db.transaction('tasks', 'readwrite')
+    tx.objectStore('tasks').put({
+      id: gcId,
+      title: '确定动机',
+      description: '多段说明\n第二行',
+      notes: '独立备注',
+      projectId: null,
+      sectionId: null,
+      parentId: childId,
+      priority: 1,
+      labelIds: [],
+      order: 2048,
+      expanded: true,
+      planDate: null,
+      completedAt: null,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
+    })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+    return gcId
+  }, child.id)
+
   await page.reload()
-  await row(page, id).getByRole('button', { name: '展开子任务', exact: true }).click()
-  await row(page, grandchild.id).getByRole('button', { name: '确定动机', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await dialog.getByLabel('任务描述', { exact: true }).fill('多段说明\n第二行')
-  await dialog.getByLabel('任务备注', { exact: true }).fill('独立备注')
-  await dialog.getByLabel('优先级', { exact: true }).selectOption('1')
-  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await row(page, id).getByRole('button', { name: '完成任务', exact: true }).first().click()
+  await row(page, id).getByRole('button', { name: '写第一章', exact: true }).click()
+  await expect(card.locator('.task-sub-item')).toHaveCount(2)
+  await expect(card.locator('.task-sub-item .task-sub-title').nth(0)).toHaveValue('整理人物')
+  await expect(card.locator('.task-sub-item .task-sub-title').nth(1)).toHaveValue('确定动机')
+
+  await card.getByLabel('任务备注', { exact: true }).fill('主任务备注')
+  await card.getByRole('button', { name: '保存任务', exact: true }).click()
+  await expect(card).toHaveCount(0)
+
+  // Completing parent cascades to child & grandchild.
+  await row(page, id).getByRole('checkbox', { name: '完成任务', exact: true }).click()
   await page.getByRole('link', { name: '已完成', exact: true }).click()
   await expect.poll(async () => (await taskSnapshot(page)).taskCompletions.length).toBe(3)
-  await row(page, id).getByRole('button', { name: '取消完成', exact: true }).first().click()
-  await page.getByRole('link', { name: '收件箱', exact: true }).click()
+  await row(page, id).getByRole('checkbox', { name: '取消完成', exact: true }).click()
+
+  // Return to Today, copy via ⋯ menu, delete via ⋯ menu, restore from trash, undo.
+  await page.getByRole('link', { name: /^今天/ }).click()
   expect((await task(page, '写第一章')).id).toBe(id)
-  await row(page, id).getByRole('button', { name: '复制任务', exact: true }).first().click()
+  let menu = await openRowMenu(page, id)
+  await menu.getByRole('menuitem', { name: '复制任务', exact: true }).click()
   await expect.poll(async () => (await taskSnapshot(page)).tasks.length).toBe(6)
   const copy = await task(page, '写第一章 （副本）')
   expect(copy.id).not.toBe(id)
-  await row(page, copy.id).getByRole('button', { name: '删除任务', exact: true }).first().click()
-  dialog = page.getByRole('dialog', { name: '删除任务', exact: true })
+
+  menu = await openRowMenu(page, copy.id)
+  await menu.getByRole('menuitem', { name: '删除任务', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '删除任务', exact: true })
   await dialog.getByRole('button', { name: '删除任务', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await page.getByRole('link', { name: '任务回收站', exact: true }).click()
-  await row(page, copy.id).getByRole('button', { name: '恢复任务', exact: true }).first().click()
-  await page.getByRole('link', { name: '全部任务', exact: true }).click()
+
+  await page.getByRole('link', { name: /^任务回收站/ }).click()
+  await row(page, copy.id).getByRole('button', { name: '恢复任务', exact: true }).click()
+  await page.getByRole('link', { name: /^今天/ }).click()
   await expect(page.getByRole('button', { name: copy.title, exact: true })).toBeVisible()
-  await page
-    .locator('.task-toolbar')
-    .getByRole('button', { name: '撤销任务操作', exact: true })
-    .click()
+
+  await page.getByRole('button', { name: '撤销任务操作', exact: true }).click()
   await expect
     .poll(async () => (await taskSnapshot(page)).tasks.filter((t) => t.deletedAt !== null).length)
     .toBe(3)
+
   await page.reload()
-  const saved = (await taskSnapshot(page)).tasks.find((t) => t.id === grandchild.id)
-  expect(saved).toMatchObject({
+  const savedParent = (await taskSnapshot(page)).tasks.find((t) => t.id === id)
+  const savedGrandchild = (await taskSnapshot(page)).tasks.find((t) => t.id === grandchildId)
+  expect(savedParent.notes).toBe('主任务备注')
+  expect(savedGrandchild).toMatchObject({
     description: '多段说明\n第二行',
     notes: '独立备注',
     priority: 1,
@@ -114,75 +168,82 @@ test('任务 CRUD、三层子任务、完成历史、复制、删除恢复和撤
   })
 })
 
-test('项目、分区、标签、今日/未来搜索、批量移动和拖动使用同一数据', async ({ page }) => {
-  await page.goto('/#/tasks')
-  await quick(page, '日常任务')
-  await quick(page, '第二项')
-  await page.getByRole('button', { name: '新建项目', exact: true }).click()
-  let dialog = page.getByRole('dialog', { name: '新建项目', exact: true })
-  await dialog.getByLabel('项目名称', { exact: true }).fill('小说计划')
-  await dialog.getByLabel('自定义图标（文字或表情）', { exact: true }).fill('📚')
-  await dialog.getByRole('button', { name: '保存项目', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  const state = await taskSnapshot(page),
-    project = state.taskProjects[0]
-  await page.getByRole('checkbox', { name: '选择任务 日常任务', exact: true }).check()
-  await page.getByRole('checkbox', { name: '选择任务 第二项', exact: true }).check()
-  await page.locator('.task-bulk').getByRole('button', { name: '移动任务', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '移动任务', exact: true })
-  await dialog.getByLabel('任务项目', { exact: true }).selectOption(project.id)
-  await dialog.getByRole('button', { name: '移动任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await page.goto('/#/tasks/project/' + project.id)
-  await expect(page.getByRole('button', { name: '日常任务', exact: true })).toBeVisible()
-  const first = await task(page, '日常任务'),
-    second = await task(page, '第二项')
+test('今天/即将到来/以后分视图、作品完成进度饼图、搜索、右键菜单、拖动与触屏 ⋯ 常驻', async ({ page, browser }) => {
+  await page.goto('/#/writing')
+  await expect(page.getByRole('button', { name: '导入', exact: true })).toBeVisible()
+  const work = await page.evaluate(seedProject, projectFixture('original', pixel.toString('base64')))
+
+  await page.goto('/#/tasks/today')
+  await quick(page, '今日写作')
+  await quick(page, '第二项今日')
+
+  // Seed work-linked tasks (1 open + 1 done) and an undated task for Later view.
+  await page.evaluate(async ({ bookId, title }) => {
+    const db = await new Promise((r) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => r(q.result)
+    })
+    const tx = db.transaction('tasks', 'readwrite')
+    const now = Date.now()
+    const base = {
+      description: '', notes: '', projectId: null, sectionId: null, parentId: null,
+      priority: 4, labelIds: [], expanded: true, deletedAt: null, createdAt: now, updatedAt: now, revision: 0,
+    }
+    tx.objectStore('tasks').put({
+      ...base, id: crypto.randomUUID(), title: '远期资料整理', description: '可检索的旧描述',
+      order: 4096, planDate: null, completedAt: null,
+      link: { library: 'original', bookId, title },
+    })
+    tx.objectStore('tasks').put({
+      ...base, id: crypto.randomUUID(), title: '已完成大纲',
+      order: 5120, planDate: null, completedAt: now - 1000,
+      link: { library: 'original', bookId, title },
+    })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+  }, { bookId: work.root, title: '雾港' })
+
+  await page.reload()
+
+  // Sidebar displays work link with Things 3 completion pie SVG (1/2 completed).
+  const workNav = page.locator('.task-nav-work').filter({ hasText: '雾港' })
+  await expect(workNav).toBeVisible()
+  await expect(workNav.locator('svg.task-work-pie')).toBeVisible()
+  await expect(workNav).toHaveAttribute('aria-label', '雾港 · 原创验收，已完成 1 / 2')
+
+  // Drag reorder in Today view.
+  const first = await task(page, '今日写作')
+  const second = await task(page, '第二项今日')
   await dragTask(page, second.id, first.id)
-  await expect
-    .poll(async () => (await task(page, '第二项')).order < (await task(page, '日常任务')).order)
-    .toBe(true)
-  await page.getByRole('button', { name: '管理分区', exact: true }).click()
-  await page.getByRole('button', { name: '新建分区', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '新建分区', exact: true })
-  await dialog.getByLabel('分区名称', { exact: true }).fill('大纲')
-  await dialog.getByRole('button', { name: '保存分区', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await page
-    .getByRole('dialog', { name: '管理分区' })
-    .getByRole('button', { name: '关闭', exact: true })
-    .click()
-  await page.getByRole('button', { name: '标签管理', exact: true }).click()
-  await page.getByRole('button', { name: '新建标签', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '新建标签', exact: true })
-  await dialog.getByLabel('标签名称', { exact: true }).fill('重要')
-  await dialog.getByRole('button', { name: '保存标签', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await page
-    .getByRole('dialog', { name: '标签管理' })
-    .getByRole('button', { name: '关闭', exact: true })
-    .click()
-  const data = await taskSnapshot(page)
-  await page.getByRole('button', { name: '日常任务', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await dialog.getByLabel('任务分区', { exact: true }).selectOption(data.taskSections[0].id)
-  await dialog.getByRole('checkbox', { name: '重要', exact: true }).check()
-  await dialog.getByLabel('计划日期', { exact: true }).fill('2000-01-01')
-  await dialog.getByLabel('任务描述', { exact: true }).fill('可以搜索的描述')
-  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await page.getByRole('link', { name: '今日', exact: true }).click()
-  await expect(page.getByRole('button', { name: '日常任务', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '第二项', exact: true })).toHaveCount(0)
-  await page.getByRole('searchbox', { name: '搜索任务', exact: true }).fill('搜索的描述')
-  await expect(page.getByRole('button', { name: '日常任务', exact: true })).toBeVisible()
-  expect((await task(page, '日常任务')).labelIds).toEqual([data.taskLabels[0].id])
-  await page.goto('/#/tasks/project/' + project.id)
-  await page.getByRole('button', { name: '删除项目', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '删除项目', exact: true })
-  await dialog.getByRole('button', { name: '删除项目', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await page.getByRole('button', { name: '恢复项目', exact: true }).click()
-  expect((await task(page, '日常任务')).projectId).toBe(project.id)
+  await expect.poll(async () => (await task(page, '第二项今日')).order < (await task(page, '今日写作')).order).toBe(true)
+
+  // Right-click row opens context menu; moving to Tomorrow shifts task to Upcoming.
+  await row(page, second.id).click({ button: 'right' })
+  const ctxMenu = page.getByRole('menu', { name: '更多操作', exact: true })
+  await ctxMenu.getByRole('menuitem', { name: '明天', exact: true }).click()
+  await expect(page.getByRole('button', { name: '第二项今日', exact: true })).toHaveCount(0)
+
+  await page.getByRole('link', { name: /^即将到来/ }).click()
+  await expect(page.getByRole('button', { name: '第二项今日', exact: true })).toBeVisible()
+
+  // Later view shows undated task, and search matches legacy description.
+  await page.getByRole('link', { name: /^以后/ }).click()
+  await expect(page.getByRole('button', { name: '远期资料整理', exact: true })).toBeVisible()
+  await page.getByRole('searchbox', { name: '搜索任务', exact: true }).fill('可检索的旧描述')
+  await expect(page.getByRole('button', { name: '远期资料整理', exact: true })).toBeVisible()
+
+  // Touch screen keeps ⋯ action button always visible without hover.
+  const touchCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, locale: 'zh-CN' })
+  try {
+    const tPage = await touchCtx.newPage()
+    await tPage.goto('/#/tasks/today')
+    await quick(tPage, '触屏任务')
+    const moreBtn = tPage.locator('.task-row .task-more-btn').first()
+    await expect(moreBtn).toBeVisible()
+    expect(await moreBtn.evaluate((el) => getComputedStyle(el).opacity)).toBe('1')
+  } finally {
+    await touchCtx.close()
+  }
 })
 
 test('并发编辑拒绝覆盖，任务写入中断整体回滚', async ({ page }) => {
@@ -190,7 +251,9 @@ test('并发编辑拒绝覆盖，任务写入中断整体回滚', async ({ page 
   await quick(page, '受保护任务')
   const original = await task(page, '受保护任务')
   await page.getByRole('button', { name: original.title, exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
+  const card = row(page, original.id).locator('.task-card')
+  await expect(card).toBeVisible()
+
   await page.evaluate(async (id) => {
     const db = await new Promise((r) => {
       const q = indexedDB.open('new-world-library')
@@ -204,10 +267,12 @@ test('并发编辑拒绝覆盖，任务写入中断整体回滚', async ({ page 
     await new Promise((r) => (tx.oncomplete = r))
     db.close()
   }, original.id)
-  await dialog.getByLabel('任务标题', { exact: true }).fill('过期表单')
-  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toContainText('其他窗口')
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
+
+  await card.getByLabel('任务标题', { exact: true }).fill('过期表单')
+  await card.getByRole('button', { name: '保存任务', exact: true }).click()
+  await expect(card.getByRole('alert')).toContainText('其他窗口')
+  await card.getByRole('button', { name: '收起', exact: true }).first().click()
+
   await page.reload()
   const before = await taskSnapshot(page)
   await page.evaluate(() => {
@@ -228,7 +293,7 @@ test('并发编辑拒绝覆盖，任务写入中断整体回滚', async ({ page 
       return add.apply(this, args)
     }
   })
-  await page.getByRole('button', { name: '完成任务', exact: true }).click()
+  await page.getByRole('checkbox', { name: '完成任务', exact: true }).click()
   await expect(page.locator('.undo-toast')).toBeVisible()
   expect(await taskSnapshot(page)).toEqual(before)
   await page.reload()

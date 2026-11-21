@@ -237,7 +237,7 @@ export function ideaActions(idea: Idea, books: Book[], report: (message: string)
       const work = source?.workId ? books.find((book) => book.id === source.workId && book.library === source.library) : source
       await taskDialog(await readTasks(), undefined, {
         title: idea.text.split('\n')[0].slice(0, 500) || t('tasks.fromIdea'),
-        description: idea.text,
+        notes: idea.text,
         ...(work ? { link: { library: work.library, bookId: work.id, title: work.title } } : {}),
       }, (task) => { location.hash = '#/notes/tasks/item/' + task.id })
     }) },

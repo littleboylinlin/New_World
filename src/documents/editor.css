@@ -383,23 +383,17 @@
 
 /* The tasks page's list, made to fit a narrow panel. */
 .task-embedded .task-layout { display: block; }
-.task-embedded .task-toolbar, .task-embedded .task-quick, .task-embedded .task-bulk { gap: 6px; margin-bottom: 8px; }
-.task-embedded .task-toolbar > .field-label, .task-embedded .task-quick input { min-width: 0; }
-/* The search field keeps its accessible name; its visible caption gives the room to the field. */
-.task-embedded .task-toolbar > .field-label { flex: 1 1 0; font-size: 0; }
-.task-embedded .task-toolbar > .field-label > input { width: 100%; min-height: 34px; font-size: .86rem; }
-.task-embedded .task-quick { flex-wrap: wrap; }
+.task-embedded .task-view-head { gap: 6px; margin-bottom: 8px; }
+.task-embedded .task-view-head h2 { display: none; }
+.task-embedded .task-search-input { min-height: 34px; font-size: .86rem; }
+.task-embedded .task-quick { gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
 .task-embedded .task-quick input { flex: 1 1 100%; min-height: 36px; font-size: .9rem; }
-.task-embedded .task-toolbar .button, .task-embedded .task-quick .button { min-height: 32px; padding: 3px 10px; font-size: .8rem; }
-.task-embedded .task-list { gap: 6px; margin: 0; }
-.task-embedded .task-row { gap: 6px; padding: 8px 10px; }
-.task-embedded .task-copy { min-width: 0; font-size: .88rem; }
-.task-embedded .task-actions { flex-basis: 100%; gap: 4px; }
-.task-embedded .task-actions .button { min-height: 26px; padding: 2px 6px; font-size: .72rem; }
-@media (hover: hover) {
-  /* Each row's tools come up when it is pointed at or reached by keyboard. */
-  .task-embedded .task-row > .task-actions { display: none; }
-  .task-embedded .task-row:is(:hover, :focus-within) > .task-actions { display: flex; }
-}
+.task-embedded .task-quick .button,
+.task-embedded .task-view-head .button { min-height: 32px; padding: 3px 10px; font-size: .8rem; }
+.task-embedded .task-list { gap: 5px; margin: 0; }
+.task-embedded .task-row { padding: 8px 10px; }
+.task-embedded .task-row.is-expanded { padding: 12px; }
+.task-embedded .task-title { font-size: .9rem; }
+.task-embedded .task-card-fields { grid-template-columns: minmax(0, 1fr); }
 .task-group-heading { margin: 10px 2px 6px; color: var(--muted); font-size: .76rem; font-weight: 800; }
 .task-groups > .task-group-heading:first-child { margin-top: 0; }

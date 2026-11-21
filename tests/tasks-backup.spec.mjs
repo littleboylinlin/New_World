@@ -1,5 +1,6 @@
 import { databaseSnapshot } from './project-fixture.mjs'
 import { test, expect } from './app-test.mjs'
+import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
 test.setTimeout(90000)
@@ -65,14 +66,31 @@ test('全库备份包含独立任务，旧备份恢复保留任务，新备份�
 
 test('全库任务附件按原字节恢复，损坏附件拒绝且原书库不变', async ({ page }, info) => {
   await create(page, '带附件的任务')
-  await page.getByRole('button', { name: '评论与附件', exact: true }).click()
-  const extras = page.getByRole('dialog', { name: '评论与附件', exact: true }),
-    bytes = Buffer.from('备份附件\r\n精确字节')
-  await extras
-    .getByLabel('添加文件附件', { exact: true })
-    .setInputFiles({ name: '备份.txt', mimeType: 'text/plain', buffer: bytes })
-  await expect(extras).toContainText('备份.txt')
-  await extras.getByRole('button', { name: '关闭', exact: true }).click()
+  const taskId = (await page.evaluate(databaseSnapshot)).tasks[0].id
+  const bytes = Buffer.from('备份附件\r\n精确字节')
+  const sha = createHash('sha256').update(bytes).digest('hex')
+  await page.evaluate(
+    async ({ taskId, rawBytes, hash }) => {
+      const db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      })
+      const blob = new Blob([new Uint8Array(rawBytes)], { type: 'text/plain' })
+      const tx = db.transaction('taskAttachments', 'readwrite')
+      tx.objectStore('taskAttachments').put({
+        id: crypto.randomUUID(),
+        taskId,
+        name: '备份.txt',
+        type: 'text/plain',
+        bytes: blob.size,
+        sha256: hash,
+        content: blob,
+      })
+      await new Promise((r) => (tx.oncomplete = r))
+      db.close()
+    },
+    { taskId, rawBytes: [...bytes], hash: sha },
+  )
   let panel = await settings(page),
     download = page.waitForEvent('download')
   await panel.getByRole('button', { name: '立即备份', exact: true }).click()
@@ -85,29 +103,31 @@ test('全库任务附件按原字节恢复，损坏附件拒绝且原书库不�
   await zip.close()
   const asset = entries.find(([name]) => name.startsWith('tasks/assets/'))
   expect(Buffer.from(asset[1])).toEqual(bytes)
-  await page.goto('/#/tasks')
-  await page.getByRole('button', { name: '评论与附件', exact: true }).click()
-  await extras.getByRole('button', { name: '移除附件', exact: true }).click()
-  let form = page.getByRole('dialog', { name: '移除附件', exact: true })
-  await form.getByRole('button', { name: '移除附件', exact: true }).click()
-  await expect(form).toBeHidden()
-  await expect(extras.getByRole('button', { name: '下载附件', exact: true })).toHaveCount(0)
-  await extras.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => r(q.result)
+    })
+    const tx = db.transaction('taskAttachments', 'readwrite')
+    tx.objectStore('taskAttachments').clear()
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+  })
   panel = await settings(page)
   let chooser = page.waitForEvent('filechooser')
   await panel.getByRole('button', { name: '从备份恢复…', exact: true }).click()
   await (await chooser).setFiles(path)
-  form = page.getByRole('dialog', { name: '从备份恢复', exact: true })
+  let form = page.getByRole('dialog', { name: '从备份恢复', exact: true })
   await form.getByRole('button', { name: '替换当前书库', exact: true }).click()
   await expect(form).toBeHidden()
   await page.goto('/#/tasks')
-  await page.getByRole('button', { name: '评论与附件', exact: true }).click()
+  await page.getByRole('button', { name: '带附件的任务', exact: true }).click()
   download = page.waitForEvent('download')
-  await extras.getByRole('button', { name: '下载附件', exact: true }).click()
+  await page.locator('.task-card').getByRole('button', { name: '下载附件', exact: true }).click()
   const restored = info.outputPath('restored.txt')
   await (await download).saveAs(restored)
   expect(await readFile(restored)).toEqual(bytes)
-  await extras.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.locator('.task-card').getByRole('button', { name: '收起', exact: true }).first().click()
   const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
   for (const [name, data] of entries)
     await writer.add(
