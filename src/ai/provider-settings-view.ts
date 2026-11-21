@@ -21,6 +21,25 @@ const authKinds: Auth['kind'][] = ['none', 'bearer', 'x-api-key', 'header', 'que
 /** Below this many output tokens a whole chapter may not fit in the reply. */
 const smallOutput = 1024
 const roomyOutput = 8192
+const headerNamePattern = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
+const invalidHeaderValuePattern = /[\0\r\n]|[^\u0000-\u00ff]/
+const reservedAuthHeaders = new Set(['authorization', 'proxy-authorization', 'x-api-key', 'x-goog-api-key', 'api-key'])
+
+interface SectionController {
+  element: HTMLElement
+  toggle: HTMLButtonElement
+  body: HTMLElement
+  title: string
+  isOpen: () => boolean
+  setOpen: (open: boolean, onDone?: () => void) => void
+}
+
+interface FieldIssue {
+  section: SectionController
+  field: HTMLElement
+  focus: () => HTMLElement | null
+  label: string
+}
 
 interface Editing {
   id?: string
@@ -233,7 +252,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   }
 
   /** A titled block that opens and closes with the shared height animation. */
-  function section(title: string, open: boolean, ...children: HTMLElement[]) {
+  function section(title: string, open: boolean, ...children: HTMLElement[]): SectionController {
     const wrap = element('section', 'aip-section')
     const toggle = button('', 'aip-section-toggle')
     const body = element('div', 'aip-section-body')
@@ -243,13 +262,14 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     toggle.append(element('span', '', title), icon('chevron'))
     body.append(...children)
     body.hidden = !open
-    toggle.addEventListener('click', () => {
-      const next = toggle.getAttribute('aria-expanded') !== 'true'
+    const isOpen = () => toggle.getAttribute('aria-expanded') === 'true'
+    const setOpen = (next: boolean, onDone?: () => void) => {
       toggle.setAttribute('aria-expanded', String(next))
-      setExpanded(body, next)
-    })
+      setExpanded(body, next, onDone)
+    }
+    toggle.addEventListener('click', () => setOpen(!isOpen()))
     wrap.append(toggle, body)
-    return wrap
+    return { element: wrap, toggle, body, title, isOpen, setOpen }
   }
 
   /** Opens or closes a block; a call matching where it is already heading does nothing. */
@@ -258,6 +278,8 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   }
 
   let onChange: (() => void) | null = null
+  let onFormFailure: ((error: AiError, rawErrorBody?: string, httpStatus?: number, context?: 'test' | 'models' | 'save') => string | null) | null = null
+  let clearHighlight: (() => void) | null = null
   function changed() {
     if (!editing) return
     editing.dirty = true
@@ -272,6 +294,8 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   // ——— The profile form ———
   function renderEditor() {
     onChange = null
+    onFormFailure = null
+    clearHighlight = null
     if (!editing) {
       reveal(editorRegion, false)
       return
@@ -372,12 +396,14 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       changed()
     })
     async function loadModels(more: boolean) {
+      clearFieldHighlight()
       fetchModels.disabled = moreModels.disabled = true
       modelError.hidden = true
       const result = await safely(() => ai.listModels(target(), more ? modelCursor : undefined))
       fetchModels.disabled = moreModels.disabled = false
       if (!result.ok) {
-        modelError.textContent = errorLines(result.error).join(' ')
+        const located = locateForError(result.error, undefined, result.error.httpStatus, 'models')
+        modelError.textContent = [...errorLines(result.error), ...(located ? [located] : [])].join(' ')
         modelError.hidden = false
         return
       }
@@ -444,7 +470,20 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       node.placeholder = t('aiProvider.pathDefault')
       return node
     }
-    const streamPathField = field(t('aiProvider.pathStream'), pathInput('stream'), t('aiProvider.pathStreamHint'))
+    const generatePathInput = pathInput('generate')
+    const streamPathInput = pathInput('stream')
+    const modelsPathInput = pathInput('models')
+    const generatePathField = field(t('aiProvider.pathGenerate'), generatePathInput, t('aiProvider.pathHint'))
+    const streamPathField = field(t('aiProvider.pathStream'), streamPathInput, t('aiProvider.pathStreamHint'))
+    const modelsPathField = field(t('aiProvider.pathModels'), modelsPathInput)
+    const maxOutputField = field(t('aiProvider.maxOutput'), maxOutput, t('aiProvider.maxOutputHint'))
+    const contextTokensField = field(t('aiProvider.contextTokens'), contextTokens, t('aiProvider.contextTokensHint'))
+    const temperatureField = field(t('aiProvider.temperature'), temperature)
+    const topPField = field(t('aiProvider.topP'), topP)
+    const reasoningField = field(t('aiProvider.reasoningEffort'), reasoning)
+    const thinkingField = field(t('aiProvider.thinkingBudget'), thinking)
+    const timeoutField = field(t('aiProvider.timeout'), timeout, t('aiProvider.timeoutHint'))
+    const retriesField = field(t('aiProvider.retries'), retries, t('aiProvider.retriesHint'))
     const headerRows = element('div', 'aip-headers')
     const addHeader = button(t('aiProvider.addHeader'), 'button button-quiet button-small', 'plus')
     config.headers ??= []
@@ -575,33 +614,258 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     })
     deleteButton.addEventListener('click', () => { void remove() })
 
+    const connectionSection = section(t('aiProvider.sectionConnection'), true,
+      field(t('aiProvider.name'), name),
+      grid(field(t('aiProvider.protocol'), protocol), field(t('aiProvider.authKind'), auth)),
+      field(t('aiProvider.baseUrl'), baseUrl, t('aiProvider.baseUrlHint')),
+      grid(authNameField, authPrefixField),
+      keyField, rememberGroup, directGroup)
+    const modelSection = section(t('aiProvider.sectionModel'), true, modelField, modelPicker, modelError, outputCallout)
+    const generationSection = section(t('aiProvider.sectionGeneration'), false,
+      grid(
+        maxOutputField,
+        contextTokensField,
+        temperatureField,
+        topPField,
+        reasoningField,
+        thinkingField,
+        timeoutField,
+        retriesField,
+      ),
+      stream.wrap)
+    const advancedSection = section(t('aiProvider.sectionAdvanced'), false,
+      generatePathField,
+      streamPathField,
+      modelsPathField,
+      headersField, extraField)
+
     form.append(
-      section(t('aiProvider.sectionConnection'), true,
-        field(t('aiProvider.name'), name),
-        grid(field(t('aiProvider.protocol'), protocol), field(t('aiProvider.authKind'), auth)),
-        field(t('aiProvider.baseUrl'), baseUrl, t('aiProvider.baseUrlHint')),
-        grid(authNameField, authPrefixField),
-        keyField, rememberGroup, directGroup),
-      section(t('aiProvider.sectionModel'), true, modelField, modelPicker, modelError, outputCallout),
-      section(t('aiProvider.sectionGeneration'), false,
-        grid(
-          field(t('aiProvider.maxOutput'), maxOutput, t('aiProvider.maxOutputHint')),
-          field(t('aiProvider.contextTokens'), contextTokens, t('aiProvider.contextTokensHint')),
-          field(t('aiProvider.temperature'), temperature),
-          field(t('aiProvider.topP'), topP),
-          field(t('aiProvider.reasoningEffort'), reasoning),
-          field(t('aiProvider.thinkingBudget'), thinking),
-          field(t('aiProvider.timeout'), timeout, t('aiProvider.timeoutHint')),
-          field(t('aiProvider.retries'), retries, t('aiProvider.retriesHint')),
-        ),
-        stream.wrap),
-      section(t('aiProvider.sectionAdvanced'), false,
-        field(t('aiProvider.pathGenerate'), pathInput('generate'), t('aiProvider.pathHint')),
-        streamPathField,
-        field(t('aiProvider.pathModels'), pathInput('models')),
-        headersField, extraField),
+      connectionSection.element,
+      modelSection.element,
+      generationSection.element,
+      advancedSection.element,
       formError, formActions, testResult,
     )
+
+    function clearFieldHighlight() {
+      for (const node of form.querySelectorAll('.aip-field-highlight')) node.classList.remove('aip-field-highlight')
+      for (const node of form.querySelectorAll('[aria-invalid="true"]')) node.removeAttribute('aria-invalid')
+    }
+    clearHighlight = clearFieldHighlight
+
+    function headerRowInput(index: number, column: 0 | 1): HTMLInputElement | null {
+      const row = headerRows.children[index]
+      if (!row) return null
+      return row.querySelectorAll<HTMLInputElement>('input.title-input')[column] ?? null
+    }
+
+    function badPathKey(checkAuthQuery = false): 'generate' | 'stream' | 'models' | null {
+      let base: URL
+      try {
+        base = new URL(config.baseUrl)
+      } catch {
+        return null
+      }
+      if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.hash) return null
+      base.search = ''
+      base.pathname = base.pathname.replace(/\/*$/, '/')
+      for (const key of ['generate', 'stream', 'models'] as const) {
+        const value = paths[key]
+        if (!value) continue
+        const resolved = value.replaceAll('{model}', 'model')
+        let endpoint: URL
+        try {
+          endpoint = new URL(resolved, base)
+        } catch {
+          return key
+        }
+        if (endpoint.origin !== base.origin || endpoint.username || endpoint.password || endpoint.hash) return key
+        if (checkAuthQuery && config.auth.kind === 'query' && config.auth.name && endpoint.searchParams.has(config.auth.name)) return key
+      }
+      return null
+    }
+
+    function pathIssue(key: 'generate' | 'stream' | 'models'): FieldIssue {
+      if (key === 'stream' && !streamPathField.hidden) {
+        return { section: advancedSection, field: streamPathField, focus: () => streamPathInput, label: t('aiProvider.pathStream') }
+      }
+      if (key === 'models') {
+        return { section: advancedSection, field: modelsPathField, focus: () => modelsPathInput, label: t('aiProvider.pathModels') }
+      }
+      return { section: advancedSection, field: generatePathField, focus: () => generatePathInput, label: t('aiProvider.pathGenerate') }
+    }
+
+    function headerIssue(index: number, column: 0 | 1): FieldIssue {
+      return {
+        section: advancedSection,
+        field: headersField,
+        focus: () => headerRowInput(index, column) ?? addHeader,
+        label: t('aiProvider.headers'),
+      }
+    }
+
+    function diagnoseCollapsedIssue(
+      error: AiError,
+      rawErrorBody?: string,
+      httpStatus?: number,
+      context: 'test' | 'models' | 'save' = 'test',
+    ): FieldIssue | null {
+      const msg = error.message ?? ''
+      const raw = rawErrorBody ?? ''
+      const rawLower = raw.toLowerCase()
+      const activeHeaders = headers.map((header, index) => ({ header, index })).filter(({ header }) => header.name)
+
+      if (!extraValid && context !== 'models') {
+        return { section: advancedSection, field: extraField, focus: () => extra, label: t('aiProvider.extraBody') }
+      }
+
+      if (error.code === 'invalid_config') {
+        if (msg.includes('custom header name')) {
+          const hit = activeHeaders.find(({ header }) => !headerNamePattern.test(header.name))
+          return headerIssue(hit?.index ?? 0, 0)
+        }
+        if (msg.includes('authentication header values') || msg.includes('secret reference for the custom header')) {
+          const hit = activeHeaders.find(({ header }) => !('secretRef' in header) && (
+            reservedAuthHeaders.has(header.name.toLowerCase())
+            || (config.auth.kind === 'header' && header.name.toLowerCase() === config.auth.name.toLowerCase())
+          ))
+          return headerIssue(hit?.index ?? 0, 0)
+        }
+        if (msg.includes('custom header is missing its secret') || msg.includes('header secret')) {
+          const hit = activeHeaders.find(({ header }) => 'secretRef' in header
+            && !current.saved?.savedSecretRefs.includes(header.secretRef)
+            && !current.patch.headerSecrets?.[header.secretRef])
+          return headerIssue(hit?.index ?? 0, 1)
+        }
+        if (msg.includes('HTTP header value')) {
+          const hit = activeHeaders.find(({ header }) => {
+            const value = 'secretRef' in header ? (current.patch.headerSecrets?.[header.secretRef] ?? '') : header.value
+            return invalidHeaderValuePattern.test(value)
+          })
+          if (hit) return headerIssue(hit.index, 1)
+        }
+        if (msg.includes('request path') || msg.includes('Request paths')) {
+          const key = badPathKey(false)
+            ?? (context === 'models' ? 'models' : config.protocol === 'gemini-generate-content' && config.stream !== false && paths.stream ? 'stream' : 'generate')
+          return pathIssue(key)
+        }
+        if (msg.includes('authentication query value')) {
+          const key = badPathKey(true)
+          if (key) return pathIssue(key)
+        }
+        if (msg.includes('Extra request parameters') || msg === t('aiProvider.extraBodyInvalid')) {
+          return { section: advancedSection, field: extraField, focus: () => extra, label: t('aiProvider.extraBody') }
+        }
+        if (msg.includes('maximum output token')) {
+          return { section: generationSection, field: maxOutputField, focus: () => maxOutput, label: t('aiProvider.maxOutput') }
+        }
+        if (msg.includes('thinking token budget')) {
+          return { section: generationSection, field: thinkingField, focus: () => thinking, label: t('aiProvider.thinkingBudget') }
+        }
+        if (msg.includes('generation options')) {
+          if (generation.temperature !== undefined && (!Number.isFinite(generation.temperature) || generation.temperature < 0)) {
+            return { section: generationSection, field: temperatureField, focus: () => temperature, label: t('aiProvider.temperature') }
+          }
+          if (generation.topP !== undefined && (!Number.isFinite(generation.topP) || generation.topP < 0 || generation.topP > 1)) {
+            return { section: generationSection, field: topPField, focus: () => topP, label: t('aiProvider.topP') }
+          }
+          if (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || generation.maxOutputTokens < 1)) {
+            return { section: generationSection, field: maxOutputField, focus: () => maxOutput, label: t('aiProvider.maxOutput') }
+          }
+          if (generation.contextTokens !== undefined && (!Number.isSafeInteger(generation.contextTokens) || generation.contextTokens < 1)) {
+            return { section: generationSection, field: contextTokensField, focus: () => contextTokens, label: t('aiProvider.contextTokens') }
+          }
+          if (generation.thinkingBudgetTokens !== undefined && (!Number.isSafeInteger(generation.thinkingBudgetTokens) || generation.thinkingBudgetTokens < 0)) {
+            return { section: generationSection, field: thinkingField, focus: () => thinking, label: t('aiProvider.thinkingBudget') }
+          }
+          return { section: generationSection, field: reasoningField, focus: () => reasoning, label: t('aiProvider.reasoningEffort') }
+        }
+        if (msg.includes('timeout and retry')) {
+          if (config.timeoutMs !== undefined && (!Number.isInteger(config.timeoutMs) || config.timeoutMs < 1 || config.timeoutMs > 2 ** 31 - 1)) {
+            return { section: generationSection, field: timeoutField, focus: () => timeout, label: t('aiProvider.timeout') }
+          }
+          if (config.retries !== undefined && (!Number.isSafeInteger(config.retries) || config.retries < 0)) {
+            return { section: generationSection, field: retriesField, focus: () => retries, label: t('aiProvider.retries') }
+          }
+          return { section: generationSection, field: stream.wrap, focus: () => stream.node, label: t('aiProvider.stream') }
+        }
+      }
+
+      if (error.code === 'timeout') {
+        return { section: generationSection, field: timeoutField, focus: () => timeout, label: t('aiProvider.timeout') }
+      }
+
+      const statusCode = httpStatus ?? error.httpStatus
+      if ((statusCode === 404 || statusCode === 405) && context !== 'save') {
+        if (context === 'models' && paths.models) return pathIssue('models')
+        if (context === 'test') {
+          if (config.protocol === 'gemini-generate-content' && config.stream !== false && paths.stream) return pathIssue('stream')
+          if (paths.generate) return pathIssue('generate')
+        }
+      }
+
+      if (rawLower) {
+        if (activeHeaders.length) {
+          const matchedHeader = activeHeaders.find(({ header }) => header.name.length >= 2 && rawLower.includes(header.name.toLowerCase()))
+          if (matchedHeader) return headerIssue(matchedHeader.index, 1)
+          if (/\b(?:custom|invalid|missing|unsupported|disallowed|forbidden)\s+header\b/i.test(raw)) {
+            return headerIssue(activeHeaders[0]!.index, 0)
+          }
+        }
+        const extraKeys = config.extraBody ? Object.keys(config.extraBody) : []
+        if (extraKeys.length) {
+          const matchedKey = extraKeys.find((key) => key.length >= 2 && rawLower.includes(key.toLowerCase()))
+          if (matchedKey || /\b(?:extra_body|unknown field|unrecognized|additional properties|invalid json)\b/i.test(raw)) {
+            return { section: advancedSection, field: extraField, focus: () => extra, label: t('aiProvider.extraBody') }
+          }
+        }
+        if (statusCode === 400 || statusCode === 422) {
+          if (/\b(?:max_tokens|max_completion_tokens|max_output_tokens|maxoutputtokens)\b/i.test(raw)) {
+            return { section: generationSection, field: maxOutputField, focus: () => maxOutput, label: t('aiProvider.maxOutput') }
+          }
+          if (/\btemperature\b/i.test(raw) && generation.temperature !== undefined) {
+            return { section: generationSection, field: temperatureField, focus: () => temperature, label: t('aiProvider.temperature') }
+          }
+          if (/\btop_?p\b/i.test(raw) && generation.topP !== undefined) {
+            return { section: generationSection, field: topPField, focus: () => topP, label: t('aiProvider.topP') }
+          }
+          if (/\b(?:reasoning_effort|reasoning)\b/i.test(raw) && generation.reasoningEffort !== undefined) {
+            return { section: generationSection, field: reasoningField, focus: () => reasoning, label: t('aiProvider.reasoningEffort') }
+          }
+          if (/\b(?:thinking|budget_tokens|thinking_budget)\b/i.test(raw) && generation.thinkingBudgetTokens !== undefined) {
+            return { section: generationSection, field: thinkingField, focus: () => thinking, label: t('aiProvider.thinkingBudget') }
+          }
+          if (/\bstream(?:ing)?\b/i.test(raw) && /\b(?:not supported|unsupported|invalid|must be|disabled)\b/i.test(raw)) {
+            return { section: generationSection, field: stream.wrap, focus: () => stream.node, label: t('aiProvider.stream') }
+          }
+        }
+      }
+
+      return null
+    }
+
+    function locateForError(
+      error: AiError,
+      rawErrorBody?: string,
+      httpStatus?: number,
+      context: 'test' | 'models' | 'save' = 'test',
+    ): string | null {
+      const issue = diagnoseCollapsedIssue(error, rawErrorBody, httpStatus, context)
+      if (!issue) return null
+      const wasOpen = issue.section.isOpen()
+      issue.field.classList.add('aip-field-highlight')
+      const control = issue.focus()
+      control?.setAttribute('aria-invalid', 'true')
+      const scrollAndFocus = () => {
+        const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
+        ;(control ?? issue.field).scrollIntoView({ behavior: reduced ? 'instant' : 'smooth', block: 'center' })
+        control?.focus({ preventScroll: true })
+      }
+      if (wasOpen) scrollAndFocus()
+      else issue.section.setOpen(true, scrollAndFocus)
+      return !wasOpen ? t('aiProvider.locatedField', [issue.section.title, issue.label]) : null
+    }
+    onFormFailure = locateForError
 
     function refreshAuth() {
       const kind = config.auth.kind
@@ -647,7 +911,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       deleteButton.hidden = !current.id
       renderList()
     }
-    onChange = () => { formError.hidden = true; refreshButtons() }
+    onChange = () => { formError.hidden = true; clearFieldHighlight(); refreshButtons() }
 
     refreshAuth()
     refreshKey()
@@ -657,6 +921,12 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     refreshButtons()
 
     async function runTest() {
+      clearFieldHighlight()
+      if (!extraValid) {
+        reveal(testResult, true)
+        showTest({ ok: false, error: { code: 'invalid_config', message: t('aiProvider.extraBodyInvalid') } })
+        return
+      }
       testButton.disabled = true
       testResult.replaceChildren(element('p', '', t('aiProvider.testing')))
       reveal(testResult, true)
@@ -676,8 +946,10 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
         const line = element('p', 'aip-test-ok', t('aiProvider.testOk', [result.httpStatus]))
         nodes.push(line)
       } else {
+        const located = locateForError(result.error, result.rawErrorBody, result.httpStatus, 'test')
         const [summary, ...rest] = errorLines(result.error)
         nodes.push(element('p', 'aip-test-fail', summary))
+        if (located) nodes.push(element('p', 'aip-test-located', located))
         if (result.httpStatus !== undefined) nodes.push(element('p', 'aip-test-code', t('aiProvider.testStatus', [result.httpStatus])))
         const raw = result.rawErrorBody
         if (raw) {
@@ -744,6 +1016,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   async function save() {
     const current = editing
     if (!current) return
+    clearHighlight?.()
     const config = prepared()
     if (!config.name.trim() || !config.baseUrl) { showFormError([t('aiProvider.needNameAndUrl')]); return }
     const credentials = credentialPatch()
@@ -753,7 +1026,11 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       ...(credentials ? { credentials } : {}),
       ...(state?.credentialStorage === 'web' ? { rememberCredentials: current.remember } : {}),
     }))
-    if (!result.ok) { showFormError(errorLines(result.error)); return }
+    if (!result.ok) {
+      const located = onFormFailure?.(result.error, undefined, result.error.httpStatus, 'save')
+      showFormError([...errorLines(result.error), ...(located ? [located] : [])])
+      return
+    }
     const firstProfile = !state?.profiles.length
     editing = null
     await refresh(result.data.id)

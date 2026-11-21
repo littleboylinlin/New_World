@@ -1432,6 +1432,7 @@
   "aiProvider.testOk": "连接成功（HTTP {0}）。",
   "aiProvider.testStatus": "HTTP 状态码：{0}",
   "aiProvider.testBody": "服务商返回的错误原文：",
+  "aiProvider.locatedField": "已自动展开「{0}」并定位到「{1}」。",
   "aiProvider.corsTitle": "看起来是浏览器的跨域限制拦下了请求，可以试试：",
   "aiProvider.corsTipEndpoint": "换一个支持浏览器跨域（CORS）访问的接口地址；",
   "aiProvider.corsTipProxy": "自建一个反向代理，由它转发请求并加上跨域响应头；",

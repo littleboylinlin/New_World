@@ -87,8 +87,8 @@ h1, h2, h3, p { margin: 0; }
 .version { margin-inline-start: 5px; padding: 1px 6px; border-radius: 4px; color: var(--paper); background: var(--ink); font-variant-numeric: tabular-nums; }
 .storage-location { min-width: 0; max-width: min(46vw, 420px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 40px; padding: 7px 15px; border: 1px solid var(--surface-line-strong); border-radius: 9px; color: var(--ink); background: var(--surface-card); box-shadow: 0 1px 2px color-mix(in srgb, var(--surface-shade) 45%, transparent); font-size: .9rem; font-weight: 750; line-height: 1.4; white-space: nowrap; text-decoration: none; transition: transform 110ms ease, box-shadow 110ms ease, background-color 110ms ease, border-color 110ms ease; }
-.button:hover:not(:disabled) { border-color: var(--ink); box-shadow: 0 3px 10px -4px var(--surface-shade); }
+.button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 40px; padding: 7px 15px; border: 1px solid var(--surface-line-strong); border-radius: 9px; color: var(--ink); background: var(--surface-card); font-size: .9rem; font-weight: 750; line-height: 1.4; white-space: nowrap; text-decoration: none; transition: transform 110ms ease, box-shadow 110ms ease, background-color 110ms ease, border-color 110ms ease; }
+.button:hover:not(:disabled) { border-color: var(--ink); box-shadow: 0 2px 5px -2px var(--surface-shade); }
 .button:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
 .button:disabled { color: var(--disabled-text); border-color: var(--surface-line); background: var(--disabled-bg); box-shadow: none; }
 .button-primary { border-color: transparent; color: var(--on-accent); background: var(--accent); }
@@ -96,7 +96,7 @@ h1, h2, h3, p { margin: 0; }
 .button-quiet:hover:not(:disabled), .button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--ink) 18%, transparent); color: var(--on-yellow); background: var(--yellow); }
 .button-danger { border-color: transparent; color: var(--on-accent); background: var(--red); }
 .button-small { min-height: 34px; padding: 4px 11px; border-radius: 8px; font-size: .82rem; }
-.button-small:hover:not(:disabled) { box-shadow: 0 2px 6px -3px var(--surface-shade); }
+.button-small:hover:not(:disabled) { box-shadow: 0 1px 4px -2px var(--surface-shade); }
 .remove-button { color: var(--danger-text); }
 .remove-button:hover:not(:disabled) { color: var(--on-accent); background: var(--red); }
 
@@ -162,7 +162,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .shelf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .shelf-card { --card: var(--red); display: flex; flex-direction: column; gap: 8px; min-height: 142px; padding: 16px 20px 14px; border: 1px solid var(--surface-line); border-radius: var(--card-radius); color: var(--ink); background: var(--surface-card); box-shadow: var(--surface-shadow); text-decoration: none; transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease; }
 .shelf-reference { --card: var(--blue); }
-.shelf-card:hover { transform: translateY(-2px); border-color: var(--card); box-shadow: 0 10px 24px -12px var(--surface-shade); }
+.shelf-card:hover { transform: translateY(-2px); border-color: var(--card); box-shadow: 0 6px 12px -6px var(--surface-shade); }
 .shelf-card:active { transform: none; box-shadow: var(--surface-shadow); }
 .shelf-card:focus-visible { outline-offset: 4px; }
 .card-index { color: var(--card); font-family: var(--display); font-size: .88rem; font-weight: 900; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
@@ -215,7 +215,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .legend-end:first-child { margin-right: 2px; }
 .legend-end:last-child { margin-left: 2px; }
 .legend-cell { width: 12px; height: 12px; }
-.heat-tooltip { position: fixed; inset: auto; margin: 0; width: max-content; overflow: visible; transform: translate(-50%, -100%); padding: 6px 10px; border: 1px solid var(--ink); border-radius: 8px; color: var(--paper); background: var(--ink); box-shadow: 0 8px 20px -10px var(--pop-soft); font-size: .78rem; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; pointer-events: none; }
+.heat-tooltip { position: fixed; inset: auto; margin: 0; width: max-content; overflow: visible; transform: translate(-50%, -100%); padding: 6px 10px; border: 1px solid var(--ink); border-radius: 8px; color: var(--paper); background: var(--ink); box-shadow: 0 4px 10px -4px var(--pop-soft); font-size: .78rem; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; pointer-events: none; }
 .heat-tooltip::after { content: ""; position: absolute; top: 100%; left: var(--caret-x, 50%); width: 8px; height: 8px; border-right: 1px solid var(--ink); border-bottom: 1px solid var(--ink); background: var(--ink); transform: translate(-50%, -50%) rotate(45deg); }
 .heat-tooltip[data-side="below"]::after { top: 0; transform: translate(-50%, -50%) rotate(225deg); }
 .heat-tooltip::backdrop { pointer-events: none; }

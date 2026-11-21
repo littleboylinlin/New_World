@@ -727,6 +727,7 @@ export async function renderEdition(
     bar.setAvailable('compare', splitEditor.isNarrow() && splitEditor.references().length > 0)
     paintChapterName()
     refreshFormat()
+    syncToolbarScroll()
   }
 
   /** The chapter name in the toolbar: the focused pane's. Changing focus touches nothing else. */
@@ -773,6 +774,10 @@ export async function renderEdition(
   }
 
   // ——— Where each chapter was left ———
+  function syncToolbarScroll() {
+    const scrolled = scroller.scrollTop > 2 || splitEditor.references().some((pane) => pane.scroller.scrollTop > 2)
+    top.dataset.scrolled = scrolled ? 'true' : 'false'
+  }
   function capturePlace() {
     if (!editor || editor.isDestroyed) return
     saveChapterPlace(edition, chapter.id, measurePlace(editor, scroller))
@@ -781,9 +786,11 @@ export async function renderEdition(
     applyPlace(editor, scroller, readChapterPlace(edition, chapter.id))
   }
   scroller.addEventListener('scroll', () => {
+    syncToolbarScroll()
     window.clearTimeout(placeTimer)
     placeTimer = window.setTimeout(capturePlace, 250)
   }, { passive: true, signal })
+  wb.main.addEventListener('scroll', syncToolbarScroll, { capture: true, passive: true, signal })
 
   function mountChapter(next: ChapterRecord, turn?: 'next' | 'previous', restore = true) {
     checkDocument(next.content)
@@ -849,6 +856,7 @@ export async function renderEdition(
     refreshContents()
     refreshFormat()
     if (restore) restorePlace()
+    syncToolbarScroll()
     find.chapterMounted()
     void refreshHistoryCount()
   }

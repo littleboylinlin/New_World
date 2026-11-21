@@ -121,6 +121,54 @@ test.describe('页面外壳', () => {
     await page.getByRole('menuitemcheckbox', { name: '下划线' }).click()
     await expect(chapterText(page).locator('u')).toHaveText('窄屏')
   })
+
+  test('顶栏与正文同底色，静止隐去底线、滚动浮现，键盘 Tab 聚焦清晰可见', async ({ page }) => {
+    await seedChapters(page, [['长章', longChapter('雾')]])
+    const bar = toolbar(page)
+    const scroller = pane(page)
+
+    for (const theme of ['white', 'dark', 'beige']) {
+      await page.evaluate((t) => {
+        localStorage.setItem('new-world:appearance', JSON.stringify({ theme: t }))
+      }, theme)
+      await page.reload()
+      await expect(chapterText(page)).toBeVisible()
+      await page.mouse.move(720, 480)
+      await scroller.evaluate((node) => { node.scrollTop = 0 })
+      await expect(bar).toHaveAttribute('data-scrolled', 'false')
+      await expect(bar).toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
+
+      const rest = await page.evaluate(() => {
+        const barEl = document.querySelector('.editor-toolbar')
+        const paperEl = document.querySelector('.editor-paper')
+        const moreEl = document.querySelector('.more-toggle')
+        return {
+          barBg: getComputedStyle(barEl).backgroundColor,
+          paperBg: getComputedStyle(paperEl).backgroundColor,
+          height: barEl.getBoundingClientRect().height,
+          moreOpacity: parseFloat(getComputedStyle(moreEl).opacity),
+        }
+      })
+      expect(rest.barBg, `${theme}: toolbar matches editor paper bg`).toBe(rest.paperBg)
+      expect(rest.moreOpacity).toBeGreaterThanOrEqual(0.8)
+
+      await scroller.evaluate((node) => { node.scrollTop = 320 })
+      await expect(bar).toHaveAttribute('data-scrolled', 'true')
+      await expect(bar).not.toHaveCSS('border-bottom-color', 'rgba(0, 0, 0, 0)')
+      const scrolledHeight = await bar.evaluate((el) => el.getBoundingClientRect().height)
+      expect(scrolledHeight).toBe(rest.height)
+    }
+
+    // Keyboard Tab into the quiet toolbar produces a crisp visible focus ring and full contrast.
+    await page.locator('.nav-toggle').focus()
+    await page.keyboard.press('Tab')
+    const focusedNode = page.locator('.editor-toolbar :focus')
+    await expect(focusedNode).toHaveCount(1)
+    await expect(focusedNode).toHaveCSS('outline-style', 'solid')
+    await expect(focusedNode).toHaveCSS('opacity', '1')
+    const outlineWidth = await focusedNode.evaluate((el) => parseFloat(getComputedStyle(el).outlineWidth))
+    expect(outlineWidth).toBeGreaterThanOrEqual(2)
+  })
 })
 
 test.describe('选中文字的浮动工具条', () => {
