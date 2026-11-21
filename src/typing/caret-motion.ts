@@ -35,7 +35,7 @@ export function caretFollower(paint: (point: CaretPoint) => void) {
   function step(now: number) {
     frame = 0
     if (!position || !target) return
-    const elapsed = Math.min(Math.max(now - last, 0), 50)
+    const elapsed = Math.max(now - last, 0)
     last = now
     const dx = target.x - position.x, dy = target.y - position.y
     const distance = Math.hypot(dx, dy)
@@ -51,8 +51,8 @@ export function caretFollower(paint: (point: CaretPoint) => void) {
     get position() { return position },
     get target() { return target },
     get moving() { return frame !== 0 },
-    /** characterWidth bounds how far a glide may trail behind its target. */
-    move(point: CaretPoint, kind: CaretMove, characterWidth = 0) {
+    /** characterWidth bounds how far a glide may trail behind its target; since marks when the edit occurred. */
+    move(point: CaretPoint, kind: CaretMove, characterWidth = 0, since?: number) {
       target = { ...point }
       if (!position || kind === 'snap' || reducedMotion.matches) {
         settle()
@@ -73,11 +73,13 @@ export function caretFollower(paint: (point: CaretPoint) => void) {
         paint(position)
         return
       }
-      floor = distance / caretDamping.settle
+      const now = Number(document.timeline.currentTime ?? performance.now())
+      const waited = since !== undefined ? Math.min(Math.max(performance.now() - since, 0), caretDamping.settle / 2) : 0
+      floor = distance / Math.max(caretDamping.settle - waited, 40)
       paint(position)
       if (!frame) {
         // Count from this frame's start, like the timestamps requestAnimationFrame passes.
-        last = Number(document.timeline.currentTime ?? performance.now())
+        last = now
         frame = requestAnimationFrame(step)
       }
     },

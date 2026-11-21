@@ -44,7 +44,7 @@ export function mountNotes(root: HTMLElement, signal: AbortSignal) {
       tasks = new AbortController()
       taskPath = tasksTab.hash = path
       tasksPane.replaceChildren()
-      renderTasks(tasksPane, tasks.signal, path.slice('#/notes/tasks/'.length) || 'inbox')
+      renderTasks(tasksPane, tasks.signal, path.slice('#/notes/tasks/'.length) || 'today')
     }
   }
 }

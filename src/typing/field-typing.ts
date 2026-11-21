@@ -75,7 +75,10 @@ function session(field: Field) {
   const inset = 2
   let frame = 0
   let reason: Reason | undefined
+  let inputAt: number | undefined
   let needsLayout = true
+  let stylesSynced = false
+  let lastRect: { left: number; top: number; width: number; height: number } | undefined
   let committing = false
   let held = false
   const composing = () => readings.has(field)
@@ -95,10 +98,12 @@ function session(field: Field) {
 
   function schedule(next?: Reason) {
     if (next && (!reason || rank[next] > rank[reason])) reason = next
+    if (next === 'input' || next === 'commit') inputAt = performance.now()
     if (!frame) frame = requestAnimationFrame(update)
   }
   function relayout() {
     needsLayout = true
+    stylesSynced = false
     schedule()
   }
 
@@ -115,9 +120,12 @@ function session(field: Field) {
     const caretIndex = field.selectionDirection === 'backward' ? field.selectionStart : field.selectionEnd
     if (caretIndex === null) return
     const reading = composition(value)
-    for (const name of copied) mirror.style[name] = style[name]
-    mirror.style.whiteSpace = multiline ? 'pre-wrap' : 'pre'
-    mirror.style.overflowWrap = multiline ? style.overflowWrap === 'normal' ? 'break-word' : style.overflowWrap : 'normal'
+    if (!stylesSynced) {
+      for (const name of copied) mirror.style[name] = style[name]
+      mirror.style.whiteSpace = multiline ? 'pre-wrap' : 'pre'
+      mirror.style.overflowWrap = multiline ? style.overflowWrap === 'normal' ? 'break-word' : style.overflowWrap : 'normal'
+      stylesSynced = true
+    }
     const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
     mirror.style.width = multiline ? `${field.clientWidth - paddingX}px` : 'auto'
     mirror.style.height = 'auto'
@@ -196,15 +204,19 @@ function session(field: Field) {
   function update() {
     frame = 0
     const why = reason
+    const since = inputAt
     reason = undefined
+    inputAt = undefined
     const committed = committing
     committing = false
     const rect = field.getBoundingClientRect()
     if (!field.isConnected || document.activeElement !== field || !rect.width || !field.offsetWidth) { layer.hidden = true; return }
     const scale = rect.width / field.offsetWidth
     layer.hidden = false
-    if (needsLayout || why) {
+    const movedBox = !lastRect || Math.abs(rect.left - lastRect.left) > .5 || Math.abs(rect.top - lastRect.top) > .5 || Math.abs(rect.width - lastRect.width) > .5 || Math.abs(rect.height - lastRect.height) > .5
+    if (needsLayout || movedBox) {
       needsLayout = false
+      lastRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
       if (!place(scale)) { caret.hidden = true; boxes.replaceChildren(); return }
     }
     const next = measure(scale)
@@ -231,7 +243,7 @@ function session(field: Field) {
     caret.style.height = `${next.height}px`
     caret.hidden = false
     if (moved || !follower.position) {
-      follower.move({ x: next.x, y: next.y }, kind, next.width)
+      follower.move({ x: next.x, y: next.y }, kind, next.width, since)
       for (const animation of caret.getAnimations({ subtree: true })) animation.startTime = document.timeline.currentTime
     }
   }
