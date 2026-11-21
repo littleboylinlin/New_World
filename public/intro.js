@@ -64,11 +64,16 @@
 
   var root = document.documentElement
   var theme = root.dataset.theme
-  var dark = theme === 'dark' || (theme !== 'white' && theme !== 'beige' && matchMedia('(prefers-color-scheme: dark)').matches)
+  var dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   // The background is the page's own --paper so nothing jumps when the intro leaves; strokes are the icon's.
   var paper = dark ? '#131210' : theme === 'beige' ? '#ebdfc5' : '#f4eee2'
   var ink = dark ? '#ece6da' : '#16130f'
   var light = dark ? '#f2c66d' : '#e3a33b'
+  if (theme === 'soft-paper') {
+    paper = '#eee9e2'
+    ink = '#59544e'
+    light = '#874b47'
+  }
 
   var svgNs = 'http://www.w3.org/2000/svg'
   function make(name, attributes, parent) {

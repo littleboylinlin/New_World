@@ -7,9 +7,9 @@ const { mkdirSync, readFileSync, writeFileSync } = require('node:fs')
 const { join } = require('node:path')
 
 const configName = 'NewWorld-appearance.json'
-const themes = ['system', 'white', 'dark', 'beige']
+const themes = ['system', 'white', 'dark', 'beige', 'soft-paper']
 // Page backgrounds, matching --paper in src/appearance.css.
-const backgrounds = { white: '#f4eee2', dark: '#131210', beige: '#ebdfc5' }
+const backgrounds = { white: '#f4eee2', dark: '#131210', beige: '#ebdfc5', 'soft-paper': '#eee9e2' }
 
 function configFile(appData) {
   return join(appData, configName)

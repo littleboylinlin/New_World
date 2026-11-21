@@ -64,6 +64,11 @@
   .editor-toolbar .editor-select:not(:disabled) { opacity: .9; }
 }
 
+:root[data-theme="soft-paper"] .editor-toolbar .toolbar-name { color: var(--ink); }
+:root[data-theme="soft-paper"] .editor-toolbar :is(.work-name, .toolbar-status) { color: var(--muted-on-sheet); }
+:root[data-theme="soft-paper"] .editor-toolbar :is(.toolbar-name, .toolbar-status, .format-button:not(:disabled), .editor-select:not(:disabled)) { opacity: 1; }
+:root[data-theme="soft-paper"].focus-writing .toolbar-row { opacity: 1; }
+
 /* The find controls and the touch selection tools unfold inside the toolbar. */
 .toolbar-find, .selection-strip { border-top: 1px solid var(--surface-line); background: var(--surface); }
 .search-panel { display: grid; gap: 6px; min-width: 0; max-height: calc(var(--viewport-height, 100dvh) * .5); padding: 7px 10px; overflow-y: auto; overscroll-behavior: contain; color: var(--ink); font-size: .84rem; }
@@ -94,6 +99,7 @@
 .find-chapter-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 .found-text { color: var(--ink); background: color-mix(in srgb, var(--yellow) 38%, var(--surface)); }
 .found-text-current { color: var(--on-yellow); background: light-dark(#f1b72a, #f8c934); box-shadow: 0 0 0 1px var(--ink); }
+:root[data-theme="soft-paper"] .found-text-current { background: var(--yellow); box-shadow: 0 0 0 1px var(--field-border); }
 @media (pointer: coarse), (max-width: 600px) {
   .search-panel .title-input { font-size: max(16px, 1rem); }
   .find-icon { width: 38px; min-height: 38px; }
@@ -113,6 +119,8 @@
 .selection-tool { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 34px; min-height: 34px; padding: 3px 8px; border: 0; border-radius: 7px; color: var(--ink); background: transparent; font-size: .8rem; font-weight: 750; white-space: nowrap; transition: background-color var(--motion-fast) ease; }
 .selection-tool:hover { background: var(--menu-hover); }
 .selection-tool[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); }
+:root[data-theme="soft-paper"] .selection-tool:focus-visible { outline-width: 2px; outline-offset: -2px; }
+:root[data-theme="soft-paper"] .selection-tool[aria-pressed="true"]:focus-visible { outline-color: var(--on-accent); }
 .selection-tool svg { width: 17px; height: 17px; }
 .selection-bold .selection-tool-label, .selection-italic .selection-tool-label { display: none; }
 .selection-strip { display: flex; gap: 4px; padding: 5px 8px; overflow: hidden; }
@@ -154,6 +162,7 @@
 .chapter-item:is(:hover, :focus-within) .chapter-more, .chapter-more[aria-expanded="true"] { opacity: 1; transform: translateY(-50%) scale(1); }
 .chapter-item:is(:hover, :focus-within) .chapter-words { opacity: 0; }
 .chapter-item:has([aria-current]) .chapter-more { color: var(--on-accent); }
+:root[data-theme="soft-paper"] .chapter-jump[aria-current]:focus-visible { outline-color: var(--on-accent); }
 .chapter-more:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 @media (hover: none) { .chapter-more { opacity: .7; transform: translateY(-50%); } .chapter-item .chapter-words { display: none; } .chapter-item .chapter-jump { padding-inline-end: 40px; } }
 .chapter-placeholder { background: transparent; }
@@ -202,6 +211,7 @@
 .focus-writing .editor-paper { background: transparent; }
 
 .editor-paper { position: relative; min-height: 100%; padding: clamp(14px, 3vw, 38px) clamp(14px, 2.4vw, var(--page-gutter, 32px)); background: var(--surface); }
+:root[data-theme="soft-paper"].focus-writing .editor-paper { background: var(--surface); }
 .novel-body { max-width: var(--text-width, 44rem); min-height: 56vh; padding: 8px 4px 56px; margin-inline: auto; font-family: var(--text-font); font-size: var(--reading-size, 1.1rem); line-height: var(--text-line-height, 1.95); overflow-wrap: anywhere; caret-color: var(--accent); }
 .novel-body::selection, .novel-body ::selection { background: var(--tint); }
 .smooth-writing:not(.native-caret, .plain-caret) .novel-body { caret-color: transparent; }
@@ -276,6 +286,9 @@
 .revision-preview-meta { margin-bottom: 8px; font-size: .82rem; color: var(--muted); overflow-wrap: anywhere; }
 .revision-preview-page { height: clamp(200px, 42svh, 360px); }
 .revision-preview-text { margin: 0; padding: 14px; font: .92rem/1.75 var(--text-font); color: #111; white-space: pre-wrap; overflow-wrap: anywhere; }
+:root[data-theme="soft-paper"] .revision-preview-page { background: var(--surface); }
+:root[data-theme="soft-paper"] .revision-preview-text { color: var(--ink); }
+:root[data-theme="soft-paper"] .revision-item:hover:not([aria-pressed="true"]) .revision-item-meta { color: var(--muted-on-tint); }
 
 @media (max-width: 660px) {
   .revision-layout { grid-template-columns: minmax(0, 1fr); }
@@ -299,6 +312,7 @@
 /* A small corner of each read-only pane holds its menu and close button; nothing else sits on it. */
 .pane-corner { position: absolute; top: 6px; inset-inline-end: 14px; z-index: 2; display: flex; gap: 2px; opacity: .45; transition: opacity var(--motion-fast) ease; }
 .reference-pane:is(:hover, :focus-within) .pane-corner, .pane-corner:has([aria-expanded="true"]) { opacity: 1; }
+:root[data-theme="soft-paper"] .pane-corner { opacity: 1; }
 .pane-corner-button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: color-mix(in srgb, var(--surface) 80%, transparent); }
 .pane-corner-button svg { width: 15px; height: 15px; }
 .pane-corner-button:hover, .pane-corner-button:focus-visible { color: var(--ink); background: var(--menu-hover); }

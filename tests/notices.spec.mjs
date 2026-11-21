@@ -48,11 +48,15 @@ test('普通提示：点别处或按键就消失，那一下照常生效；点�
   expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true)
 })
 
-test('带撤销的提示：点别处、打字都不消失也不挡操作，撤销照常可用', async ({ page }) => {
+test('柔纸下带撤销的提示有暖灰底色，点别处或打字时仍可撤销', async ({ page }) => {
+  await page.goto('/#/settings/appearance')
+  await page.getByRole('radio', { name: '柔纸', exact: true }).check()
   await seedChapters(page, [['第一章', [paragraph('灯塔下的第一章。')]], ['第二章', [paragraph('海雾里的第二章。')]]])
   await chapterAction(page, '第二章', '删除章节')
   await page.getByRole('button', { name: '确认删除章节' }).click()
   await expect(toast(page)).toContainText('移入回收站')
+  await expect(toast(page)).toHaveCSS('background-color', 'rgb(89, 84, 78)')
+  await expect(toast(page)).toHaveCSS('color', 'rgb(238, 233, 226)')
   await chapterText(page).click()
   await page.keyboard.press('End')
   await page.keyboard.type('又一句。')

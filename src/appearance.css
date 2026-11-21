@@ -107,6 +107,7 @@
   --surface-well: light-dark(#f2ece0, #2c2824);
   --surface-line: light-dark(color-mix(in srgb, var(--ink) 10%, transparent), color-mix(in srgb, var(--ink) 16%, transparent));
   --surface-line-strong: light-dark(color-mix(in srgb, var(--ink) 20%, transparent), color-mix(in srgb, var(--ink) 26%, transparent));
+  --input-border: var(--surface-line-strong);
   --surface-shade: light-dark(color-mix(in srgb, var(--ink) 12%, transparent), #00000099);
   --surface-shadow: 0 1px 0 color-mix(in srgb, var(--surface-shade) 48%, transparent);
   --cover-ring: light-dark(color-mix(in srgb, var(--ink) 12%, transparent), color-mix(in srgb, #ece6da 22%, transparent));
@@ -146,15 +147,62 @@
   --cover-shade: color-mix(in srgb, var(--ink) 22%, transparent);
 }
 
+:root[data-theme="soft-paper"] {
+  --paper: #eee9e2;
+  --sheet: #f7f4ef;
+  --surface: #faf7f1;
+  --field: var(--surface);
+  --surface-well: #e7e0d7;
+  --surface-card: var(--sheet);
+  --ink: #59544e;
+  --muted: #6b635a;
+  /* Match the text to the surface so quiet labels stay legible on shaded areas. */
+  --muted-on-sheet: #70675e;
+  --muted-on-tint: #665e55;
+  --hair: #cbc3b9;
+  --dots: var(--surface-well);
+  --edge: var(--field-border);
+  --surface-line: var(--hair);
+  --surface-line-strong: #b7ada1;
+  --surface-shade: #59544e24;
+  --red: #874b47;
+  --blue: #486272;
+  --yellow: #efe3cf;
+  --tint-red: #e9d8d2;
+  --tint-blue: #dce5e8;
+  --on-accent: var(--surface);
+  --on-yellow: var(--ink);
+  --danger-text: var(--red);
+  --danger-bg: #eedbd7;
+  --focus-bg: var(--surface);
+  --find-bg: var(--yellow);
+  --code-bg: #efe8df;
+  --cell-select: var(--tint-blue);
+  --disabled-text: var(--muted);
+  --disabled-border: var(--surface-line-strong);
+  --disabled-bg: var(--surface-well);
+  --empty-bg: var(--sheet);
+  --backdrop: #59544e66;
+  --pop-border: var(--surface-line-strong);
+  --pop-hard: transparent;
+  --pop-soft: #59544e45;
+  --field-border: #82776d;
+  --input-border: var(--field-border);
+  --menu-hover: var(--yellow);
+  --bar: #e2ddd5;
+  --bar-text: var(--ink);
+}
+
 /* Appearance controls */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .appearance-heading { margin-block: 18px 9px; color: var(--muted); font-size: .84rem; font-weight: 800; letter-spacing: .02em; }
 .settings-section > .appearance-heading:first-of-type { margin-top: 0; }
-.settings-options.theme-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.settings-options.theme-options { grid-template-columns: repeat(auto-fit, minmax(min(100%, 84px), 1fr)); }
 .theme-options .settings-option { display: flex; flex-direction: column; justify-content: center; gap: 7px; text-align: center; }
 .theme-swatch { display: block; flex: none; width: 34px; height: 22px; border: 1.5px solid var(--surface-line-strong); border-radius: 6px; background: #fff; }
 .theme-swatch-dark { background: #16130f; }
 .theme-swatch-beige { background: #f8efdc; }
+.theme-swatch-soft-paper { background: #faf7f1; border-color: #82776d; }
 .theme-swatch-system { background: linear-gradient(135deg, #fff 0 50%, #16130f 50% 100%); }
 .font-options .settings-option { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 9px 13px; text-align: start; }
 .font-name { font-size: 1.02rem; font-weight: 700; }
@@ -186,7 +234,7 @@
 .appearance-panel .appearance-check { justify-content: space-between; min-height: 32px; }
 .appearance-panel .appearance-check input { width: 34px; height: 20px; }
 @media (pointer: coarse) { .aa-segments .settings-option { min-height: 40px; } }
-.theme-swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.theme-swatches { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .theme-swatches .settings-option { min-height: 44px; padding: 5px; }
 .theme-swatches .settings-option::after { display: none; }
 .theme-swatches .theme-swatch { width: 100%; height: 30px; }
@@ -194,6 +242,9 @@
 .appearance-panel .size-step { flex: 1; min-width: 0; }
 .appearance-more { justify-self: center; min-height: 32px; padding: 4px 8px; border: 0; border-radius: 6px; color: var(--muted); background: none; font-size: .84rem; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; }
 .appearance-more:hover { color: var(--ink); }
+
+:root[data-theme="soft-paper"] .appearance-heading { color: var(--muted-on-sheet); }
+:root[data-theme="soft-paper"] .font-options .settings-option:has(input:checked) .font-sample { color: var(--muted-on-tint); opacity: 1; }
 
 @media (max-width: 520px) {
   .settings-options.theme-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }

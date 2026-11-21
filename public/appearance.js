@@ -5,7 +5,8 @@
   var saved = {}
   try { saved = JSON.parse(localStorage.getItem('new-world:appearance') || '{}') || {} } catch (error) { saved = {} }
   function pick(value, allowed, fallback) { return allowed.indexOf(value) >= 0 ? value : fallback }
-  root.dataset.theme = pick(saved.theme, ['system', 'white', 'dark', 'beige'], 'system')
+  root.dataset.theme = pick(saved.theme, ['system', 'white', 'dark', 'beige', 'soft-paper'], 'system')
+  if (root.dataset.theme === 'soft-paper') document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#e2ddd5')
   root.dataset.latinFont = pick(saved.latin, ['times', 'georgia', 'lora', 'inter', 'system'], 'times')
   root.dataset.cjkFont = pick(saved.cjk, ['auto', 'song', 'hei', 'kai'], 'auto')
   root.dataset.lineHeight = pick(saved.lineHeight, ['compact', 'standard', 'relaxed'], 'standard')

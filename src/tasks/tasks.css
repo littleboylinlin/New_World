@@ -576,6 +576,13 @@
   color: var(--muted);
   text-decoration: line-through;
 }
+
+:root[data-theme="soft-paper"] .task-nav-item[aria-current] .task-nav-count:not(.is-overdue) {
+  color: var(--muted-on-tint);
+}
+:root[data-theme="soft-paper"] :is(.task-nav-count.is-done, .task-row.is-completed, .task-chip-note, .task-card-link .dialog-help) {
+  opacity: 1;
+}
 .task-sub-del {
   width: 26px;
   height: 26px;
