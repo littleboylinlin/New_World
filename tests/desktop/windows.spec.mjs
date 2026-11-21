@@ -1284,6 +1284,8 @@ if (process.platform === 'win32') test('Windows 登录项控制注册表，后�
     await app.evaluate(({ app }) => app.emit('second-instance', {}, [process.execPath], process.cwd()))
     await expect.poll(mainVisible).toBe(true)
     await page.evaluate(() => { location.hash = '#/notes/tasks' })
+    await expect(page.locator('.task-nav a[href="#/notes/tasks/later"] .task-nav-count')).toHaveText('1')
+    await page.locator('.task-nav a[href="#/notes/tasks/later"]').click()
     await expect(page.getByRole('button', { name: '后台登录后记下的提醒', exact: true })).toBeVisible()
 
     const general = await openSettingsCategory(page, 'general')

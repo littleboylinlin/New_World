@@ -345,7 +345,7 @@
   padding: 14px 18px;
   border-color: var(--surface-line-strong);
   background: var(--surface-card);
-  box-shadow: 0 4px 12px -6px var(--surface-shade);
+  box-shadow: 0 2px 0 var(--surface-shade);
 }
 .task-card {
   display: grid;
@@ -473,12 +473,12 @@
   margin: 0;
   cursor: pointer;
 }
-.task-weekday-pill:has(input:checked) {
+.task-weekday-pill.is-checked {
   border-color: transparent;
   color: var(--on-yellow);
   background: var(--yellow);
 }
-.task-weekday-pill:has(input:focus-visible) {
+.task-weekday-pill:focus-within {
   outline: 2.5px solid var(--ring);
   outline-offset: 1px;
 }

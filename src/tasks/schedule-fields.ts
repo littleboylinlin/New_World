@@ -119,7 +119,11 @@ export function taskScheduleControls(initial: Partial<Task>, onChange?: () => vo
     const box = element('input')
     box.type = 'checkbox'
     box.checked = initial.repeat?.frequency === 'week' && (initial.repeat.weekdays?.includes(day) ?? false)
-    box.addEventListener('change', () => onChange?.())
+    pill.classList.toggle('is-checked', box.checked)
+    box.addEventListener('change', () => {
+      pill.classList.toggle('is-checked', box.checked)
+      onChange?.()
+    })
     pill.append(box, element('span', '', shortWeekday(day)))
     weekdays.append(pill)
     dayChecks.set(day, box)
