@@ -73,3 +73,14 @@ test('没有启动标记时不播放开场动画', async ({ page }) => {
   await expect(page.locator('main')).toBeVisible()
   await expect(intro(page)).toHaveCount(0)
 })
+
+test('系统深色模式下柔纸仍用浅色开场，底色与页面一致', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.addInitScript(() => localStorage.setItem('new-world:appearance', JSON.stringify({ theme: 'soft-paper' })))
+  await page.goto('/?intro')
+  await expect(intro(page)).toHaveCSS('background-color', 'rgb(238, 233, 226)')
+  await expect(intro(page)).toHaveCSS('color', 'rgb(89, 84, 78)')
+  await page.keyboard.press('Escape')
+  await expect(intro(page)).toHaveCount(0)
+  await expect(page.locator('html')).toHaveCSS('background-color', 'rgb(238, 233, 226)')
+})

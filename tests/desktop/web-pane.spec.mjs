@@ -50,6 +50,34 @@ const windowCount = (app) => app.evaluate(({ BrowserWindow }) => BrowserWindow.g
 
 const closeWeb = (pane) => pane.getByRole('button', { name: '关闭网页' }).click()
 
+test('柔纸在桌面重启后保持窗口底色，并应用到网页块工具栏', async () => {
+  const windowState = ({ BrowserWindow, nativeTheme }) => ({
+    background: BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase(),
+    source: nativeTheme.themeSource,
+  })
+  const expected = { background: '#eee9e2', source: 'light' }
+  let { app, page } = await launch()
+  try {
+    await page.evaluate(() => { location.hash = '#/settings/appearance' })
+    await page.getByRole('radio', { name: '柔纸', exact: true }).check()
+    await expect.poll(() => app.evaluate(windowState)).toEqual(expected)
+  } finally { await app.close() }
+
+  ;({ app, page } = await launch())
+  try {
+    expect(await app.evaluate(windowState)).toEqual(expected)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'soft-paper')
+    await newNovel(page)
+    const pane = await openWebPane(page, `${site.url}/page`)
+    await waitForView(app, (view) => view.url === `${site.url}/page`)
+    await expect(pane.locator('.web-bar')).toHaveCSS('background-color', 'rgb(247, 244, 239)')
+    await expect(pane.locator('.web-stage')).toHaveCSS('background-color', 'rgb(250, 247, 241)')
+    const address = pane.getByRole('textbox', { name: '网址或搜索内容' })
+    await address.focus()
+    await expect(address).toHaveCSS('outline-color', 'rgb(72, 98, 114)')
+  } finally { await app.close() }
+})
+
 test('永远无痕：关闭网页块后读不到 Cookie 和网页存储，重启后也读不到，硬盘上没有这个会话的文件', async () => {
   let { app, page } = await launch()
   try {

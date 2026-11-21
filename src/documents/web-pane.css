@@ -14,6 +14,8 @@
 .web-address-input { width: 100%; height: 26px; padding: 0 9px; border: 1px solid var(--field-border); border-radius: 13px; color: var(--ink); background: var(--field); font-size: .8rem; }
 .web-address-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 0; }
 .web-stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #fff; outline: none; }
+:root[data-theme="soft-paper"] .web-stage { background: var(--surface); }
+:root[data-theme="soft-paper"] .web-address-input:focus { outline-color: var(--ring); }
 /* The picture of the page stands in for it while something of the app covers the page. */
 .web-snapshot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
 .web-start, .web-message { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: 6px; padding: 24px; color: var(--ink); background: var(--surface); text-align: center; }

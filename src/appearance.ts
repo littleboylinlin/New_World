@@ -1,7 +1,7 @@
 // Theme, fonts and reading size. Saved per device in localStorage, which the desktop app keeps
 // in its profile folder and copies together with the library when the storage location moves.
 
-export const themes = ['system', 'white', 'dark', 'beige'] as const
+export const themes = ['system', 'white', 'dark', 'beige', 'soft-paper'] as const
 export const latinFonts = ['times', 'georgia', 'lora', 'inter', 'system'] as const
 export const cjkFonts = ['auto', 'song', 'hei', 'kai'] as const
 export const lineHeights = ['compact', 'standard', 'relaxed'] as const
@@ -83,6 +83,7 @@ let current = read()
 function apply(value: Appearance) {
   const root = document.documentElement
   root.dataset.theme = value.theme
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', value.theme === 'soft-paper' ? '#e2ddd5' : '#16130f')
   root.dataset.latinFont = value.latin
   root.dataset.cjkFont = value.cjk
   root.dataset.lineHeight = value.lineHeight

@@ -106,7 +106,7 @@ test('各主页面共享对齐基准线变量，页头位置、左右留白与�
   expect(Math.abs(base.coverRatio - homeMetrics.homeCoverRatio)).toBeLessThan(0.02)
 })
 
-test('三种主题下卡片、热力图格子与封面都有清晰层次，暗色不糊成一片', async ({ page }) => {
+test('各主题下卡片、热力图格子与封面都有清晰层次', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/')
   await expect(page.locator('.heatmap-grid .heat-cell')).toHaveCount(371)
@@ -115,7 +115,7 @@ test('三种主题下卡片、热力图格子与封面都有清晰层次，暗�
   await page.locator('.recent-projects').getByRole('button', { name: '封面' }).click()
   await expect(page.locator('.recent-covers .book-cover').first()).toBeVisible()
 
-  for (const theme of ['white', 'dark', 'beige']) {
+  for (const theme of ['white', 'dark', 'beige', 'soft-paper']) {
     await page.evaluate((nextTheme) => {
       localStorage.setItem('new-world:appearance', JSON.stringify({ theme: nextTheme }))
     }, theme)
@@ -135,5 +135,13 @@ test('三种主题下卡片、热力图格子与封面都有清晰层次，暗�
     expect(colors.cellBg, `${theme}: heat cell differs from stats card`).not.toBe(colors.statsBg)
     expect(parseFloat(colors.cellBorder), `${theme}: heat cell has crisp border`).toBeGreaterThan(0)
     expect(colors.coverShadow, `${theme}: cover has ring/shadow boundary`).not.toBe('none')
+
+    if (theme === 'soft-paper') {
+      const legend = page.locator('.heatmap-legend .legend-cell')
+      const levels = await legend.evaluateAll((cells) => cells.map((cell) => getComputedStyle(cell).backgroundColor))
+      expect(new Set(levels).size).toBe(5)
+      expect(levels[0]).toBe('rgb(231, 224, 215)')
+      expect(levels[4]).toBe('rgb(135, 75, 71)')
+    }
   }
 })

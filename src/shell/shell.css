@@ -103,6 +103,7 @@ html.fixed-page .main-content.fixed-main > * { flex: 1 1 auto; min-height: 0; }
   color: var(--ink); background: transparent; font-size: .88rem; font-weight: 650; text-align: start;
 }
 .shell-menu-item:hover:not(:disabled), .shell-menu-item:focus-visible { background: var(--menu-hover); outline: none; }
+:root[data-theme="soft-paper"] .shell-menu-item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .shell-menu-item:disabled { color: var(--disabled-text); cursor: default; }
 .shell-menu-danger { color: var(--danger-text); }
 .shell-menu-mark { display: grid; place-items: center; flex: none; width: 18px; height: 18px; }

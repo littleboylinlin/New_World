@@ -12,6 +12,7 @@ let groups = 0
 const themeLabel = (theme: Theme) => ({
   system: t('appearance.themeSystem'), white: t('appearance.themeWhite'),
   dark: t('appearance.themeDark'), beige: t('appearance.themeBeige'),
+  'soft-paper': t('appearance.themeSoftPaper'),
 })[theme]
 
 const latinLabel = (font: LatinFont) => font === 'system' ? t('appearance.systemSans') : latinFontNames[font]

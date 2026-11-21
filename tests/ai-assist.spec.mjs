@@ -57,9 +57,12 @@ async function agree(page) {
 
 const polished = '他慢慢地走进了房间。\n第二段没有改动。'
 
-test('润色结果逐处采用或拒绝，保留加粗，可撤销并进入历史版本 @webkit', async ({ page }) => {
+test('柔纸下润色结果可逐处采用或拒绝，保留加粗，可撤销并进入历史版本 @webkit', async ({ page }, testInfo) => {
   const fake = await fakeAiService({ reply: () => polished })
   try {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/#/settings/appearance')
+    await page.getByRole('radio', { name: '柔纸', exact: true }).check()
     await addProfile(page, `${fake.url}/v1`)
     await novelWithText(page)
     const before = await historyCount(page)
@@ -71,6 +74,13 @@ test('润色结果逐处采用或拒绝，保留加粗，可撤销并进入历�
     // A change in the plain part and one in the bold part, each keeping its own format.
     await expect(textArea(page).locator('.ai-sg-del')).toHaveText(['的'])
     await expect(textArea(page).locator('.ai-sg-ins')).toHaveText(['地', '了'])
+    const removed = textArea(page).locator('.ai-sg-del')
+    const inserted = textArea(page).locator('.ai-sg-ins').first()
+    await expect(removed).toHaveCSS('background-color', 'rgb(238, 219, 215)')
+    await expect(removed).toHaveCSS('text-decoration-line', 'line-through')
+    await expect(inserted).toHaveCSS('background-color', 'rgb(221, 231, 217)')
+    await expect(inserted).toHaveCSS('text-decoration-line', 'underline')
+    await page.screenshot({ path: testInfo.outputPath('editor-soft-paper-ai.png') })
     const request = fake.requests.at(-1)
     expect(request.body.messages.at(-1).content).toBe('他慢慢的走进房间。\n第二段没有改动。')
 
