@@ -12,7 +12,7 @@
 .aip-preset-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .aip-empty { margin: 0; }
 .aip-editor { display: grid; gap: 12px; }
-.aip-section { border: 1.5px solid var(--hair); border-radius: 11px; background: var(--surface, var(--sheet)); }
+.aip-section { border: 1px solid var(--surface-line); border-radius: 11px; background: var(--surface-well); }
 .aip-section-toggle { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 11px; color: var(--ink); background: transparent; font: inherit; font-size: .92rem; font-weight: 850; cursor: pointer; }
 .aip-section-toggle svg { width: 18px; height: 18px; transition: transform 200ms ease; }
 .aip-section-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }

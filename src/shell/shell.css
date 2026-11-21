@@ -36,16 +36,16 @@ html.fixed-page .main-content.fixed-main > * { flex: 1 1 auto; min-height: 0; }
 }
 .workbench-panel[data-mode="inline"][data-state="closed"] { width: 0; opacity: 0; }
 .workbench-panel[data-mode="inline"][data-resizing] { transition: none; }
-.workbench-start[data-mode="inline"] { border-inline-end: 2px solid var(--ink); }
-.workbench-end[data-mode="inline"] { border-inline-start: 2px solid var(--ink); }
+.workbench-start[data-mode="inline"] { border-inline-end: 1px solid var(--surface-line); }
+.workbench-end[data-mode="inline"] { border-inline-start: 1px solid var(--surface-line); }
 .workbench-panel[data-mode="overlay"] {
   position: absolute; inset-block: 0; z-index: 6; width: min(var(--panel-width, 300px), calc(100% - 44px));
-  box-shadow: var(--shadow);
+  box-shadow: 0 16px 36px -14px var(--pop-soft);
   transition: transform var(--motion-slow) var(--ease-standard), visibility 0s linear 0s;
 }
 .workbench-panel[data-mode="overlay"] .workbench-panel-body { width: 100%; }
-.workbench-start[data-mode="overlay"] { inset-inline-start: 0; border-inline-end: 2px solid var(--ink); }
-.workbench-end[data-mode="overlay"] { inset-inline-end: 0; border-inline-start: 2px solid var(--ink); }
+.workbench-start[data-mode="overlay"] { inset-inline-start: 0; border-inline-end: 1px solid var(--surface-line); }
+.workbench-end[data-mode="overlay"] { inset-inline-end: 0; border-inline-start: 1px solid var(--surface-line); }
 .workbench-start[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(-100% - 8px)); }
 .workbench-end[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(100% + 8px)); }
 [dir="rtl"] .workbench-start[data-mode="overlay"][data-state="closed"] { transform: translateX(calc(100% + 8px)); }
@@ -65,7 +65,7 @@ html.fixed-page .main-content.fixed-main > * { flex: 1 1 auto; min-height: 0; }
 
 /* ——— Tabs ——— */
 .shell-tabs { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
-.shell-tablist { position: relative; display: flex; flex: none; gap: 2px; padding: 8px 10px 0; border-bottom: 2px solid var(--ink); overflow: hidden; }
+.shell-tablist { position: relative; display: flex; flex: none; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--surface-line); overflow: hidden; }
 .shell-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; border: 0; border-radius: 7px 7px 0 0; background: transparent; color: var(--muted); font-size: .86rem; font-weight: 800; white-space: nowrap; transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease; }
 .shell-tab:hover:not(:disabled) { color: var(--ink); background: var(--menu-hover); }
 .shell-tab[aria-selected="true"] { color: var(--ink); }
@@ -134,11 +134,11 @@ html.fixed-page .main-content.fixed-main > * { flex: 1 1 auto; min-height: 0; }
 .split-pane { transition: opacity var(--motion-slow) var(--ease-standard); }
 .split-dividers { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
 .split-divider { position: absolute; pointer-events: auto; touch-action: none; }
-.split-divider::after { content: ""; position: absolute; background: var(--ink); transition: background-color var(--motion-fast) ease; }
+.split-divider::after { content: ""; position: absolute; background: var(--surface-line-strong); transition: background-color var(--motion-fast) ease; }
 .split-divider-row { width: 12px; margin-inline-start: -6px; cursor: col-resize; }
-.split-divider-row::after { inset-block: 0; left: 5px; width: 2px; }
+.split-divider-row::after { inset-block: 0; left: 5px; width: 1px; }
 .split-divider-column { height: 12px; margin-top: -6px; cursor: row-resize; }
-.split-divider-column::after { inset-inline: 0; top: 5px; height: 2px; }
+.split-divider-column::after { inset-inline: 0; top: 5px; height: 1px; }
 .split-divider:hover::after, .split-divider:focus-visible::after, .split-view[data-resizing] .split-divider:active::after { background: var(--accent); }
 .split-divider:focus-visible { outline: none; }
 @media (pointer: coarse) { .split-divider-row { width: 24px; margin-inline-start: -12px; } .split-divider-row::after { left: 11px; } .split-divider-column { height: 24px; margin-top: -12px; } .split-divider-column::after { top: 11px; } }

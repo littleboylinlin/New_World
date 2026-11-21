@@ -102,6 +102,19 @@
   --menu-hover: light-dark(#fff0a6, #3a3421);
   --bar: #16130f;
   --bar-text: #f4eee2;
+  /* Surface hierarchy: soft tonal layers & hairlines replacing heavy outer borders. */
+  --surface-card: light-dark(var(--sheet), #221f1c);
+  --surface-well: light-dark(#f2ece0, #2c2824);
+  --surface-line: light-dark(color-mix(in srgb, var(--ink) 10%, transparent), color-mix(in srgb, var(--ink) 16%, transparent));
+  --surface-line-strong: light-dark(color-mix(in srgb, var(--ink) 20%, transparent), color-mix(in srgb, var(--ink) 26%, transparent));
+  --surface-highlight: light-dark(transparent, color-mix(in srgb, var(--ink) 5%, transparent));
+  --surface-shade: light-dark(color-mix(in srgb, var(--ink) 12%, transparent), #00000099);
+  --surface-shadow: inset 0 1px 0 var(--surface-highlight), 0 1px 2px color-mix(in srgb, var(--surface-shade) 45%, transparent), 0 10px 24px -14px var(--surface-shade);
+  --cover-ring: light-dark(color-mix(in srgb, var(--ink) 12%, transparent), color-mix(in srgb, #ece6da 22%, transparent));
+  --cover-ring-hover: light-dark(color-mix(in srgb, var(--ink) 22%, transparent), color-mix(in srgb, #ece6da 34%, transparent));
+  --cover-shade: light-dark(color-mix(in srgb, var(--ink) 18%, transparent), #000000cc);
+  --cover-shadow: 0 0 0 1px var(--cover-ring), 0 4px 10px -3px color-mix(in srgb, var(--cover-shade) 75%, transparent), 0 14px 26px -12px var(--cover-shade);
+  --cover-shadow-hover: 0 0 0 1px var(--cover-ring-hover), 0 10px 20px -5px color-mix(in srgb, var(--cover-shade) 85%, transparent), 0 20px 34px -14px var(--cover-shade);
 }
 :root[data-theme="dark"] { color-scheme: dark; }
 :root[data-theme="system"] { color-scheme: light dark; }
@@ -124,6 +137,15 @@
   --empty-bg: #f7eedba8;
   --menu-hover: #f6e49f;
   --pop-soft: #2b21172e;
+  --surface-card: var(--sheet);
+  --surface-well: #ede1c8;
+  --surface-line: color-mix(in srgb, var(--ink) 13%, transparent);
+  --surface-line-strong: color-mix(in srgb, var(--ink) 24%, transparent);
+  --surface-highlight: transparent;
+  --surface-shade: color-mix(in srgb, var(--ink) 15%, transparent);
+  --cover-ring: color-mix(in srgb, var(--ink) 15%, transparent);
+  --cover-ring-hover: color-mix(in srgb, var(--ink) 24%, transparent);
+  --cover-shade: color-mix(in srgb, var(--ink) 22%, transparent);
 }
 
 /* Appearance controls */
@@ -132,7 +154,7 @@
 .settings-section > .appearance-heading:first-of-type { margin-top: 0; }
 .settings-options.theme-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .theme-options .settings-option { display: flex; flex-direction: column; justify-content: center; gap: 7px; text-align: center; }
-.theme-swatch { display: block; flex: none; width: 34px; height: 22px; border: 2px solid var(--ink); border-radius: 6px; background: #fff; }
+.theme-swatch { display: block; flex: none; width: 34px; height: 22px; border: 1.5px solid var(--surface-line-strong); border-radius: 6px; background: #fff; }
 .theme-swatch-dark { background: #16130f; }
 .theme-swatch-beige { background: #f8efdc; }
 .theme-swatch-system { background: linear-gradient(135deg, #fff 0 50%, #16130f 50% 100%); }
@@ -159,7 +181,7 @@
 .aa-row { display: grid; grid-template-columns: 5.2em minmax(0, 1fr); align-items: center; gap: 8px 10px; }
 .aa-label { color: var(--muted); font-size: .8rem; font-weight: 800; }
 .aa-row .editor-select { width: 100%; }
-.aa-segments { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 2px; border: 2px solid var(--field-border); border-radius: 9px; background: var(--field); }
+.aa-segments { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; padding: 2px; border: 1px solid var(--surface-line-strong); border-radius: 9px; background: var(--surface-well); }
 .aa-segments .settings-option { min-height: 32px; padding: 3px 4px; border: 0; border-radius: 6px; background: transparent; font-size: .8rem; font-weight: 750; transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease; }
 .aa-segments .settings-option::after { display: none; }
 .aa-segments .settings-option:has(input:checked) { color: var(--on-accent); background: var(--accent); box-shadow: none; }
@@ -191,7 +213,7 @@
 .appearance-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .dialog-help + .appearance-check { margin-top: 14px; }
 
-.dictionary-box { display: grid; gap: 10px; margin-top: 4px; padding: 14px; border: 2px solid var(--ink); border-radius: 10px; background: var(--field); }
+.dictionary-box { display: grid; gap: 10px; margin-top: 4px; padding: 14px; border: 1px solid var(--surface-line); border-radius: 10px; background: var(--surface-well); }
 .dictionary-box[hidden] { display: none; }
 .dictionary-title { margin: 0; font-size: .9rem; font-weight: 800; }
 .dictionary-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
