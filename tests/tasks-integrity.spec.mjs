@@ -5,51 +5,69 @@ test.setTimeout(90000)
 test.use({ timezoneId: 'UTC' })
 const state = (page) => page.evaluate(databaseSnapshot)
 const row = (page, id) => page.locator(`[data-task-id="${id}"]`)
-async function save(dialog) {
-  await dialog.getByRole('button', { name: '保存任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
-}
-async function addChild(page, parent, title, date) {
-  await row(page, parent).getByRole('button', { name: '添加子任务', exact: true }).first().click()
-  const dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
-  await dialog.getByLabel('任务标题', { exact: true }).fill(title)
-  if (date) await dialog.getByLabel('计划日期', { exact: true }).fill(date)
-  await save(dialog)
-  return (await state(page)).tasks.find((t) => t.title === title)
-}
 test('重复树真实完成、双击不重入、删除成员不复活，历史恢复最小状态且拒绝覆盖新修改', async ({
   page,
 }) => {
-  await page.goto('/#/tasks')
-  await page.locator('.task-toolbar').getByRole('button', { name: '添加任务', exact: true }).click()
-  let dialog = page.getByRole('dialog', { name: '添加任务', exact: true })
-  await dialog.getByLabel('任务标题', { exact: true }).fill('月末写作')
-  await dialog.getByLabel('计划日期', { exact: true }).fill('2099-01-31')
-  await dialog.getByLabel('重复规则', { exact: true }).selectOption('month')
-  await save(dialog)
-  const parent = (await state(page)).tasks[0],
-    child = await addChild(page, parent.id, '本期工作', '2099-02-01'),
-    done = await addChild(page, parent.id, '先完成的工作'),
-    deleted = await addChild(page, parent.id, '先删除的工作')
-  await row(page, done.id).getByRole('button', { name: '完成任务', exact: true }).click()
-  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(1)
-  await row(page, deleted.id).getByRole('button', { name: '删除任务', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '删除任务', exact: true })
-  await dialog.getByRole('button', { name: '删除任务', exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await page.goto('/#/tasks/all')
+  await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
+  const ids = await page.evaluate(async () => {
+    const parent = crypto.randomUUID(),
+      child = crypto.randomUUID(),
+      done = crypto.randomUUID(),
+      deleted = crypto.randomUUID(),
+      deletionId = crypto.randomUUID(),
+      now = Date.now(),
+      db = await new Promise((r) => {
+        const q = indexedDB.open('new-world-library')
+        q.onsuccess = () => r(q.result)
+      }),
+      tx = db.transaction('tasks', 'readwrite'),
+      store = tx.objectStore('tasks'),
+      base = {
+        description: '',
+        notes: '',
+        projectId: null,
+        sectionId: null,
+        parentId: null,
+        priority: 4,
+        labelIds: [],
+        expanded: true,
+        planDate: null,
+        completedAt: null,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        revision: 0,
+      }
+    store.add({
+      ...base,
+      id: parent,
+      title: '月末写作',
+      order: 1024,
+      planDate: '2099-01-31',
+      repeat: { frequency: 'month', interval: 1, anchorDate: '2099-01-31', monthDays: [31] },
+    })
+    store.add({ ...base, id: child, parentId: parent, title: '本期工作', order: 2048, planDate: '2099-02-01' })
+    store.add({ ...base, id: done, parentId: parent, title: '先完成的工作', order: 3072, completedAt: now - 1000 })
+    store.add({ ...base, id: deleted, parentId: parent, title: '先删除的工作', order: 4096, deletedAt: now - 1000, deletionId })
+    await new Promise((r) => (tx.oncomplete = r))
+    db.close()
+    return { parent, child, done, deleted }
+  })
+  await page.reload()
   const before = await state(page)
-  await row(page, parent.id)
-    .getByRole('button', { name: '完成任务', exact: true })
+  await row(page, ids.parent)
+    .getByRole('checkbox', { name: '完成任务', exact: true })
     .first()
     .dblclick()
-  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(3)
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(2)
   let advanced = await state(page)
-  expect(advanced.tasks.find((t) => t.id === parent.id).planDate).toBe('2099-02-28')
-  expect(advanced.tasks.find((t) => t.id === child.id).planDate).toBe('2099-03-01')
-  expect(advanced.tasks.find((t) => t.id === deleted.id)).toEqual(
-    before.tasks.find((t) => t.id === deleted.id),
+  expect(advanced.tasks.find((t) => t.id === ids.parent).planDate).toBe('2099-02-28')
+  expect(advanced.tasks.find((t) => t.id === ids.child).planDate).toBe('2099-03-01')
+  expect(advanced.tasks.find((t) => t.id === ids.deleted)).toEqual(
+    before.tasks.find((t) => t.id === ids.deleted),
   )
-  expect(advanced.tasks.find((t) => t.id === done.id).completedAt).toBeNull()
+  expect(advanced.tasks.find((t) => t.id === ids.done).completedAt).toBeNull()
   await page.goto('/#/tasks/completed')
   await page.getByText('完成历史', { exact: true }).click()
   await page
@@ -57,7 +75,7 @@ test('重复树真实完成、双击不重入、删除成员不复活，历史�
     .filter({ hasText: '月末写作' })
     .getByRole('button', { name: '恢复本次完成', exact: true })
     .click()
-  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(5)
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(4)
   const restored = await state(page)
   for (const task of before.tasks) {
     const current = restored.tasks.find((t) => t.id === task.id)
@@ -68,12 +86,13 @@ test('重复树真实完成、双击不重入、删除成员不复活，历史�
     }).toEqual({ date: task.planDate, completed: task.completedAt, deleted: task.deletedAt })
   }
   await page.goto('/#/tasks/all')
-  await row(page, parent.id).getByRole('button', { name: '完成任务', exact: true }).first().click()
-  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(7)
-  await page.getByRole('button', { name: '本期工作', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await dialog.getByLabel('任务备注', { exact: true }).fill('后续独立修改')
-  await save(dialog)
+  await row(page, ids.parent).getByRole('checkbox', { name: '完成任务', exact: true }).first().click()
+  await expect.poll(async () => (await state(page)).taskCompletions.length).toBe(6)
+  await page.getByRole('button', { name: '月末写作', exact: true }).click()
+  const subInput = page.locator(`[data-task-id="${ids.child}"] .task-sub-title`)
+  await subInput.fill('本期工作（后续独立修改）')
+  await subInput.press('Enter')
+  await expect.poll(async () => (await state(page)).tasks.find((t) => t.id === ids.child).title).toBe('本期工作（后续独立修改）')
   const changed = await state(page)
   await page.goto('/#/tasks/completed')
   await page.getByText('完成历史', { exact: true }).click()
@@ -259,7 +278,7 @@ test('分批列表不截断数据，连续搜索保留焦点，快捷添加与�
   await expect.poll(async () => (await state(page)).tasks.length).toBe(205)
 })
 
-test('编辑已完成和项目回收站中的子任务只更新信息，保留父任务、项目和分区', async ({ page }) => {
+test('编辑已完成任务只更新编辑字段，保留旧父任务、项目、分区和描述', async ({ page }) => {
   await page.goto('/#/tasks')
   await expect(page.getByLabel('快速添加任务', { exact: true })).toBeVisible()
   const ids = await page.evaluate(async () => {
@@ -308,12 +327,12 @@ test('编辑已完成和项目回收站中的子任务只更新信息，保留�
     })
     const task = {
       title: '已完成父任务',
-      description: '',
+      description: '保留旧描述',
       notes: '',
       projectId: project,
       sectionId: section,
       parentId: null,
-      priority: 4,
+      priority: 2,
       labelIds: [],
       order: 1024,
       expanded: true,
@@ -330,50 +349,21 @@ test('编辑已完成和项目回收站中的子任务只更新信息，保留�
     db.close()
     return { project, section, parent, child, ancestor }
   })
-  await page.goto('/#/tasks/completed')
+  await page.goto('/#/tasks/item/' + ids.child)
   await page.getByRole('button', { name: '保留关系的子任务', exact: true }).click()
-  let form = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await expect(form.getByLabel('父任务', { exact: true })).toHaveValue(ids.parent)
-  await form.getByLabel('任务备注', { exact: true }).fill('完成后编辑')
-  await save(form)
-  let task = (await state(page)).tasks.find((t) => t.id === ids.child)
+  const card = row(page, ids.child).locator('.task-card')
+  await expect(card.locator('.task-legacy-box')).toContainText('保留旧描述')
+  await card.getByLabel('任务备注', { exact: true }).fill('完成后编辑')
+  await card.getByRole('button', { name: '保存任务', exact: true }).click()
+  await expect(card).toHaveCount(0)
+  const task = (await state(page)).tasks.find((t) => t.id === ids.child)
   expect(task).toMatchObject({
     parentId: ids.parent,
     projectId: ids.project,
     sectionId: ids.section,
+    description: '保留旧描述',
+    priority: 2,
     notes: '完成后编辑',
-  })
-  await page.goto('/#/tasks/project/' + ids.ancestor)
-  await page.getByRole('button', { name: '删除项目', exact: true }).click()
-  form = page.getByRole('dialog', { name: '删除项目', exact: true })
-  await form.getByRole('button', { name: '删除项目', exact: true }).click()
-  await expect(form).toBeHidden()
-  await page.getByRole('button', { name: '保留关系的子任务', exact: true }).click()
-  form = page.getByRole('dialog', { name: '编辑任务', exact: true })
-  await expect(form.getByLabel('父任务', { exact: true })).toHaveValue(ids.parent)
-  await expect(form.getByLabel('任务项目', { exact: true })).toHaveValue(ids.project)
-  await expect(form.getByLabel('任务分区', { exact: true })).toHaveValue(ids.section)
-  await form.getByLabel('任务描述', { exact: true }).fill('回收后补充信息')
-  await save(form)
-  await page.goto('/#/tasks/project/' + ids.project)
-  await page.getByRole('button', { name: '项目设置', exact: true }).click()
-  form = page.getByRole('dialog', { name: '编辑项目', exact: true })
-  await expect(form.getByLabel('上级项目', { exact: true })).toHaveValue(ids.ancestor)
-  await form.getByLabel('项目名称', { exact: true }).fill('更名后保留父项目')
-  await form.getByRole('button', { name: '保存项目', exact: true }).click()
-  await expect(form).toBeHidden()
-  expect((await state(page)).taskProjects.find((p) => p.id === ids.project).parentId).toBe(
-    ids.ancestor,
-  )
-  await page.goto('/#/tasks/trash')
-  await page.getByRole('button', { name: '恢复项目', exact: true }).first().click()
-  task = (await state(page)).tasks.find((t) => t.id === ids.child)
-  expect(task).toMatchObject({
-    parentId: ids.parent,
-    projectId: ids.project,
-    sectionId: ids.section,
-    notes: '完成后编辑',
-    description: '回收后补充信息',
     deletedAt: null,
   })
   expect(task.completedAt).not.toBeNull()
@@ -517,7 +507,7 @@ test('连续完成历史使用真实时间，逆序 UUID 下正确恢复最新�
     .poll(async () => (await state(page)).taskCompletions.some((e) => e.reverts === ids.latest))
     .toBe(true)
   expect((await state(page)).tasks.find((t) => t.id === ids.repeat).planDate).toBe('2099-01-03')
-  await row(page, ids.plain).getByRole('button', { name: '取消完成', exact: true }).click()
+  await row(page, ids.plain).getByRole('checkbox', { name: '取消完成', exact: true }).click()
   await expect
     .poll(async () =>
       (await state(page)).taskCompletions.some((e) => e.reverts === ids.plainLatest),

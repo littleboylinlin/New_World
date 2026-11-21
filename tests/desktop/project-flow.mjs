@@ -40,7 +40,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await editorAction(page, '从当前章节创建任务')
   const taskForm=page.getByRole('dialog',{name:'添加任务',exact:true})
   await taskForm.getByLabel('任务标题',{exact:true}).fill('Desktop linked task')
-  await taskForm.getByLabel('优先级',{exact:true}).selectOption('1')
+  await taskForm.getByLabel('任务备注',{exact:true}).fill('Desktop linked note')
   await taskForm.getByRole('button',{name:'保存任务',exact:true}).click();await expect(taskForm).toBeHidden()
   await page.goto('new-world://app/#/tasks');await page.getByLabel('快速添加任务',{exact:true}).fill('PRIVATE Desktop personal task');await page.locator('.task-quick button').click();await expect(page.getByRole('button',{name:'PRIVATE Desktop personal task',exact:true})).toBeVisible()
   await page.goto('new-world://app/#/original')
@@ -93,7 +93,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await expect(page.locator('.save-status')).toHaveText('已保存')
   await page.reload()
   await expect(editor).toHaveText('文件关联打开时仍在编辑的正文。')
-  const editorUrl=page.url();await page.goto('new-world://app/#/tasks/all');await expect(page.getByRole('button',{name:'Desktop linked task',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'PRIVATE Desktop personal task',exact:true})).toBeVisible();await page.reload();await expect(page.getByRole('button',{name:'Desktop linked task',exact:true})).toBeVisible();await page.goto(editorUrl);await expect(editor).toHaveText('文件关联打开时仍在编辑的正文。')
+  const editorUrl=page.url();await page.goto('new-world://app/#/tasks/all');await expect(page.getByRole('button',{name:'Desktop linked task',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'PRIVATE Desktop personal task',exact:true})).toBeVisible();await page.getByRole('button',{name:'Desktop linked task',exact:true}).click();const taskCard=page.locator('.task-card');await expect(taskCard.getByLabel('任务备注',{exact:true})).toHaveValue('Desktop linked note');await taskCard.getByRole('button',{name:'收起',exact:true}).first().click();await page.reload();await expect(page.getByRole('button',{name:'Desktop linked task',exact:true})).toBeVisible();await page.goto(editorUrl);await expect(editor).toHaveText('文件关联打开时仍在编辑的正文。')
   expect(app.windows()).toHaveLength(1)
   return page.url()
 }
