@@ -151,7 +151,7 @@ Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 S
 
 `revisions`：`id, library, bookId, editionId, chapterId, chapterTitle, words, createdAt, source, action, contentHash`；可选 `editionName, chapterRevision, content, plainText, blobHash, rawBytes, storedBytes, clientId, clientName`。
 
-`source = ai | user-restore`。兼容旧内联快照（`content`）与现有去重快照（`blobHash`），至少有一种有效载荷。内联文档也通过完整正文验证。历史章节名/版本名按实际记录保存；旧记录缺少可选字段时不补造。
+`source = ai | user-restore | writing`（其中 `writing` 用于普通写作自动历史：定时快照 `interval` 与大幅修改前 `large-change`）。兼容旧内联快照（`content`）与现有去重快照（`blobHash`），至少有一种有效载荷。内联文档也通过完整正文验证。历史章节名/版本名按实际记录保存；旧记录缺少可选字段时不补造。注：v0.30.0 及更旧版本只允许 `ai | user-restore`，导入包含 `writing` 快照的 `.newworld` 工程时会在校验阶段拒绝，发行说明中需写明这一兼容边界。
 
 `revisionBlobs`：`hash, encoding, data, rawBytes, storedBytes, createdAt`；`encoding = gzip | json`，`data` 是 `bytes` 资源引用。只包含相关历史实际引用的载荷，按 hash 去重。除 ZIP 的 SHA-256 外，解码后再检查原模型 `synchronousContentHash(JSON字符串)` 与 `hash/contentHash`、原始及存储字节数；这是现有双 32 位历史指纹，不能当作密码学完整性校验。gzip 解压也有独立流式限额。
 
