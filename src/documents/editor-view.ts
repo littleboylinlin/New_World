@@ -340,15 +340,19 @@ export async function renderEdition(
   const error = element('p', 'notice notice-error')
   error.setAttribute('role', 'alert')
   error.hidden = true
-  const recover = button(t('editor.discardUnsavedChangesInThisChapter'), 'button button-quiet button-small')
-  recover.hidden = true
+  const saveActions = element('div', 'save-failure-actions')
+  saveActions.hidden = true
+  const retrySave = button(t('editor.retrySave'), 'button button-primary button-small', 'reload')
+  const exportChapter = button(t('editor.exportThisChapter'), 'button button-small', 'download')
+  const recover = button(t('editor.discardUnsavedChangesInThisChapter'), 'button button-quiet button-small save-failure-discard')
+  saveActions.append(retrySave, exportChapter, recover)
   const information = element('details', 'conversion-info')
   information.append(element('summary', '', t('editor.viewConversionNotes')))
   const details = element('ul')
   for (const note of edition.notes) details.append(element('li', '', note))
   information.append(details)
   information.hidden = true
-  notices.append(error, recover, information)
+  notices.append(error, saveActions, information)
 
   // ——— Body: chapter list, text, side panel ———
   // On very wide windows both panels start a little wider; a width the writer dragged to is kept.
@@ -590,7 +594,7 @@ export async function renderEdition(
   function report(cause: unknown, saving = false) {
     error.textContent = t('common.concatenate', [saving ? t('editor.saveFailed') : '', storageError(cause)])
     error.hidden = false
-    recover.hidden = !saving || change === saved
+    saveActions.hidden = !saving || change === saved
     if (saving) status.textContent = t('editor.unsavedFailed')
   }
 
@@ -638,7 +642,7 @@ export async function renderEdition(
           chapter = stored
           saved = checkpoint
           status.textContent = change === saved ? t('editor.saved') : t('editor.unsaved')
-          error.hidden = recover.hidden = true
+          error.hidden = saveActions.hidden = true
           if (change === saved) window.removeEventListener('beforeunload', unsaved)
           return true
         }, (cause) => { report(cause, true); return false }).finally(() => { pending = undefined })
@@ -811,7 +815,7 @@ export async function renderEdition(
     sideTasks.repaint()
     change = saved = 0
     status.textContent = t('editor.saved')
-    error.hidden = recover.hidden = true
+    error.hidden = saveActions.hidden = true
     editor = new Editor({
       element: paper, extensions: [...documentExtensions, SearchHighlight, AnnotationDecorations, AiSuggestions], content: next.content, editable: editing,
       editorProps: {
@@ -918,6 +922,7 @@ export async function renderEdition(
     if (editor.view.composing) throw new Error(t('editor.finishTheCurrentInputFirst'))
     const visible = { title: chapterInfo().title, content: editor.getJSON() as DocumentContent }
     const visibleId = chapter.id
+    if (selectedIds && selectedIds.size === 1 && selectedIds.has(visibleId)) return [visible]
     const hasChanges = change !== saved
     const bundle = await readBundle(edition)
     const infos = bundle.edition.chapters
@@ -1040,20 +1045,27 @@ export async function renderEdition(
       location.hash = bookPath(book.library, book.id, copy.id)
     })
   }
-  function exportVersion() {
+  function exportVersion(onlyCurrent = false) {
     const readWork = async () => {
-      const stored = await readBook(book.library, book.id)
-      if (!stored) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
-      return stored.book
+      try {
+        const stored = await readBook(book.library, book.id)
+        if (stored) return stored.book
+        if (onlyCurrent) return book
+        throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+      } catch (cause) {
+        if (onlyCurrent) return book
+        throw cause
+      }
     }
     void readWork().then((current) => {
       if (signal.aborted) return
-      showExportDialog(root, current.title + ' - ' + edition.name, edition.chapters, async (info) => {
+      const dialogTitle = onlyCurrent ? `${current.title} - ${chapterInfo().title}` : `${current.title} - ${edition.name}`
+      showExportDialog(root, dialogTitle, edition.chapters, async (info) => {
         const content = info.id === chapter.id
           ? editor.getJSON() as DocumentContent
           : (await readChapter(edition, info.id)).content
         return { title: info.title, content }
-      }, currentChapters, readWork)
+      }, currentChapters, readWork, onlyCurrent ? new Set([chapter.id]) : undefined)
     }, (cause) => report(cause))
   }
   function showHistory() {
@@ -1103,7 +1115,7 @@ export async function renderEdition(
       ...(canBrowse() ? [{ label: t('web.open'), icon: 'compare' as const, action: () => splitEditor.openWeb() }] : []),
       { label: editing ? t('editor.readingMode') : t('editor.editText'), icon: editing ? 'book' : 'edit', action: () => { void toggleMode() } },
       { label: t('editor.saveAsASeparateVersion'), icon: 'copy', action: saveCopy },
-      { label: t('editor.export'), icon: 'download', action: exportVersion },
+      { label: t('editor.export'), icon: 'download', action: () => exportVersion() },
       { label: t('revisions.button'), icon: 'history', hint: historyTotal ? String(historyTotal) : undefined, action: showHistory },
       { label: t('tasks.addChapterTask'), icon: 'check', action: chapterTask },
       { label: t('aiAssist.chapterMenu'), icon: 'ai', children: assist.chapterItems },
@@ -1118,6 +1130,11 @@ export async function renderEdition(
     ]
   }, 'more-menu')
 
+  retrySave.addEventListener('click', () => {
+    retrySave.disabled = true
+    void flush().finally(() => { retrySave.disabled = false })
+  })
+  exportChapter.addEventListener('click', () => exportVersion(true))
   recover.addEventListener('click', () => formDialog(root, { title: t('editor.discardUnsavedChanges'), action: t('editor.discardAndReturnToLibrary'), danger: true, description: t('editor.theCurrentUnsavedTextWillBeDiscardedPreviously') }, async () => {
     window.clearTimeout(timer)
     if (pending) await pending

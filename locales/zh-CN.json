@@ -53,6 +53,8 @@
   "editor.export": "导出",
   "editor.deleteVersion": "删除版本",
   "editor.discardUnsavedChangesInThisChapter": "放弃本章未保存改动",
+  "editor.retrySave": "重试",
+  "editor.exportThisChapter": "导出本章",
   "editor.viewConversionNotes": "查看转换说明",
   "editor.chapterList": "章节目录",
   "content.chapters": "章节",

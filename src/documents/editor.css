@@ -129,6 +129,10 @@
 .editor-notices:not(:has(> :not([hidden]))) { display: none; }
 .editor-notices { display: grid; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--hair); }
 .editor-notices .notice { margin: 0; }
+.save-failure-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.save-failure-actions[hidden] { display: none; }
+.save-failure-actions .save-failure-discard { margin-inline-start: auto; border-color: transparent; background: transparent; color: var(--muted); font-weight: 600; }
+.save-failure-actions .save-failure-discard:hover:not(:disabled) { border-color: transparent; color: var(--danger-text); background: color-mix(in srgb, var(--red) 10%, transparent); box-shadow: none; }
 .conversion-info { color: var(--muted); font-size: .85rem; line-height: 1.6; }
 .conversion-info summary { cursor: pointer; font-weight: 700; }
 .conversion-info ul { margin: 5px 0 0; padding-inline-start: 1.4em; }

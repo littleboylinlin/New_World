@@ -53,6 +53,8 @@
   "editor.export": "Export",
   "editor.deleteVersion": "Delete version",
   "editor.discardUnsavedChangesInThisChapter": "Discard unsaved changes in this chapter",
+  "editor.retrySave": "Retry",
+  "editor.exportThisChapter": "Export this chapter",
   "editor.viewConversionNotes": "View conversion notes",
   "editor.chapterList": "Chapter list",
   "content.chapters": "Chapters",

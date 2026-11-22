@@ -14,6 +14,7 @@ export function showExportDialog(
   readPreview: (chapter: ChapterInfo) => Promise<ChapterInput>,
   readSelection: (ids: Set<string>) => Promise<ChapterInput[]>,
   readWork?: () => Promise<WorkExportSource>,
+  initialSelectedIds?: ReadonlySet<string>,
 ) {
   const formats = element('div', 'export-formats')
   formats.setAttribute('role', 'radiogroup')
@@ -56,11 +57,13 @@ export function showExportDialog(
     box.type = 'checkbox'
     box.name = 'chapter'
     box.value = info.id
-    box.checked = true
+    box.checked = initialSelectedIds ? initialSelectedIds.has(info.id) : true
     row.append(box, element('span', '', info.title))
     chapterBox.append(row)
     return box
   })
+  allInput.checked = boxes.every((box) => box.checked)
+  allInput.indeterminate = !allInput.checked && boxes.some((box) => box.checked)
 
   const preview = element('section', 'export-preview')
   preview.setAttribute('aria-label', t('export.exportPreview'))

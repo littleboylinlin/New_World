@@ -220,7 +220,7 @@ test('并发保存不会覆盖，冲突稿可另存并单独删除', async ({ pa
   await other.keyboard.press('Escape')
 })
 
-test('模拟存储空间不足，旧内容保留、当前输入可重试', async ({ page, context }) => {
+test('模拟存储空间不足，旧内容保留、当前输入可重试或导出救稿', async ({ page, context }, testInfo) => {
   await context.addInitScript(() => {
     const put = IDBObjectStore.prototype.put
     IDBObjectStore.prototype.put = function (...args) {
@@ -232,18 +232,60 @@ test('模拟存储空间不足，旧内容保留、当前输入可重试', async
   await newNovel(page, '存储试验')
   await textArea(page).fill('已提交的段落。')
   await manualSave(page)
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(chapterHeading(page)).toHaveText('第二章')
+  await textArea(page).fill('第二章已保存的开头。')
+  await manualSave(page)
+
   await page.evaluate(() => { window.storageFull = true })
   await textArea(page).fill('留在编辑器里的段落。')
   await saveNow(page)
   await expect(status(page)).toContainText('失败')
   await expect(page.getByRole('alert')).toContainText('本地存储空间不足')
+  const retryButton = page.getByRole('button', { name: '重试', exact: true })
+  const exportButton = page.getByRole('button', { name: '导出本章', exact: true })
+  const discardButton = page.getByRole('button', { name: '放弃本章未保存改动', exact: true })
+  await expect(retryButton).toBeVisible()
+  await expect(exportButton).toBeVisible()
+  await expect(discardButton).toBeVisible()
+
+  // Discarding requires secondary confirmation; cancelling keeps the unsaved draft intact.
+  await discardButton.click()
+  const confirmDiscard = page.getByRole('dialog', { name: '放弃未保存的改动？' })
+  await expect(confirmDiscard).toBeVisible()
+  await confirmDiscard.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(confirmDiscard).toBeHidden()
+  await expect(textArea(page)).toHaveText('留在编辑器里的段落。')
+
+  // Exporting this chapter pre-selects only the open chapter and exports the unsaved draft.
+  await exportButton.click()
+  const exportDialog = page.getByRole('dialog', { name: '导出编辑稿' })
+  await expect(exportDialog).toBeVisible()
+  await expect(exportDialog.getByRole('checkbox', { name: '第一章' })).not.toBeChecked()
+  await expect(exportDialog.getByRole('checkbox', { name: '第二章' })).toBeChecked()
+  await exportDialog.getByRole('radio', { name: 'TXT', exact: true }).check()
+  await expect(exportDialog.getByRole('region', { name: '导出预览' })).toContainText('留在编辑器里的段落。')
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    exportDialog.getByRole('button', { name: '开始导出', exact: true }).click(),
+  ])
+  const rescuedPath = testInfo.outputPath('rescued-chapter.txt')
+  await download.saveAs(rescuedPath)
+  const rescued = await readFile(rescuedPath, 'utf8')
+  expect(rescued).toContain('留在编辑器里的段落。')
+  expect(rescued).not.toContain('已提交的段落。')
+
   const verifier = await context.newPage()
   await verifier.goto(page.url())
-  await expect(textArea(verifier)).toHaveText('已提交的段落。')
+  await expect(textArea(verifier)).toHaveText('第二章已保存的开头。')
   await verifier.close()
   await expect(textArea(page)).toHaveText('留在编辑器里的段落。')
   await page.evaluate(() => { window.storageFull = false })
-  await manualSave(page)
+  await retryButton.click()
+  await expect(status(page)).toHaveText('已保存')
+  await expect(retryButton).toBeHidden()
   await page.reload()
   await expect(textArea(page)).toHaveText('留在编辑器里的段落。')
 })
