@@ -115,7 +115,6 @@ test('旧复杂重复规则（按月/间隔/结束日）行内编辑时不丢失
   await page.getByRole('button', { name: '双月结算审稿', exact: true }).click()
   const card = page.locator(`[data-task-id="${id}"] .task-card`)
   await expect(card.getByLabel('重复规则', { exact: true })).toHaveValue('__legacy__')
-  await expect(card.locator('.task-legacy-note')).toBeVisible()
 
   // Editing notes preserves the legacy complex repeat rule and deadline untouched.
   await card.getByLabel('任务备注', { exact: true }).fill('编辑备注不影响旧重复')

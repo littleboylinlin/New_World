@@ -115,11 +115,10 @@ test('多日历史计算连续天数、峰值分级、过去日期提示与键�
   await expect(tooltip(page)).toBeVisible()
 })
 
-test('空库显示引导提示，格子总数固定且没有高等级色块', async ({ page }) => {
+test('空库格子总数固定且没有高等级色块，不显示说明文字', async ({ page }) => {
   await page.goto('/')
   await ready(page)
-  await expect(page.locator('.stats-hint')).toBeVisible()
-  await expect(page.locator('.stats-hint')).toContainText('开始写作后')
+  await expect(page.locator('.stats-hint')).toHaveCount(0)
   await expect(total(page)).toHaveText('0')
   await expect(streak(page)).toHaveText('0')
   await expect(todayCell(page)).toHaveAttribute('data-level', '0')
@@ -212,7 +211,6 @@ test('英文界面显示英文统计文案与提示', async ({ page }) => {
   await expect(page.locator('.writing-stats')).toHaveAttribute('aria-label', 'Writing stats')
   await expect(page.locator('.stat-streak .stat-label')).toHaveText('Day streak')
   await expect(page.locator('.stat-total .stat-label')).toHaveText('Total words')
-  await expect(page.locator('.stats-hint')).toContainText('Start writing')
   await todayCell(page).hover()
   await expect(tooltip(page)).toContainText('Today · No writing')
 })
