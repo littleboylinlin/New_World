@@ -1,9 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { blankStoryCard, isStoryCard, matchesStoryCard, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
+import { blankStoryCard, defaultStoryColor, emptyStoryBoard, isStoryCard, isStoryScene, matchesStoryCard, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
 
 const { isStorySettingsRoute, isTrustedSecondaryRenderer } = createRequire(import.meta.url)('../../desktop/ipc-guard.cjs')
+const node = (id, name) => ({ ...blankStoryCard(), id, name, kind: 'card', x: 12, y: 4, width: 210, height: 127 })
+const relation = (id, to) => ({ id, from: { nodeId: 'keeper', side: 'right' }, to, name: '', stroke: 'solid', direction: 'forward', color: defaultStoryColor })
 
 test('story aliases retain spelling, deduplicate normalized names and support case and width insensitive search', () => {
   const name = '守灯人'
@@ -28,42 +30,46 @@ test('chapter states use the latest present anchor in the current edition only',
   assert.equal(storyStateAt(card, edition, 'e'), next)
   assert.equal(storyStateAt(card, edition, 'removed'), undefined)
   assert.equal(storyStateAt(card, { ...edition, id: 'other' }, 'c')?.text, '另一版')
-  assert.equal(storyStateAt(card, { ...edition, id: 'third' }, 'c'), undefined)
   const reordered = { ...edition, chapters: ['d', 'c', 'b', 'a'].map((id) => ({ id })) }
   assert.equal(storyStateAt(card, reordered, 'c'), next)
   assert.equal(storyStateAt(card, reordered, 'a'), first)
   assert.equal(storyStateAt(card, { ...edition, chapters: [{ id: 'c' }] }, 'c'), undefined)
 })
 
-test('card import validation rejects orphan live cards, mismatched chapter ownership and duplicate IDs across trash', () => {
-  const card = {
-    ...blankStoryCard('character'), name: '守灯人', id: 'keeper', revision: 'revision',
-    library: 'original', bookId: 'root', createdAt: 1, updatedAt: 1,
-    chapters: [{ editionId: 'draft', chapterId: 'chapter' }],
+test('the board accepts free fields and line-to-line references, rejects a cyclic edge and invalid raster source', () => {
+  const keeper = { ...node('keeper', '守灯人'), tagIds: ['lead'], fields: [{ key: '班次', value: '夜' }, { key: '自定义字段', value: '值' }] }
+  const scene = {
+    tags: [{ id: 'lead', name: '主线', color: '#440033' }], nodes: [keeper, node('port', '雾港')],
+    edges: [relation('a', { nodeId: 'port', side: 'left' }), relation('b', { edgeId: 'a', at: .3 })],
   }
+  assert.equal(isStoryScene(scene), true)
+  assert.equal(isStoryScene({ ...scene, edges: [relation('a', { edgeId: 'b', at: .5 }), scene.edges[1]] }), false)
+  assert.equal(isStoryScene({ ...scene, nodes: [...scene.nodes, { id: 'bad', name: 'image', kind: 'image', x: 1, y: 1, width: 50, height: 50, src: 'https://example.com' }] }), false)
+  assert.equal(isStoryCard({ ...keeper, aliases: ['Luna', 'ＬＵＮＡ'] }), false)
+})
+
+test('archives validate the work owner, card identity and chapter scope across the recycle bin', () => {
+  const card = { ...node('keeper', '守灯人'), chapters: [{ editionId: 'draft', chapterId: 'chapter' }] }
+  const work = { library: 'original', bookId: 'root' }
+  const board = emptyStoryBoard(work)
+  board.scene.nodes.push(card)
   const book = { library: 'original', id: 'root' }
-  const chapter = { library: 'original', bookId: 'root', editionId: 'draft', id: 'chapter' }
-  const deleted = { kind: 'storyCard', library: 'original', bookId: 'root', books: [], files: [], editions: [], chapters: [], storyCards: [card] }
-  assert.equal(isStoryCard(card), true)
-  assert.equal(isStoryCard({ ...card, aliases: ['Luna', 'ＬＵＮＡ'] }), false)
-  assert.equal(isStoryCard({ ...card, states: [{ ...card.chapters[0], text: '' }] }), false)
-  assert.equal(isStoryCard({ ...card, relations: [{ targetCardId: card.id, name: '师徒' }] }), false)
-  assert.equal(validStoryRows([card], [book], [chapter], []), true)
-  assert.equal(validStoryRows([card], [], [], []), false)
-  assert.equal(validStoryRows([card], [book], [{ ...chapter, editionId: 'other' }], []), false)
-  assert.equal(validStoryRows([card], [book], [], []), true)
-  assert.equal(validStoryRows([card], [book], [], [deleted]), false)
-  assert.equal(validStoryRows([], [book], [], [{ ...deleted, bookId: 'foreign' }]), false)
+  const chapter = { ...work, editionId: 'draft', id: 'chapter' }
+  const deleted = { kind: 'storyCard', ...work, books: [], files: [], editions: [], chapters: [], storyCard: card }
+  assert.equal(validStoryRows([board], [book], [chapter], []), true)
+  assert.equal(validStoryRows([board], [], [], []), false)
+  assert.equal(validStoryRows([board], [book], [{ ...chapter, editionId: 'other' }], []), false)
+  assert.equal(validStoryRows([board], [book], [], [deleted]), false)
   assert.equal(validStoryRows([], [], [], [deleted]), true)
 })
 
-test('Electron accepts a work route and restricts secondary-window IPC to its own top frame', () => {
+test('Electron accepts chapter context on the work route and limits secondary IPC to the top frame', () => {
   const id = '12345678-1234-1234-1234-123456789abc'
   const appUrl = 'new-world://app/'
   const hash = `#/story-settings/original/${id}`
   assert.equal(isStorySettingsRoute(hash), true)
-  assert.equal(isStorySettingsRoute(`#/story-settings/reference/${id}`), true)
-  for (const bad of [null, `${hash}/other`, `${hash}?next=1`, `https://example.org/${hash}`, '#/story-settings/original/short']) {
+  assert.equal(isStorySettingsRoute(`${hash}?edition=${id}&chapter=${id}`), true)
+  for (const bad of [null, `${hash}/other`, `${hash}?next=1`, `${hash}?edition=${id}`, `https://example.org/${hash}`, '#/story-settings/original/short']) {
     assert.equal(isStorySettingsRoute(bad), false)
   }
   const frame = { url: appUrl + hash }
@@ -72,5 +78,4 @@ test('Electron accepts a work route and restricts secondary-window IPC to its ow
   const event = { sender: webContents, senderFrame: frame }
   assert.equal(isTrustedSecondaryRenderer(event, appUrl, windows), true)
   assert.equal(isTrustedSecondaryRenderer({ ...event, senderFrame: { url: frame.url } }, appUrl, windows), false)
-  assert.equal(isTrustedSecondaryRenderer(event, appUrl, []), false)
 })

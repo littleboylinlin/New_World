@@ -61,7 +61,7 @@ test('从旧书库启动，浏览两类作品、灵感与任务保留全部记�
   await page.locator('.task-nav a[href="#/notes/tasks/later"]').click()
   await expect(page.locator('.task-title')).toHaveText('核对雾港的潮汐表')
   // Existing rows survive the upgrade and the new stores start empty.
-  expect(await page.evaluate(databaseSnapshot)).toEqual({ ...before, writingStyles: [], storyCards: [] })
+  expect(await page.evaluate(databaseSnapshot)).toEqual({ ...before, writingStyles: [], storyBoards: [] })
 })
 
 test('侧栏按顺序接受键盘焦点，标记当前页，记住宽度，在作品内暂时收起', async ({ page }) => {

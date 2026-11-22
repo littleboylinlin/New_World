@@ -2,6 +2,8 @@ import { t } from './i18n'
 import { maxChapters } from './documents/model'
 import type { Edition } from './documents/model'
 import { announceIdeas } from './ideas'
+import { emptyStoryBoard, isStoryScene } from './story-settings/model'
+import type { StoryBoard } from './story-settings/model'
 import { announceStoryChange } from './story-settings/changes'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
 import type { Book, TrashEntry } from './library'
@@ -40,7 +42,7 @@ export async function restoreTrash(id: string) {
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
   const ideas = tx.objectStore('ideas')
-  const cards = tx.objectStore('storyCards')
+  const boards = tx.objectStore('storyBoards')
   const trash = tx.objectStore('trash')
   const { step, done } = writing<{ entry: TrashEntry; edition?: Edition }>(tx)
   const request = trash.get(id)
@@ -60,17 +62,23 @@ export async function restoreTrash(id: string) {
       for (const file of entry.files) files.add(file)
       for (const edition of entry.editions) editions.add(edition)
       for (const chapter of entry.chapters) chapters.add(chapter)
-      for (const card of entry.storyCards ?? []) cards.add(card)
+      if (entry.storyBoard) boards.add({ ...entry.storyBoard, revision: crypto.randomUUID() })
       return { entry }
     }
 
     const owner = books.get(key)
     if (entry.kind === 'storyCard') {
-      owner.onsuccess = step(() => {
+      const stored = boards.get(key)
+      stored.onsuccess = step(() => {
         if (!owner.result || owner.result.workId) throw new Error(t('trash.theParentWorkIsNoLongerInThe'))
-        const card = entry.storyCards?.[0]
+        const card = entry.storyCard
         if (!card) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
-        cards.add({ ...card, revision: crypto.randomUUID() })
+        const board: StoryBoard = stored.result ?? emptyStoryBoard({ library: entry.library, bookId: entry.bookId })
+        const tags = new Set(board.scene.tags.map(({ id }) => id))
+        const restored = { ...card, tagIds: card.tagIds.filter((id) => tags.has(id)) }
+        const scene = { ...board.scene, nodes: [...board.scene.nodes, restored] }
+        if (!isStoryScene(scene)) throw new Error(t('story.invalidScene'))
+        boards.put({ ...board, scene, revision: crypto.randomUUID() })
         return { entry }
       })
       return { entry }

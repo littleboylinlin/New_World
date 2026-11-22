@@ -9,7 +9,7 @@ import { MetadataError, validateWorkMetadata } from './work-metadata'
 import type { WorkMetadata } from './work-metadata'
 import { taskStores, TaskDataError } from './tasks/model'
 import { announceStoryChange } from './story-settings/changes'
-import type { StoryCard } from './story-settings/model'
+import type { StoryBoard, StoryCard } from './story-settings/model'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -59,7 +59,8 @@ export interface TrashEntry {
   editions: Edition[]
   chapters: ChapterRecord[]
   ideas?: Idea[]
-  storyCards?: StoryCard[]
+  storyBoard?: StoryBoard
+  storyCard?: StoryCard
   position?: { editionId: string; index: number }
 }
 
@@ -130,7 +131,7 @@ export interface AiChapterBaseline {
 }
 
 export const libraryChanges = new EventTarget()
-export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash', 'storyCards']
+export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash', 'storyBoards']
 
 let connection: Promise<IDBDatabase> | undefined
 export const maxTitleLength = 255
@@ -138,7 +139,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 12)
+    const request = indexedDB.open('new-world-library', 13)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -194,11 +195,8 @@ export function openDatabase() {
       if (event.oldVersion < 10) request.transaction!.objectStore('trash').createIndex('byDeletedAt', 'deletedAt')
       // Writing styles for the AI, and which style each work uses by default. Backups carry them.
       if (event.oldVersion < 11) db.createObjectStore('writingStyles', { keyPath: 'id' })
-      if (event.oldVersion < 12) {
-        const cards = db.createObjectStore('storyCards', { keyPath: ['library', 'bookId', 'id'] })
-        cards.createIndex('byBook', ['library', 'bookId'])
-        request.transaction!.objectStore('trash').createIndex('byWorkKind', ['library', 'bookId', 'kind'])
-      }
+      if (event.oldVersion < 12) request.transaction!.objectStore('trash').createIndex('byWorkKind', ['library', 'bookId', 'kind'])
+      if (event.oldVersion < 13) db.createObjectStore('storyBoards', { keyPath: ['library', 'bookId'] })
     }
     request.onsuccess = () => {
       const db = request.result
@@ -440,7 +438,7 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
   const files = tx.objectStore('files')
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
-  const cards = tx.objectStore('storyCards')
+  const boards = tx.objectStore('storyBoards')
   const key = [library, id]
   const { step, done } = writing<TrashEntry>(tx)
   const conflictMsg = 'The target work changed before confirmation completed; nothing was deleted.'
@@ -458,8 +456,8 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
     const storedFiles = owned.map((book) => files.get([library, book.id]))
     const storedEditions = editions.index('byBook').getAll(key)
     const storedChapters = chapters.index('byBook').getAll(key)
-    const storedCards = cards.index('byBook').getAll(key)
-    storedCards.onsuccess = step(() => {
+    const storedBoard = boards.get(key)
+    storedBoard.onsuccess = step(() => {
       if (owned.some((book, i) => book.format !== 'draft' && !storedFiles[i].result)) {
         throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
       }
@@ -474,15 +472,14 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
       entry.files = storedFiles.map((request) => request.result).filter(Boolean)
       entry.editions = editionRows
       entry.chapters = chapterRows
-      const storyCards: StoryCard[] = storedCards.result
-      if (storyCards.length) entry.storyCards = storyCards
+      if (storedBoard.result) entry.storyBoard = storedBoard.result
       for (const book of owned) {
         books.delete([library, book.id])
         files.delete([library, book.id])
       }
       for (const edition of entry.editions) editions.delete([library, id, edition.id])
       for (const chapter of entry.chapters) chapters.delete([library, id, chapter.editionId, chapter.id])
-      for (const card of storyCards) cards.delete([...key, card.id])
+      boards.delete(key)
       tx.objectStore('trash').add(entry)
       return entry
     })

@@ -627,9 +627,13 @@ function trayMenu() {
 const storyWindows = new Map()
 ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
   if (!trustedMainRenderer(event) || !isStorySettingsRoute(hash)) throw new Error(t('main.invalidSettingsRequest'))
-  const existing = storyWindows.get(hash)
+  const key = hash.split('?')[0]
+  const existing = storyWindows.get(key)
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore()
+    const update = () => { if (!existing.isDestroyed()) existing.webContents.send('new-world:story-context', hash) }
+    if (existing.webContents.isLoadingMainFrame()) existing.webContents.once('did-finish-load', update)
+    else update()
     existing.focus()
     return
   }
@@ -640,8 +644,8 @@ ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
   })
   if (process.platform !== 'darwin') window.setMenuBarVisibility(false)
   harden(window.webContents, window, false)
-  storyWindows.set(hash, window)
-  window.on('closed', () => storyWindows.delete(hash))
+  storyWindows.set(key, window)
+  window.on('closed', () => storyWindows.delete(key))
   try {
     await window.loadURL(`${appUrl}${hash}`)
   } catch (error) {

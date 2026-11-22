@@ -1,101 +1,101 @@
 import { t } from '../i18n'
-import { openDatabase, resultOf, trashEntry, writing } from '../library'
+import { openDatabase, resultOf, writing } from '../library'
 import type { Book, TrashEntry } from '../library'
 import type { Edition } from '../documents/model'
 import { announceStoryChange } from './changes'
-import { isStoryCard, storyChapterKey, uniqueAliases } from './model'
-import type { StoryCard, StoryCardInput, StoryWork } from './model'
+import { emptyStoryBoard, isStoryScene, isStoryView, storyCards, storyChapterKey } from './model'
+import type { StoryBoard, StoryScene, StoryView, StoryWork } from './model'
 
-const workKey = (work: StoryWork) => [work.library, work.bookId]
-const cardKey = (card: StoryCard) => [...workKey(card), card.id]
+const keyOf = (work: StoryWork) => [work.library, work.bookId]
 
-export async function listStoryCards(work: StoryWork): Promise<StoryCard[]> {
+export async function listStoryCards(work: StoryWork) {
   const db = await openDatabase()
-  return resultOf(db.transaction('storyCards').objectStore('storyCards').index('byBook').getAll(workKey(work)))
+  const board: StoryBoard | undefined = await resultOf(db.transaction('storyBoards').objectStore('storyBoards').get(keyOf(work)))
+  return board ? storyCards(board.scene) : []
 }
 
 export async function readStorySettings(work: StoryWork) {
   const db = await openDatabase()
-  const tx = db.transaction(['books', 'editions', 'storyCards', 'trash'])
-  const key = workKey(work)
-  const [book, editions, cards, trash]: [Book | undefined, Edition[], StoryCard[], TrashEntry[]] = await Promise.all([
+  const tx = db.transaction(['books', 'editions', 'storyBoards', 'trash'])
+  const key = keyOf(work)
+  const [book, editions, board, trash]: [Book | undefined, Edition[], StoryBoard | undefined, TrashEntry[]] = await Promise.all([
     resultOf(tx.objectStore('books').get(key)),
     resultOf(tx.objectStore('editions').index('byBook').getAll(key)),
-    resultOf(tx.objectStore('storyCards').index('byBook').getAll(key)),
+    resultOf(tx.objectStore('storyBoards').get(key)),
     resultOf(tx.objectStore('trash').index('byWorkKind').getAll([...key, 'storyCard'])),
   ])
   return {
-    book: book?.workId ? undefined : book,
+    book: book?.workId ? undefined : book, board: board ?? emptyStoryBoard(work),
     editions: editions.sort((a, b) => a.createdAt - b.createdAt || a.name.localeCompare(b.name)),
-    cards,
-    trash: trash.sort((a, b) => b.deletedAt - a.deletedAt),
+    trash: trash.filter((entry) => entry.storyCard).sort((a, b) => b.deletedAt - a.deletedAt),
   }
 }
 
-/** Validates new links and checks the expected revision in the same transaction as the write. */
-export async function saveStoryCard(work: StoryWork, input: StoryCardInput, previous?: Pick<StoryCard, 'id' | 'revision'>) {
-  const now = Date.now()
-  const card: StoryCard = {
-    ...structuredClone(input), library: work.library, bookId: work.bookId,
-    id: previous?.id ?? crypto.randomUUID(), revision: crypto.randomUUID(), createdAt: now, updatedAt: now,
-  }
-  card.name = card.name.trim()
-  card.aliases = uniqueAliases(card.name, card.aliases)
-  card.relations.forEach((relation) => { relation.name = relation.name.trim() })
-  if (!isStoryCard(card)) throw new Error(t('story.invalidCard'))
+interface TrashChanges {
+  add?: TrashEntry[]
+  remove?: TrashEntry[]
+}
+
+export async function saveStoryScene(work: StoryWork, revision: string, scene: StoryScene, changes: TrashChanges = {}) {
+  if (!isStoryScene(scene)) throw new Error(t('story.invalidScene'))
   const db = await openDatabase()
-  const tx = db.transaction(['books', 'editions', 'storyCards'], 'readwrite', { durability: 'strict' })
-  const cards = tx.objectStore('storyCards')
-  const { step, done } = writing<StoryCard>(tx)
-  const owner = tx.objectStore('books').get(workKey(work))
-  const stored = previous ? cards.get(cardKey(card)) : undefined
-  const targetIds = new Set(card.relations.map(({ targetCardId }) => targetCardId))
-  const targets = [...targetIds].map((id) => [id, cards.get([...workKey(work), id])] as const)
-  const editions = tx.objectStore('editions').index('byBook').getAll(workKey(work))
+  const tx = db.transaction(['books', 'editions', 'storyBoards', 'trash'], 'readwrite', { durability: 'strict' })
+  const boards = tx.objectStore('storyBoards')
+  const trash = tx.objectStore('trash')
+  const key = keyOf(work)
+  const { step, done } = writing<StoryBoard>(tx)
+  const owner = tx.objectStore('books').get(key)
+  const stored = boards.get(key)
+  const removed = (changes.remove ?? []).map((entry) => ({ entry, request: trash.get(entry.id) }))
+  const editions = tx.objectStore('editions').index('byBook').getAll(key)
   editions.onsuccess = step(() => {
     const book: Book | undefined = owner.result
-    if (!book || book.workId) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
-    const current: StoryCard | undefined = stored?.result
-    if (previous && current?.revision !== previous.revision) throw new Error(t('story.conflict'))
-    const linksWere = new Set(current?.chapters.map(storyChapterKey))
-    const statesWere = new Set(current?.states.map(storyChapterKey))
-    const chapters = new Map((editions.result as Edition[]).map((edition) => [edition.id, new Set(edition.chapters.map(({ id }) => id))]))
-    const chapterExists = (ref: StoryCardInput['chapters'][number]) => chapters.get(ref.editionId)?.has(ref.chapterId)
-    if (card.chapters.some((ref) => !linksWere.has(storyChapterKey(ref)) && !chapterExists(ref))
-      || card.states.some((ref) => !statesWere.has(storyChapterKey(ref)) && !chapterExists(ref))) {
-      throw new Error(t('story.chapterUnavailable'))
+    if (!book || book.workId) throw new Error(t('story.workUnavailable'))
+    const current: StoryBoard = stored.result ?? emptyStoryBoard(work)
+    if (current.revision !== revision) throw new Error(t('story.conflict'))
+    const previous = new Map(storyCards(current.scene).map((card) => [card.id, card]))
+    const restored = new Map<string, NonNullable<TrashEntry['storyCard']>>()
+    for (const { entry, request } of removed) {
+      const existing = request.result as TrashEntry | undefined
+      if (!existing?.storyCard || existing.bookId !== work.bookId || existing.library !== work.library || existing.storyCard.id !== entry.storyCard?.id) {
+        throw new Error(t('story.conflict'))
+      }
+      restored.set(existing.storyCard.id, existing.storyCard)
+      trash.delete(existing.id)
     }
-    const targetsWere = new Set(current?.relations.map((relation) => relation.targetCardId))
-    for (const [id, request] of targets) {
-      if (!request.result && !targetsWere.has(id)) throw new Error(t('story.cardUnavailable'))
+    const liveChapters = new Set((editions.result as Edition[]).flatMap((edition) =>
+      edition.chapters.map(({ id }) => storyChapterKey({ editionId: edition.id, chapterId: id }))))
+    for (const card of storyCards(scene)) {
+      const old = previous.get(card.id) ?? restored.get(card.id)
+      const prior = new Set([...(old?.chapters ?? []), ...(old?.states ?? [])].map(storyChapterKey))
+      // A chapter that was recycled after linking stays attached by its stable ID.
+      if ([...card.chapters, ...card.states].some((ref) => {
+        const key = storyChapterKey(ref)
+        return !prior.has(key) && !liveChapters.has(key)
+      })) throw new Error(t('story.chapterUnavailable'))
     }
-    if (current) {
-      card.createdAt = current.createdAt
-      cards.put(card)
-    } else cards.add(card)
-    return card
+    for (const entry of changes.add ?? []) trash.add(entry)
+    const next = { ...current, revision: crypto.randomUUID(), scene }
+    boards.put(next)
+    return next
   })
   const saved = await done()
   announceStoryChange(work)
   return saved
 }
 
-export async function deleteStoryCard(card: StoryCard) {
+/** Save the last view independently of edits, including while another tab is writing to the board. */
+export async function saveStoryView(work: StoryWork, view: StoryView) {
+  if (!isStoryView(view)) return
   const db = await openDatabase()
-  const tx = db.transaction(['storyCards', 'trash'], 'readwrite', { durability: 'strict' })
-  const cards = tx.objectStore('storyCards')
-  const { step, done } = writing<TrashEntry>(tx)
-  const request = cards.get(cardKey(card))
-  request.onsuccess = step(() => {
-    const current: StoryCard | undefined = request.result
-    if (!current || current.revision !== card.revision) throw new Error(t('story.conflict'))
-    const entry = trashEntry('storyCard', current.library, current.bookId, current.name)
-    entry.storyCards = [current]
-    tx.objectStore('trash').add(entry)
-    cards.delete(cardKey(current))
-    return entry
+  const tx = db.transaction(['books', 'storyBoards'], 'readwrite')
+  const boards = tx.objectStore('storyBoards')
+  const key = keyOf(work)
+  const owner = tx.objectStore('books').get(key)
+  const stored = boards.get(key)
+  const { step, done } = writing<void>(tx)
+  stored.onsuccess = step(() => {
+    if (owner.result && !owner.result.workId) boards.put({ ...(stored.result ?? emptyStoryBoard(work)), view })
   })
-  const entry = await done()
-  announceStoryChange(card)
-  return entry
+  await done()
 }

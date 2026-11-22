@@ -330,7 +330,7 @@ export async function renderEdition(
   sideButton.append(ideasCount)
   const moreButton = tool(t('editor.moreActions'), 'more', () => {}, undefined, 'more-toggle')
   const storyWork = { library: edition.library, bookId: edition.bookId }
-  const openSettings = () => { void openStorySettings(storyWork).catch(report) }
+  const openSettings = () => { void openStorySettings(storyWork, { editionId: edition.id, chapterId: chapter.id }).catch(report) }
   const storyButton = tool(t('story.entry'), 'cards', openSettings, undefined, 'story-toggle')
   const storyCount = element('span', 'trash-count')
   storyCount.setAttribute('aria-hidden', 'true')

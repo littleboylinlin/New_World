@@ -41,10 +41,10 @@ tasks/sections.json
 tasks/labels.json
 tasks/completions.json
 tasks/attachments.json
-story-cards/index.json            # 自 Schema 4 起必需
+story/boards.json            # 自 Schema 4 起必需
 ```
 
-Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项。Schema 4 再增加一个卡片索引。各项均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
+Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项。Schema 4 再增加一个画布索引。各项均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
 
 ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只能使用小写字母、数字、`-`、`.`、`/`。路径分段不得为空、`.`、`..`；禁止反斜线、驱动器、绝对路径、NUL、URI 和百分号编码。永远不将归档解压到本机路径，也不执行其中任何内容。
 
@@ -60,10 +60,10 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 | `createdAt` | 非负安全整数，导出时间，Unix 毫秒 |
 | `root` | `{ "library": "original" 或 "reference", "id": "作品 UUID" }` |
 | `records` | 下述固定表名与索引路径的对象 |
-| `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[], tasks: string[], cards: string[] }`（`tasks` 自 Schema 3 起必需，`cards` 自 Schema 4 起必需） |
+| `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[], tasks: string[], canvas: string[] }`（`tasks` 自 Schema 3 起必需，`canvas` 自 Schema 4 起必需） |
 | `resources` | 全部索引及二进制资源的清单（不含 manifest 自身） |
 
-`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。Schema 4 还要求 `storyCards → story-cards/index.json`。
+`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。Schema 4 还要求 `storyBoards → story/boards.json`。
 
 每项资源必填：
 
@@ -79,7 +79,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 `kind` 只允许 `json`、`blob`、`bytes`；`bytes` 是精确字节数，不是压缩后长度。`mediaType` 是原 Blob 的类型，允许空字符串。索引文件必须是 `json`。
 
-`detached` 是**真实引用但已不存在记录**的 ID 集合，每组排序且唯一。读取器根据全部数据重新计算并比对，不接受多余或遗漏项。它保存已删除原文的 `originalId`、已删版本的 `copiedFrom`、旧历史的目标以及灵感历史的外部作品引用。Schema 4 也保留已永久删除的卡片目标和章节锚点。当前存活章节必须与编辑版本目录双向一致，不能以 detached 豁免缺失正文。历史目标仍在本作品回收站时，导入后可先恢复真实的父版本/章节再恢复历史；若原库早已没有目标记录，保留历史与断开的身份，不能承诺凭空恢复原来不存在的父级。
+`detached` 是**真实引用但已不存在记录**的 ID 集合，每组排序且唯一。读取器根据全部数据重新计算并比对，不接受多余或遗漏项。它保存已删除原文的 `originalId`、已删版本的 `copiedFrom`、旧历史的目标以及灵感历史的外部作品引用。Schema 4 也保留已永久删除的画布元素引用和章节锚点。当前存活章节必须与编辑版本目录双向一致，不能以 detached 豁免缺失正文。历史目标仍在本作品回收站时，导入后可先恢复真实的父版本/章节再恢复历史；若原库早已没有目标记录，保留历史与断开的身份，不能承诺凭空恢复原来不存在的父级。
 
 ## 3. 索引记录与类型
 
@@ -249,22 +249,22 @@ Schema 3 在 Schema 2 的作品/元数据规范之上增加六个任务表及 `d
 Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再在内存中正规化六个空任务表和空 detached.tasks。原文件字节和任务数据保持原样。v0.18.1 及更早版本不能读取六个任务表。
 
 
-## 9. Schema 4 设定卡片
+## 9. Schema 4 故事设定画布
 
-`storyCards` 表保存当前作品的活动卡片。删除的卡片随 `trash` 表中的 `kind: "storyCard"` 记录导出。该记录的 `storyCards` 数组含一张属于同一作品的卡片，其他内容数组为空。全库备份也在 `storyCards` 中保存活动卡片，作品回收记录内的 `storyCards` 保存删除作品时一同移出的卡片。
+`storyBoards` 每部作品最多有一行，字段为 `library, bookId, revision, scene, view`。`scene` 包含 `nodes, edges, tags`。`view` 是 `{ x, y, zoom }`。节点使用画布坐标，视角的 `x, y` 为屏幕偏移，缩放在 0.15 到 4 之间。工程副本保留几何和视角，重映射作品、章节、画布元素、连线和标签 ID。
 
-| 字段 | 类型与含义 |
+| 元素 | 字段及语义 |
 | --- | --- |
-| `library, bookId, id` | 卡片归属和稳定 ID，三者一起构成本地记录键 |
-| `revision, createdAt, updatedAt` | 修订令牌和创建、更新时间 |
-| `category` | `character`、`location`、`faction`、`item` 或 `rule` |
-| `name, aliases` | 名称与有序别名数组，名称和每个别名为 1–255 字符，最多 100 个别名。同一卡片按 Unicode NFKC 和大小写折叠去重，保留输入拼写 |
-| `fields` | 常用字段对象。键取自 `role, appearance, motivation, region, features, leader, goal, owner, use, conditions, consequence`，每项最多 500 字符 |
-| `summary, details` | 两段独立的纯文本，最多 500 和 20,000 字符 |
-| `chapters` | `{ editionId, chapterId }` 数组，最多 200 项，同一卡片内唯一 |
-| `states` | `{ editionId, chapterId, text }` 数组，最多 200 项，每个起点唯一，状态文本最多 2,000 字符 |
-| `relations` | `{ targetCardId, name }` 数组，最多 200 项，目标与规范化关系名的组合唯一 |
+| 节点共有 | `id, kind, x, y, width, height` |
+| `kind: "card"` | `name, aliases, tagIds, fields, body, chapters, states`。名称必填。别名按 Unicode NFKC 和大小写去重。字段为有序的 `{ key, value }` 纯文本数组 |
+| `kind: "text"` | `text` |
+| `kind: "group"` | `name`。拖动分组框时，其内部完整落在框内的元素随框一起移动 |
+| `kind: "image"` | `name, src`。`src` 为本地嵌入的 PNG、JPEG、GIF 或 WebP 数据，单张最多 4 MiB |
+| 标签 | `id, name, color`，颜色为六位十六进制色值 |
+| 连线 | `id, from, to, name, direction, stroke, color`。节点端点使用 `{ nodeId, side }`。线上的端点使用 `{ edgeId, at }`，`at` 为从源端起算的线段比例。方向可为 `forward`、`back`、`both` 或 `none`。线型可为 `solid`、`dash` 或 `dot` |
 
-章节状态以同一编辑版本的当前目录顺序为准，取当前章节或此前最近的有效状态起点。删除章节或目标卡片会让引用暂时不可用，恢复相同 ID 后重新关联。永久删除后，工程仍保留对原身份的引用，作者可在卡片面板移除。副本导入同时重映射卡片 ID、关系目标、版本和章节 ID，保留名称、别名和其他文本。
+章节链接为 `{ editionId, chapterId }`，章节状态在此基础上含有 `text`。状态按照同一编辑版本的目录顺序，从锚点所在章节生效。章名变化与章节重排使用同一章节 ID。
 
-Schema 1–3 导入时，卡片索引与 `detached.cards` 在内存中为空。Schema 4 全量导出时包含空索引和空字段。
+卡片删除时，`kind: "storyCard"` 的回收记录携带 `storyCard`，含原始位置和内容。连线留在画布中，端点恢复后可再次显示。永久删除造成的缺失端点 ID 纳入 `detached.canvas`；尚在回收站的端点保持对应的卡片 ID。备份中的整部作品回收记录可以携带完整 `storyBoard`。
+
+Schema 1–3 导入时，`storyBoards` 和 `detached.canvas` 在内存中为空。Schema 4 保存这两个字段，空内容对应空数组。

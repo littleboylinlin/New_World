@@ -56,7 +56,7 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
       }
     })
   })
-  for (const name of ['editions', 'chapters', 'revisions', 'aiBaselines', 'storyCards'] as const) {
+  for (const name of ['editions', 'chapters', 'revisions', 'aiBaselines'] as const) {
     const q = tx.objectStore(name).index('byBook').getAll([root.library, root.id])
     q.onsuccess = () => {
       ;(data[name] as unknown[]) = q.result
@@ -70,6 +70,8 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
       }
     }
   }
+  const board = tx.objectStore('storyBoards').get([root.library, root.id])
+  board.onsuccess = () => { if (board.result) data.storyBoards.push(board.result) }
   await committed(tx)
   // Task ownership is explicit and uniform throughout each subtree. Never pull a personal parent.
   data.tasks=data.tasks.filter(t=>t.link&&!t.link.unconfirmed&&t.link.library===root.library&&t.link.bookId===root.id)
@@ -130,9 +132,10 @@ export function copyProject(contents: ProjectContents, reserved = new Set<string
     if (!value || typeof value !== 'object' || value instanceof Blob || value instanceof Uint8Array) return
     if (Array.isArray(value)) { value.forEach(walk); return }
     for (const [k, v] of Object.entries(value)) {
+      if (k === 'tagIds' && Array.isArray(v)) { value[k] = v.map(mapped); continue }
       if (k === 'metadata') continue // Unknown metadata may contain literal IDs; it is not a reference graph.
       if((projectTaskStores as readonly string[]).includes(k))continue
-      if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'targetCardId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
+      if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'nodeId', 'edgeId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
       else walk(v)
     }
   }

@@ -482,7 +482,7 @@ test('全库备份与恢复包含 AI 防丢基线，并兼容不含基线的旧�
   // Build a legacy v2 backup (without aiBaselines) and ensure local mismatched baselines are cleared, not inherited.
   const legacyV2 = { ...manifest, version: 2 }
   delete legacyV2.aiBaselines
-  delete legacyV2.storyCards
+  delete legacyV2.storyBoards
   const v2Path = testInfo.outputPath('legacy-v2-backup.zip')
   const v2Writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
   for (const [name, bytes] of v4Entries) {

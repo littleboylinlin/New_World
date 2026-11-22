@@ -1,66 +1,84 @@
 import type { ChapterRecord, Edition } from '../documents/model'
 import type { Book, LibraryId, TrashEntry } from '../library'
 
-export const storyCategories = ['character', 'location', 'faction', 'item', 'rule'] as const
-export type StoryCategory = typeof storyCategories[number]
-
-export const storyFields = {
-  character: ['role', 'appearance', 'motivation'],
-  location: ['region', 'features'],
-  faction: ['leader', 'goal'],
-  item: ['owner', 'use'],
-  rule: ['conditions', 'consequence'],
-} as const
-export type StoryField = typeof storyFields[StoryCategory][number]
-
-export const storyLimits = {
-  name: 255, summary: 500, details: 20_000, field: 500, state: 2_000, relations: 200, chapters: 200, aliases: 100,
-}
-
-export interface StoryWork {
-  library: LibraryId
-  bookId: string
-}
-
-export interface StoryChapter {
-  editionId: string
-  chapterId: string
-}
-
-export interface StoryState extends StoryChapter {
-  text: string
-}
-
-export interface StoryRelation {
-  targetCardId: string
-  name: string
-}
+export interface StoryWork { library: LibraryId; bookId: string }
+export interface StoryChapter { editionId: string; chapterId: string }
+export interface StoryState extends StoryChapter { text: string }
+export interface Point { x: number; y: number }
+export interface Rect extends Point { width: number; height: number }
+export interface StoryView extends Point { zoom: number }
+export interface StoryTag { id: string; name: string; color: string }
 
 export interface StoryCardInput {
-  category: StoryCategory
   name: string
   aliases: string[]
-  fields: Partial<Record<StoryField, string>>
-  summary: string
-  details: string
+  tagIds: string[]
+  fields: { key: string; value: string }[]
+  body: string
   chapters: StoryChapter[]
   states: StoryState[]
-  relations: StoryRelation[]
 }
 
-export interface StoryCard extends StoryWork, StoryCardInput {
+interface StoryItem extends Rect { id: string }
+export interface StoryCard extends StoryItem, StoryCardInput { kind: 'card' }
+export interface StoryText extends StoryItem { kind: 'text'; text: string }
+export interface StoryGroup extends StoryItem { kind: 'group'; name: string }
+export interface StoryImage extends StoryItem { kind: 'image'; src: string; name: string }
+export type StoryNode = StoryCard | StoryText | StoryGroup | StoryImage
+
+export const storySides = ['top', 'right', 'bottom', 'left'] as const
+export type StorySide = typeof storySides[number]
+export interface NodeEndpoint { nodeId: string; side: StorySide }
+export interface EdgeEndpoint { edgeId: string; at: number }
+export const storyDirections = ['forward', 'back', 'both', 'none'] as const
+export const storyStrokes = ['solid', 'dash', 'dot'] as const
+export interface StoryEdge {
   id: string
-  revision: string
-  createdAt: number
-  updatedAt: number
+  from: NodeEndpoint
+  to: NodeEndpoint | EdgeEndpoint
+  name: string
+  direction: typeof storyDirections[number]
+  stroke: typeof storyStrokes[number]
+  color: string
 }
 
-export function blankStoryCard(category: StoryCategory): StoryCardInput {
-  return { category, name: '', aliases: [], fields: {}, summary: '', details: '', chapters: [], states: [], relations: [] }
+export interface StoryScene {
+  nodes: StoryNode[]
+  edges: StoryEdge[]
+  tags: StoryTag[]
 }
+export interface StoryBoard extends StoryWork {
+  scene: StoryScene
+  view: StoryView
+  revision: string
+}
+
+export const minZoom = .15
+export const maxZoom = 4
+export const maxStoryName = 255
+export const maxStoryImage = 4 * 1024 * 1024
+const maxSceneCharacters = 20 * 1024 * 1024
+export const defaultStoryColor = '#64748b'
 
 export const storyChapterKey = ({ editionId, chapterId }: StoryChapter) => JSON.stringify([editionId, chapterId])
 export const storyWorkKey = ({ library, bookId }: StoryWork) => JSON.stringify([library, bookId])
+
+export function emptyStoryBoard(work: StoryWork): StoryBoard {
+  return { ...work, scene: { tags: [], nodes: [], edges: [] }, view: { x: 0, y: 0, zoom: 1 }, revision: '' }
+}
+
+export function blankStoryCard(chapter?: StoryChapter): StoryCardInput {
+  return { name: '', aliases: [], tagIds: [], fields: [], body: '', chapters: chapter ? [chapter] : [], states: [] }
+}
+
+export function cardInput({ name, aliases, tagIds, fields, body, chapters, states }: StoryCard): StoryCardInput {
+  return { name, aliases, tagIds, fields, body, chapters, states }
+}
+
+export function storyCards(scene: StoryScene) {
+  return scene.nodes.filter((node): node is StoryCard => node.kind === 'card')
+}
+
 const normalized = (value: string) => value.trim().normalize('NFKC').toLowerCase()
 
 export function uniqueAliases(name: string, aliases: string[]) {
@@ -78,7 +96,7 @@ export function matchesStoryCard(card: Pick<StoryCardInput, 'name' | 'aliases'>,
   return !term || [card.name, ...card.aliases].some((name) => normalized(name).includes(term))
 }
 
-/** States follow the edition's current reading order. An absent anchor never exposes a later state. */
+/** States use the edition's current order, stopping at the requested chapter. */
 export function storyStateAt(card: Pick<StoryCardInput, 'states'>, edition: Pick<Edition, 'id' | 'chapters'>, chapterId: string) {
   const states = new Map(card.states.filter((state) => state.editionId === edition.id).map((state) => [state.chapterId, state]))
   let state: StoryState | undefined
@@ -89,7 +107,6 @@ export function storyStateAt(card: Pick<StoryCardInput, 'states'>, edition: Pick
   return undefined
 }
 
-const fieldNames = new Set<string>(Object.values(storyFields).flat())
 const plain = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== 'object') return false
   const proto: unknown = Object.getPrototypeOf(value)
@@ -97,13 +114,13 @@ const plain = (value: unknown): value is Record<string, unknown> => {
 }
 const keys = (value: Record<string, unknown>, names: string[]) =>
   Object.keys(value).length === names.length && names.every((name) => Object.hasOwn(value, name))
-const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.length <= max
-const line = (value: unknown): value is string => text(value, storyLimits.name) && !!value && value === value.trim() && !/[\x00-\x1f]/.test(value)
-const id = (value: unknown) => text(value, 255) && !!value && !/[\x00-\x1f]/.test(value)
-const time = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+const text = (value: unknown): value is string => typeof value === 'string'
+const line = (value: unknown): value is string => text(value) && !!value && value.length <= maxStoryName && value === value.trim() && !/[\x00-\x1f]/.test(value)
+const color = (value: unknown): value is string => text(value) && /^#[0-9a-f]{6}$/i.test(value)
+const bounded = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && value >= min && value <= max
 
-function distinctList<T>(value: unknown, max: number, valid: (item: unknown) => boolean, key: (item: T) => string): value is T[] {
-  if (!Array.isArray(value) || value.length > max) return false
+function uniqueList<T>(value: unknown, valid: (item: unknown) => boolean, key: (item: T) => string): value is T[] {
+  if (!Array.isArray(value)) return false
   const seen = new Set<string>()
   for (const item of value) {
     if (!valid(item)) return false
@@ -116,36 +133,107 @@ function distinctList<T>(value: unknown, max: number, valid: (item: unknown) => 
 
 function validChapter(value: unknown, state: boolean) {
   return plain(value) && keys(value, state ? ['editionId', 'chapterId', 'text'] : ['editionId', 'chapterId'])
-    && id(value.editionId) && id(value.chapterId)
-    && (!state || (text(value.text, storyLimits.state) && !!value.text.trim()))
+    && line(value.editionId) && line(value.chapterId) && (!state || (text(value.text) && !!value.text.trim()))
 }
+
+const geometry = ['id', 'kind', 'x', 'y', 'width', 'height']
+const validPosition = (value: Record<string, unknown>) => bounded(value.x, -100_000_000, 100_000_000) && bounded(value.y, -100_000_000, 100_000_000)
+const validRect = (value: Record<string, unknown>) => validPosition(value)
+  && bounded(value.width, 32, 100_000) && bounded(value.height, 32, 100_000)
 
 export function isStoryCard(value: unknown): value is StoryCard {
   if (!plain(value)) return false
   const { name, aliases } = value
-  return keys(value, [
-    'library', 'bookId', 'id', 'revision', 'createdAt', 'updatedAt', 'category', 'name', 'aliases', 'fields',
-    'summary', 'details', 'chapters', 'states', 'relations',
-  ]) && (value.library === 'original' || value.library === 'reference')
-    && id(value.bookId) && id(value.id) && id(value.revision)
-    && time(value.createdAt) && time(value.updatedAt)
-    && storyCategories.some((category) => category === value.category)
-    && line(name) && distinctList<string>(aliases, storyLimits.aliases, line, normalized)
+  return value.kind === 'card' && validRect(value) && line(value.id)
+    && keys(value, [...geometry, 'name', 'aliases', 'tagIds', 'fields', 'body', 'chapters', 'states'])
+    && line(name) && uniqueList<string>(aliases, line, normalized)
     && !aliases.some((alias) => normalized(alias) === normalized(name))
-    && plain(value.fields) && Object.entries(value.fields).every(([key, field]) => fieldNames.has(key) && text(field, storyLimits.field))
-    && text(value.summary, storyLimits.summary) && text(value.details, storyLimits.details)
-    && distinctList<StoryChapter>(value.chapters, storyLimits.chapters, (chapter) => validChapter(chapter, false), storyChapterKey)
-    && distinctList<StoryState>(value.states, storyLimits.chapters, (state) => validChapter(state, true), storyChapterKey)
-    && distinctList<StoryRelation>(value.relations, storyLimits.relations,
-      (relation) => plain(relation) && keys(relation, ['targetCardId', 'name'])
-        && id(relation.targetCardId) && relation.targetCardId !== value.id && line(relation.name),
-      ({ targetCardId, name }) => JSON.stringify([targetCardId, normalized(name)]))
+    && uniqueList<string>(value.tagIds, line, (tag) => tag)
+    && Array.isArray(value.fields) && value.fields.every((field) => plain(field) && keys(field, ['key', 'value']) && text(field.key) && text(field.value))
+    && text(value.body)
+    && uniqueList<StoryChapter>(value.chapters, (chapter) => validChapter(chapter, false), storyChapterKey)
+    && uniqueList<StoryState>(value.states, (state) => validChapter(state, true), storyChapterKey)
 }
 
-/** Validates the active and recycled cards as a unit for imports. Recycled cards can outlive their work. */
-export function validStoryRows(cards: unknown, books: Book[], chapters: ChapterRecord[], trash: (Omit<TrashEntry, 'files'> & { files: unknown[] })[]): cards is StoryCard[] {
-  if (!Array.isArray(cards) || trash.some((entry) => !entry)) return false
-  if (!cards.length && trash.every((entry) => entry.kind !== 'storyCard' && entry.storyCards === undefined)) return true
+/** Restrict inline image sources to raster payloads the app can render without a network request. */
+export function isStoryImageSource(value: unknown): value is string {
+  if (!text(value) || value.length > maxStoryImage * 4 / 3 + 40) return false
+  const match = /^data:image\/(png|jpeg|gif|webp);base64,([a-zA-Z0-9+/]+={0,2})$/.exec(value)
+  if (!match || match[2].length < 16 || match[2].length % 4) return false
+  const prefix = atob(match[2].slice(0, 16))
+  const signatures: Record<string, boolean> = {
+    png: prefix.startsWith('\x89PNG\r\n\x1a\n'), jpeg: prefix.startsWith('\xff\xd8\xff'),
+    gif: /^GIF8[79]a/.test(prefix), webp: prefix.startsWith('RIFF') && prefix.slice(8, 12) === 'WEBP',
+  }
+  return signatures[match[1]] && match[2].length * .75 - (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0) <= maxStoryImage
+}
+
+function isNode(value: unknown) {
+  if (!plain(value) || !line(value.id) || !validRect(value)) return false
+  switch (value.kind) {
+    case 'card': return isStoryCard(value)
+    case 'text': return keys(value, [...geometry, 'text']) && text(value.text)
+    case 'group': return keys(value, [...geometry, 'name']) && text(value.name)
+    case 'image': return keys(value, [...geometry, 'src', 'name']) && isStoryImageSource(value.src) && text(value.name)
+    default: return false
+  }
+}
+const isTag = (value: unknown) => plain(value) && keys(value, ['id', 'name', 'color'])
+  && line(value.id) && line(value.name) && color(value.color)
+const isNodeEndpoint = (value: unknown) => plain(value) && keys(value, ['nodeId', 'side']) && line(value.nodeId)
+  && storySides.some((side) => side === value.side)
+const isEdgeEndpoint = (value: unknown) => plain(value) && keys(value, ['edgeId', 'at']) && line(value.edgeId) && bounded(value.at, 0, 1)
+
+function isEdge(value: unknown) {
+  return plain(value) && keys(value, ['id', 'from', 'to', 'name', 'direction', 'stroke', 'color'])
+    && line(value.id) && text(value.name) && color(value.color)
+    && isNodeEndpoint(value.from) && (isNodeEndpoint(value.to) || isEdgeEndpoint(value.to))
+    && storyDirections.some((direction) => direction === value.direction) && storyStrokes.some((stroke) => stroke === value.stroke)
+}
+
+function validEdges(scene: StoryScene) {
+  const edges = new Map(scene.edges.map((edge) => [edge.id, edge]))
+  const visited = new Set<string>()
+  for (const start of scene.edges) {
+    if ('nodeId' in start.to && start.to.nodeId === start.from.nodeId) return false
+    const chain = new Set<string>()
+    let edge: StoryEdge | undefined = start
+    while (edge && !visited.has(edge.id)) {
+      if (chain.has(edge.id)) return false
+      chain.add(edge.id)
+      edge = 'edgeId' in edge.to ? edges.get(edge.to.edgeId) : undefined
+    }
+    for (const id of chain) visited.add(id)
+  }
+  return true
+}
+
+export function isStoryScene(value: unknown): value is StoryScene {
+  if (!plain(value) || !keys(value, ['nodes', 'edges', 'tags'])
+    || !uniqueList<StoryNode>(value.nodes, isNode, (node) => node.id)
+    || !uniqueList<StoryEdge>(value.edges, isEdge, (edge) => edge.id)
+    || !uniqueList<StoryTag>(value.tags, isTag, (tag) => tag.id)) return false
+  const scene = { nodes: value.nodes, edges: value.edges, tags: value.tags }
+  const tags = new Set(scene.tags.map((tag) => tag.id))
+  const ids = [...scene.nodes, ...scene.edges, ...scene.tags].map(({ id }) => id)
+  return new Set(ids).size === ids.length && storyCards(scene).every((card) => card.tagIds.every((id) => tags.has(id)))
+    && validEdges(scene) && new TextEncoder().encode(JSON.stringify(scene)).length <= maxSceneCharacters
+}
+
+export function isStoryView(value: unknown): value is StoryView {
+  return plain(value) && keys(value, ['x', 'y', 'zoom']) && validPosition(value) && bounded(value.zoom, minZoom, maxZoom)
+}
+
+function isBoard(value: unknown): value is StoryBoard {
+  return plain(value) && keys(value, ['library', 'bookId', 'revision', 'scene', 'view'])
+    && (value.library === 'original' || value.library === 'reference')
+    && line(value.bookId) && (value.revision === '' || line(value.revision)) && isStoryView(value.view) && isStoryScene(value.scene)
+}
+
+/** Checks ownership and identities across the live boards and the recycle bin. */
+export function validStoryRows(boards: unknown, books: Book[], chapters: ChapterRecord[], trash: (Omit<TrashEntry, 'files'> & { files: unknown[] })[]): boards is StoryBoard[] {
+  if (!Array.isArray(boards) || trash.some((entry) => !entry)) return false
+  if (!boards.length && trash.every((entry) => entry.kind !== 'storyCard' && entry.storyBoard === undefined && entry.storyCard === undefined)) return true
   const active = new Set(books.filter((book) => !book.workId).map(({ library, id }) => storyWorkKey({ library, bookId: id })))
   const knownChapters = new Map<string, Set<string>>()
   for (const chapter of [...chapters, ...trash.flatMap((entry) => Array.isArray(entry.chapters) ? entry.chapters : [])]) {
@@ -154,32 +242,37 @@ export function validStoryRows(cards: unknown, books: Book[], chapters: ChapterR
     owners.add(JSON.stringify([chapter.library, chapter.bookId, chapter.editionId]))
     knownChapters.set(chapter.id, owners)
   }
-  const seen = new Set<string>()
-  const add = (row: unknown, owner?: StoryWork) => {
-    if (!isStoryCard(row)) return false
-    const work = storyWorkKey(row)
-    if (owner ? work !== storyWorkKey(owner) : !active.has(work)) return false
-    const key = JSON.stringify([row.library, row.bookId, row.id])
-    if (seen.has(key)) return false
-    seen.add(key)
-    return [...row.chapters, ...row.states].every(({ editionId, chapterId }) => {
+  const seenWorks = new Set<string>()
+  const seenNodes = new Map<string, Set<string>>()
+  const add = (owner: StoryWork, node: StoryNode | StoryEdge) => {
+    const key = storyWorkKey(owner)
+    const seen = seenNodes.get(key) ?? new Set<string>()
+    if (seen.has(node.id)) return false
+    seen.add(node.id)
+    seenNodes.set(key, seen)
+    if (!('kind' in node) || node.kind !== 'card') return true
+    return [...node.chapters, ...node.states].every(({ editionId, chapterId }) => {
       const owners = knownChapters.get(chapterId)
-      return !owners || owners.has(JSON.stringify([row.library, row.bookId, editionId]))
+      return !owners || owners.has(JSON.stringify([owner.library, owner.bookId, editionId]))
     })
   }
-  if (!cards.every((card) => add(card))) return false
-  return trash.every((entry) => {
-    const rows = entry.storyCards
-    if (entry.kind === 'book') {
-      if (rows === undefined) return true
-      if (!Array.isArray(rows) || !Array.isArray(entry.books)
-        || !entry.books.some((book) => book?.id === entry.bookId && book.library === entry.library && !book.workId)) return false
-      return rows.every((card) => add(card, entry))
+  const addBoard = (board: unknown, owner?: StoryWork) => {
+    if (!isBoard(board)) return false
+    const key = storyWorkKey(board)
+    if ((owner ? key !== storyWorkKey(owner) : !active.has(key)) || seenWorks.has(key)) return false
+    seenWorks.add(key)
+    return [...board.scene.nodes, ...board.scene.edges].every((node) => add(board, node))
+  }
+  return boards.every((board) => addBoard(board)) && trash.every((entry) => {
+    if (entry.kind === 'book' && entry.storyBoard !== undefined) {
+      return entry.storyCard === undefined && Array.isArray(entry.books) && entry.books.some((book) => book?.id === entry.bookId && book.library === entry.library && !book.workId)
+        && addBoard(entry.storyBoard, entry)
     }
     if (entry.kind === 'storyCard') {
-      return Array.isArray(rows) && rows.length === 1 && add(rows[0], entry) && !entry.position && entry.ideas === undefined
+      return entry.storyBoard === undefined && isStoryCard(entry.storyCard) && add(entry, entry.storyCard)
+        && !entry.position && entry.ideas === undefined
         && [entry.books, entry.files, entry.editions, entry.chapters].every((value) => Array.isArray(value) && !value.length)
     }
-    return rows === undefined
+    return entry.storyBoard === undefined && entry.storyCard === undefined
   })
 }

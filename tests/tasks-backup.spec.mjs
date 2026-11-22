@@ -36,7 +36,7 @@ test('全库备份包含独立任务，旧备份恢复保留任务，新备份�
   const legacy = { ...manifest, version: 1 }
   delete legacy.taskData
   delete legacy.aiBaselines
-  delete legacy.storyCards
+  delete legacy.storyBoards
   const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
   for (const [name, bytes] of data)
     await writer.add(

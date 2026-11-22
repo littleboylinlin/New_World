@@ -21,7 +21,7 @@ import { validateTaskAssets } from './tasks/resources'
 import { announceTasks } from './tasks/store'
 import { announceStoryChange } from './story-settings/changes'
 import { validStoryRows } from './story-settings/model'
-import type { StoryCard } from './story-settings/model'
+import type { StoryBoard } from './story-settings/model'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
@@ -52,7 +52,7 @@ type StoredTrashEntry = Omit<TrashEntry, 'files'> & { files: StoredFile[] }
 
 interface Manifest {
   taskData?: TaskData
-  storyCards?: StoryCard[]
+  storyBoards?: StoryBoard[]
   format: typeof formatName
   version: number
   app: string
@@ -91,7 +91,7 @@ export interface BackupSummary {
 
 export interface BackupContents {
   taskData?: TaskData
-  storyCards?: StoryCard[]
+  storyBoards?: StoryBoard[]
   summary: BackupSummary
   books: Book[]
   files: BookFile[]
@@ -181,8 +181,8 @@ export async function createBackup(password?: string) {
   const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', styleStore, ...taskStores])
   const styleRows: Promise<StyleRecord[]> = resultOf(tx.objectStore(styleStore).getAll())
   const taskReads = Promise.all(taskStores.map(async name => [name, await resultOf(tx.objectStore(name).getAll())]))
-  const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines, storyCards]: [
-    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[], AiChapterBaseline[], StoryCard[],
+  const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines, storyBoards]: [
+    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[], AiChapterBaseline[], StoryBoard[],
   ] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
@@ -195,7 +195,7 @@ export async function createBackup(password?: string) {
     resultOf(tx.objectStore('revisionBlobs').getAll()),
     resultOf(tx.objectStore('ideaRevisions').getAll()),
     resultOf(tx.objectStore('aiBaselines').getAll()),
-    resultOf(tx.objectStore('storyCards').getAll()),
+    resultOf(tx.objectStore('storyBoards').getAll()),
   ])
 
   const blobs: [string, Blob][] = []
@@ -236,9 +236,9 @@ export async function createBackup(password?: string) {
     if (!taskAssets.has(path)) { taskAssets.add(path); blobs.push([path, blob]) }
     return path
   })
-  if (!validStoryRows(storyCards, books, chapters, trash)) throw new BackupError('format')
+  if (!validStoryRows(storyBoards, books, chapters, trash)) throw new BackupError('format')
   const manifest: Manifest = {
-    storyCards,
+    storyBoards,
     taskData: storedTasks,
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
     editions, chapters, writingDays, ideas, revisions,
@@ -359,16 +359,16 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
     if ((manifest.version < 2 && manifest.taskData !== undefined) || (manifest.version >= 2 && manifest.taskData === undefined)) throw new BackupError('format')
     if ((manifest.version < 3 && manifest.aiBaselines !== undefined) || (manifest.version >= 3 && !Array.isArray(manifest.aiBaselines))) throw new BackupError('format')
     for (const name of ['books', 'files', 'editions', 'chapters', 'trash'] as const) list(manifest[name])
-    if (manifest.version < 4 && (manifest.storyCards !== undefined
-      || manifest.trash.some((entry) => entry?.kind === 'storyCard' || entry?.storyCards !== undefined))) throw new BackupError('format')
-    const storyCards = manifest.version < 4 ? [] : manifest.storyCards
+    if (manifest.version < 4 && (manifest.storyBoards !== undefined
+      || manifest.trash.some((entry) => entry?.kind === 'storyCard' || entry?.storyBoard !== undefined || entry?.storyCard !== undefined))) throw new BackupError('format')
+    const storyBoards = manifest.version < 4 ? [] : manifest.storyBoards
     for (const record of [...manifest.books, ...manifest.editions, ...manifest.chapters]) {
       if (!record || (record.library !== 'original' && record.library !== 'reference') || typeof record.id !== 'string') {
         throw new BackupError('format')
       }
     }
 
-    if (!validStoryRows(storyCards, manifest.books, manifest.chapters, manifest.trash)) throw new BackupError('format')
+    if (!validStoryRows(storyBoards, manifest.books, manifest.chapters, manifest.trash)) throw new BackupError('format')
 
     const restore = async (stored: StoredFile): Promise<BookFile> => {
       if (typeof stored?.path !== 'string') throw new BackupError('format')
@@ -435,7 +435,7 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
     return {
       ...(taskData ? { taskData } : {}),
       summary: summarize(manifest),
-      storyCards,
+      storyBoards,
       books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
       writingDays: (Array.isArray(manifest.writingDays) ? manifest.writingDays : [])
         .filter((day) => typeof day?.date === 'string' && Number.isFinite(day.words)),
@@ -465,8 +465,8 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
 
 /** Replaces the whole library with a backup in one transaction: either all of it or nothing. */
 export async function restoreBackup(contents: BackupContents) {
-  const storyCards = structuredClone(contents.storyCards ?? [])
-  if (!validStoryRows(storyCards, contents.books, contents.chapters, contents.trash)) throw new BackupError('format')
+  const storyBoards = structuredClone(contents.storyBoards ?? [])
+  if (!validStoryRows(storyBoards, contents.books, contents.chapters, contents.trash)) throw new BackupError('format')
   const incomingTasks = contents.taskData === undefined ? undefined : structuredClone(contents.taskData)
   if (incomingTasks) { validateTasks(incomingTasks); await validateTaskAssets(incomingTasks) }
   const db = await openDatabase()
@@ -522,7 +522,7 @@ export async function restoreBackup(contents: BackupContents) {
     for (const edition of contents.editions) tx.objectStore('editions').add(edition)
     for (const chapter of contents.chapters) tx.objectStore('chapters').add(chapter)
     for (const entry of contents.trash) tx.objectStore('trash').add(entry)
-    for (const card of storyCards) tx.objectStore('storyCards').add(card)
+    for (const board of storyBoards) tx.objectStore('storyBoards').add(board)
     await committed(tx)
   } catch (error) {
     try { tx.abort() } catch { /* Already completed or aborted. */ }

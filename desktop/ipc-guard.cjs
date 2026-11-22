@@ -35,7 +35,8 @@ function isReadingRoute(hash) {
   return typeof hash === 'string' && hash.length <= 200 && readingRoute.test(hash)
 }
 
-const storySettingsRoute = /^#\/story-settings\/(original|reference)\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+const uuid = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+const storySettingsRoute = new RegExp(`^#/story-settings/(original|reference)/${uuid}(?:\\?edition=${uuid}&chapter=${uuid})?$`)
 
 function isStorySettingsRoute(hash) {
   return typeof hash === 'string' && storySettingsRoute.test(hash)

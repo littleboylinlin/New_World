@@ -156,10 +156,10 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
       used.add(path)
       ;(data[name] as unknown) = await decode(await json(decoded.get(path)!))
     }
-    const detachedFields = 'books editions chapters ideas' + (manifest.schemaVersion >= 3 ? ' tasks' : '') + (manifest.schemaVersion >= 4 ? ' cards' : '')
+    const detachedFields = 'books editions chapters ideas' + (manifest.schemaVersion >= 3 ? ' tasks' : '') + (manifest.schemaVersion >= 4 ? ' canvas' : '')
     fields(manifest.detached, detachedFields)
     if (manifest.schemaVersion < 3) manifest.detached.tasks = []
-    if (manifest.schemaVersion < 4) manifest.detached.cards = []
+    if (manifest.schemaVersion < 4) manifest.detached.canvas = []
     for (const name of projectStores) if (!Object.hasOwn(data, name)) (data[name] as unknown[]) = []
     ok(used.size === resources.size, 'unreferenced resource')
     validateData(data, manifest.root, manifest.detached, manifest.schemaVersion)
