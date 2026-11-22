@@ -5,7 +5,7 @@ import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { t } from './i18n'
 import { committed, coverOf, libraryChanges, libraryStores, openDatabase, resultOf } from './library'
-import type { Book, BookFile, ChapterRevision, IdeaRevision, LibraryId, RevisionBlobRecord, TrashEntry } from './library'
+import type { AiChapterBaseline, Book, BookFile, ChapterRevision, IdeaRevision, LibraryId, RevisionBlobRecord, TrashEntry } from './library'
 import type { ChapterRecord, Edition } from './documents/model'
 import { runningVersion } from './updates'
 import type { WritingDay } from './writing-stats'
@@ -13,6 +13,7 @@ import type { Idea } from './ideas'
 import { validateWorkMetadata } from './work-metadata'
 import { taskStores, validateTasks } from './tasks/model'
 import { styleChanges, styleStore } from './ai/styles'
+import { clearAllBaselines } from './ai/guard'
 import type { TaskData } from './tasks/model'
 import { decodeTaskResources, encodeTaskResources } from './tasks/transfer'
 import { validateTaskAssets } from './tasks/resources'
@@ -20,7 +21,7 @@ import { announceTasks } from './tasks/store'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
-const formatVersion = 2
+const formatVersion = 3
 
 export const maxBackupZipEntries = 10_000
 export const maxBackupManifestBytes = 64 * 1024 * 1024
@@ -68,6 +69,8 @@ interface Manifest {
   ideaRevisions?: IdeaRevision[]
   /** Writing styles and each work's default style. Missing from older backups, which then leave the current ones alone. */
   writingStyles?: StyleRecord[]
+  /** Persistent per-client AI cumulative-loss baselines. Added in backup format 3. */
+  aiBaselines?: AiChapterBaseline[]
 }
 
 /** A row of the writing style store, kept as is. */
@@ -95,6 +98,45 @@ export interface BackupContents {
   revisionBlobs?: RevisionBlobRecord[]
   ideaRevisions?: IdeaRevision[]
   writingStyles?: StyleRecord[]
+  aiBaselines?: AiChapterBaseline[]
+}
+
+function validateAiBaselines(value: unknown): AiChapterBaseline[] {
+  if (!Array.isArray(value)) throw new BackupError('format')
+  const seen = new Set<string>()
+  const baselines: AiChapterBaseline[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new BackupError('format')
+    const row = item as Record<string, unknown>
+    if (
+      typeof row.clientId !== 'string' || !row.clientId
+      || (row.library !== 'original' && row.library !== 'reference')
+      || typeof row.bookId !== 'string' || !row.bookId
+      || typeof row.editionId !== 'string' || !row.editionId
+      || typeof row.chapterId !== 'string' || !row.chapterId
+      || typeof row.peakWords !== 'number' || !Number.isFinite(row.peakWords) || row.peakWords < 0
+      || typeof row.anchorWords !== 'number' || !Number.isFinite(row.anchorWords) || row.anchorWords < 0
+      || typeof row.anchorText !== 'string'
+      || typeof row.updatedAt !== 'number' || !Number.isFinite(row.updatedAt) || row.updatedAt < 0
+    ) {
+      throw new BackupError('format')
+    }
+    const key = `${row.clientId}\0${row.library}\0${row.bookId}\0${row.editionId}\0${row.chapterId}`
+    if (seen.has(key)) throw new BackupError('format')
+    seen.add(key)
+    baselines.push({
+      clientId: row.clientId,
+      library: row.library,
+      bookId: row.bookId,
+      editionId: row.editionId,
+      chapterId: row.chapterId,
+      peakWords: row.peakWords,
+      anchorWords: row.anchorWords,
+      anchorText: row.anchorText,
+      updatedAt: row.updatedAt,
+    })
+  }
+  return baselines
 }
 
 export type BackupProblem = 'password' | 'format' | 'newer' | 'tooLarge'
@@ -130,11 +172,11 @@ export function backupName(time: Date, kind: 'backup' | 'auto-backup' | 'before-
 /** Reads the whole library at one moment and packs it into a zip, encrypted when a password is given. */
 export async function createBackup(password?: string) {
   const db = await openDatabase()
-  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', styleStore, ...taskStores])
+  const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', styleStore, ...taskStores])
   const styleRows: Promise<StyleRecord[]> = resultOf(tx.objectStore(styleStore).getAll())
   const taskReads = Promise.all(taskStores.map(async name => [name, await resultOf(tx.objectStore(name).getAll())]))
-  const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions]: [
-    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[],
+  const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines]: [
+    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[], AiChapterBaseline[],
   ] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
@@ -146,6 +188,7 @@ export async function createBackup(password?: string) {
     resultOf(tx.objectStore('revisions').getAll()),
     resultOf(tx.objectStore('revisionBlobs').getAll()),
     resultOf(tx.objectStore('ideaRevisions').getAll()),
+    resultOf(tx.objectStore('aiBaselines').getAll()),
   ])
 
   const blobs: [string, Blob][] = []
@@ -192,6 +235,7 @@ export async function createBackup(password?: string) {
     editions, chapters, writingDays, ideas, revisions,
     revisionBlobs: storedRevisionBlobs,
     ideaRevisions,
+    aiBaselines,
     writingStyles: await styleRows,
     books: books.map((book) => pack(book, 'covers')),
     files: files.map((file) => store(file, 'files')),
@@ -303,7 +347,8 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
     }
     if (manifest?.format !== formatName || !Number.isSafeInteger(manifest.version) || manifest.version < 1) throw new BackupError('format')
     if (manifest.version > formatVersion) throw new BackupError('newer')
-    if ((manifest.version < 2 && manifest.taskData !== undefined) || (manifest.version === 2 && manifest.taskData === undefined)) throw new BackupError('format')
+    if ((manifest.version < 2 && manifest.taskData !== undefined) || (manifest.version >= 2 && manifest.taskData === undefined)) throw new BackupError('format')
+    if ((manifest.version < 3 && manifest.aiBaselines !== undefined) || (manifest.version >= 3 && !Array.isArray(manifest.aiBaselines))) throw new BackupError('format')
     for (const name of ['books', 'files', 'editions', 'chapters', 'trash'] as const) list(manifest[name])
     for (const record of [...manifest.books, ...manifest.editions, ...manifest.chapters]) {
       if (!record || (record.library !== 'original' && record.library !== 'reference') || typeof record.id !== 'string') {
@@ -396,6 +441,7 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       writingStyles: Array.isArray(manifest.writingStyles)
         ? manifest.writingStyles.filter((row) => typeof row?.id === 'string' && (row.type === 'style' || row.type === 'workDefault'))
         : undefined,
+      aiBaselines: manifest.aiBaselines !== undefined ? validateAiBaselines(manifest.aiBaselines) : undefined,
     }
   } finally {
     await zip.close()
@@ -426,6 +472,10 @@ export async function restoreBackup(contents: BackupContents) {
     if (contents.revisionBlobs) {
       const revisionBlobs = tx.objectStore('revisionBlobs')
       for (const blob of contents.revisionBlobs) revisionBlobs.put(blob)
+    }
+    if (contents.aiBaselines) {
+      const baselines = tx.objectStore('aiBaselines')
+      for (const baseline of contents.aiBaselines) baselines.add(baseline)
     }
     if (contents.ideas) {
       const ideas = tx.objectStore('ideas')
@@ -462,6 +512,7 @@ export async function restoreBackup(contents: BackupContents) {
     if (error instanceof DOMException && ['ConstraintError', 'DataError'].includes(error.name)) throw new BackupError('format')
     throw error
   }
+  clearAllBaselines()
   libraryChanges.dispatchEvent(new Event('update'))
   if (contents.writingStyles) styleChanges.dispatchEvent(new Event('change'))
   announceTasks()

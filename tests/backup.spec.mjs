@@ -362,3 +362,190 @@ test('备份与恢复完整保留章节去重历史与灵感历史，并兼容�
   await editorAction(page, '历史版本')
   await expect(page.getByRole('dialog', { name: /历史版本/ }).locator('.revision-preview-text')).toHaveText('来自旧版备份的内联正文。')
 })
+
+test('全库备份与恢复包含 AI 防丢基线，并兼容不含基线的旧格式备份', async ({ page }, testInfo) => {
+  await newNovel(page, '基线之书', '备份时的正文内容。')
+  const seeded = await page.evaluate(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('new-world-library')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    const editions = await new Promise((r) => {
+      const q = db.transaction('editions').objectStore('editions').getAll()
+      q.onsuccess = () => r(q.result)
+    })
+    const ed = editions[0]
+    const chId = ed.chapters[0].id
+    const revContent = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '基线对应的历史快照。' }] }] }
+    const raw = new TextEncoder().encode(JSON.stringify(revContent))
+    const blobHash = 'ba5e11ed0001'
+    const baseline = {
+      clientId: 'client-baseline-test',
+      library: ed.library,
+      bookId: ed.bookId,
+      editionId: ed.id,
+      chapterId: chId,
+      peakWords: 1200,
+      anchorWords: 980,
+      anchorText: '锚点原文片段。',
+      updatedAt: 1_760_000_000_000,
+    }
+    const tx = db.transaction(['revisionBlobs', 'revisions', 'aiBaselines'], 'readwrite', { durability: 'strict' })
+    tx.objectStore('revisionBlobs').put({
+      hash: blobHash,
+      encoding: 'json',
+      data: raw,
+      rawBytes: raw.byteLength,
+      storedBytes: raw.byteLength,
+      createdAt: 1_760_000_000_000,
+    })
+    tx.objectStore('revisions').add({
+      id: crypto.randomUUID(),
+      library: ed.library,
+      bookId: ed.bookId,
+      editionId: ed.id,
+      chapterId: chId,
+      chapterTitle: '第一章',
+      contentHash: blobHash,
+      blobHash,
+      rawBytes: raw.byteLength,
+      storedBytes: raw.byteLength,
+      words: 10,
+      source: 'ai',
+      action: 'chapters.update',
+      clientId: baseline.clientId,
+      clientName: 'BaselineAI',
+      createdAt: 1_760_000_000_000,
+    })
+    tx.objectStore('aiBaselines').put(baseline)
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error) })
+    db.close()
+    return { bookId: ed.bookId, editionId: ed.id, chapterId: chId, baseline }
+  })
+
+  const v3Path = await backUp(page, testInfo, 'v3-baseline-backup.zip')
+  const v3Zip = new ZipReader(new Uint8ArrayReader(await readFile(v3Path)))
+  const v3Entries = []
+  for (const entry of await v3Zip.getEntries()) {
+    v3Entries.push([entry.filename, await entry.getData(new Uint8ArrayWriter())])
+  }
+  await v3Zip.close()
+  const manifest = JSON.parse(Buffer.from(v3Entries.find(([name]) => name === 'new-world-backup.json')[1]).toString())
+  expect(manifest.version).toBe(3)
+  expect(manifest.aiBaselines).toEqual([seeded.baseline])
+
+  // Overwrite local baseline & edit chapter so local state diverges from the backup.
+  await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
+  await textArea(page).fill('本地被篡改后的正文。')
+  await saveNow(page)
+  await expect(page.locator('.save-status')).toHaveText('已保存')
+  await page.evaluate(async (baseline) => {
+    const db = await new Promise((resolve) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => resolve(q.result)
+    })
+    const tx = db.transaction('aiBaselines', 'readwrite', { durability: 'strict' })
+    tx.objectStore('aiBaselines').put({
+      ...baseline,
+      peakWords: 99999,
+      anchorWords: 88888,
+      anchorText: '不该留下来的本机旧基线。',
+      updatedAt: 1_770_000_000_000,
+    })
+    await new Promise((r) => { tx.oncomplete = r })
+    db.close()
+  }, seeded.baseline)
+
+  // Restore v3 backup: text, history, and baseline must all come back consistently.
+  await chooseBackup(page, v3Path)
+  await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
+  await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
+
+  await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
+  await expect(textArea(page)).toHaveText('备份时的正文内容。')
+  await expect.poll(() => historyCount(page)).toBe('1')
+  const restoredBaselines = await page.evaluate(async () => {
+    const db = await new Promise((resolve) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => resolve(q.result)
+    })
+    const rows = await new Promise((r) => {
+      const q = db.transaction('aiBaselines').objectStore('aiBaselines').getAll()
+      q.onsuccess = () => r(q.result)
+    })
+    db.close()
+    return rows
+  })
+  expect(restoredBaselines).toEqual([seeded.baseline])
+
+  // Build a legacy v2 backup (without aiBaselines) and ensure local mismatched baselines are cleared, not inherited.
+  const legacyV2 = { ...manifest, version: 2 }
+  delete legacyV2.aiBaselines
+  const v2Path = testInfo.outputPath('legacy-v2-backup.zip')
+  const v2Writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+  for (const [name, bytes] of v3Entries) {
+    await v2Writer.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(legacyV2)) : bytes))
+  }
+  await writeFile(v2Path, await v2Writer.close())
+
+  // Inject a mismatched local baseline before restoring the v2 backup.
+  await page.evaluate(async (baseline) => {
+    const db = await new Promise((resolve) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => resolve(q.result)
+    })
+    const tx = db.transaction('aiBaselines', 'readwrite', { durability: 'strict' })
+    tx.objectStore('aiBaselines').put({
+      ...baseline,
+      peakWords: 7777,
+      anchorText: '本地残余基线绝不能套用。',
+    })
+    await new Promise((r) => { tx.oncomplete = r })
+    db.close()
+  }, seeded.baseline)
+
+  await chooseBackup(page, v2Path)
+  await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
+  await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
+
+  await page.goto(`/#/original/${seeded.bookId}/${seeded.editionId}`)
+  await expect(textArea(page)).toHaveText('备份时的正文内容。')
+  await expect.poll(() => historyCount(page)).toBe('1')
+  const baselinesAfterLegacy = await page.evaluate(async () => {
+    const db = await new Promise((resolve) => {
+      const q = indexedDB.open('new-world-library')
+      q.onsuccess = () => resolve(q.result)
+    })
+    const rows = await new Promise((r) => {
+      const q = db.transaction('aiBaselines').objectStore('aiBaselines').getAll()
+      q.onsuccess = () => r(q.result)
+    })
+    db.close()
+    return rows
+  })
+  expect(baselinesAfterLegacy).toEqual([])
+
+  // Malformed v3 backup (missing aiBaselines) and future v4 backup are rejected cleanly.
+  const brokenV3 = { ...manifest }
+  delete brokenV3.aiBaselines
+  const brokenV3Path = testInfo.outputPath('broken-v3-backup.zip')
+  const brokenWriter = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+  for (const [name, bytes] of v3Entries) {
+    await brokenWriter.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(brokenV3)) : bytes))
+  }
+  await writeFile(brokenV3Path, await brokenWriter.close())
+  await chooseBackup(page, brokenV3Path)
+  await expect(backupSection(page).getByRole('alert')).toHaveText('这不是 New World 备份文件，或文件已损坏。')
+  await closeSettings(page)
+
+  const futureV4 = { ...manifest, version: 4 }
+  const futureV4Path = testInfo.outputPath('future-v4-backup.zip')
+  const futureWriter = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+  for (const [name, bytes] of v3Entries) {
+    await futureWriter.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(futureV4)) : bytes))
+  }
+  await writeFile(futureV4Path, await futureWriter.close())
+  await chooseBackup(page, futureV4Path)
+  await expect(backupSection(page).getByRole('alert')).toHaveText('这份备份来自更新版本的 New World，请先更新应用。')
+})
