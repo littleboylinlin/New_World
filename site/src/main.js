@@ -4,6 +4,7 @@ const lang = () => window.siteLang?.() ?? 'zh'
 
 const DOWNLOADS = {
   'windows-x64': { zh: 'Windows', en: 'Windows', route: 'windows' },
+  'windows-x64-online': { zh: 'Windows', en: 'Windows', route: 'windows-online' },
   'macos-arm64': { zh: 'Apple 芯片', en: 'Apple silicon', route: 'macos-arm64' },
   'macos-x64': { zh: 'Intel 芯片', en: 'Intel chip', route: 'macos-x64' },
 }
@@ -49,13 +50,22 @@ function downloadButton(key, tone) {
   sources.className = 'download-source'
   sources.innerHTML = `<span data-l="zh">从 <a href="${path}?from=mirror" data-source="mirror">国内镜像</a> · <a href="${path}?from=github" data-source="github">GitHub</a> 下载</span><span data-l="en" lang="en">Download from <a href="${path}?from=mirror" data-source="mirror">China mirror</a> · <a href="${path}?from=github" data-source="github">GitHub</a></span>`
   item.append(link, sources)
+  // The online installer downloads the app while it installs; the full one also works offline.
+  const full = data.latest.assets['windows-x64']
+  if (key === 'windows-x64-online' && full) {
+    const offline = document.createElement('p')
+    offline.className = 'download-source download-offline'
+    const size = `${Math.round(full.size / 1024 / 1024)} MB`
+    offline.innerHTML = `<span data-l="zh">没有网络时用 <a href="/download/windows" data-download="windows-x64">离线安装包</a>（${size}）</span><span data-l="en" lang="en">No connection while installing? Get the <a href="/download/windows" data-download="windows-x64">offline installer</a> (${size})</span>`
+    item.append(offline)
+  }
   return item
 }
 
 async function setUpDownloads() {
   const { os, arch } = await detectPlatform()
   let keys = []
-  if (os === 'windows') keys = ['windows-x64']
+  if (os === 'windows') keys = [data.latest.assets['windows-x64-online'] ? 'windows-x64-online' : 'windows-x64']
   else if (os === 'mac') keys = arch ? [`macos-${arch}`] : ['macos-arm64', 'macos-x64']
   // A release may not include every platform; then the button keeps pointing to the release page.
   keys = keys.filter((key) => data.latest.assets[key])

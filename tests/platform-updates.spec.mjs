@@ -99,7 +99,10 @@ test('发布计划区分 Mac 专用和 Windows、Mac 共同发行版', () => {
   expect(releaseAssets(mac).filter((name) => name.endsWith('.dmg'))).toHaveLength(2)
   const plan = validatePlan(JSON.parse(readFileSync('release.json', 'utf8')), version)
   expect(plan.platforms).toEqual(['windows', 'macos'])
-  expect(releaseAssets(plan).filter((name) => name.endsWith('.exe'))).toHaveLength(1)
+  // The full installer (offline installs and in-app updates) and the online one with its app package.
+  expect(releaseAssets(plan).filter((name) => name.endsWith('.exe'))).toEqual([`New-World-Setup-${version}-x64.exe`, `New-World-Online-Setup-${version}-x64.exe`])
+  expect(releaseAssets(plan).filter((name) => name.endsWith('.nsis.7z'))).toEqual([`New-World-${version}-x64.nsis.7z`])
+  expect(releaseAssets(mac).filter((name) => name.endsWith('.nsis.7z'))).toHaveLength(0)
   expect(releaseAssets(plan).filter((name) => name.endsWith('.dmg'))).toHaveLength(2)
   expect(() => validatePlan({ version, platforms: ['unknown'] }, version)).toThrow()
   expect(() => validatePlan({ version: '0.8.0', platforms: ['windows'] }, version)).toThrow()
