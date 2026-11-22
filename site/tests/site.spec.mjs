@@ -28,28 +28,11 @@ async function openAs(browser, userAgent, hints) {
 const downloads = (page) => page.locator('#downloads a.btn')
 
 test.describe('download button', () => {
-  test('Windows gets the online installer, with the offline one underneath', async ({ browser }) => {
+  test('Windows gets the x64 installer', async ({ browser }) => {
     const page = await openAs(browser, AGENTS.windows, { platform: 'Windows' })
     await expect(downloads(page)).toHaveCount(1)
-    await expect(downloads(page)).toHaveAttribute('href', '/download/windows-online')
-    await expect(downloads(page)).toHaveAttribute('data-sha256', latest.assets['windows-x64-online'].sha256)
-    const offline = page.locator('#downloads .download-offline')
-    await expect(offline).toHaveText('没有网络时用 离线安装包（100 MB）', { useInnerText: true })
-    await expect(offline.getByRole('link', { name: '离线安装包' })).toHaveAttribute('href', '/download/windows')
-  })
-
-  test('Windows gets the full installer when the release has no online one', async ({ browser }) => {
-    const context = await browser.newContext({ userAgent: AGENTS.windows, locale: 'zh-CN' })
-    await context.route('**/', async (route) => {
-      const response = await route.fetch()
-      const body = (await response.text()).replace(/"windows-x64-online":\{[^}]*\},?/, '')
-      await route.fulfill({ response, body })
-    })
-    const page = await context.newPage()
-    await page.goto('/')
-    await expect(downloads(page)).toHaveCount(1)
     await expect(downloads(page)).toHaveAttribute('href', '/download/windows')
-    await expect(page.locator('#downloads .download-offline')).toHaveCount(0)
+    await expect(downloads(page)).toHaveAttribute('data-sha256', latest.assets['windows-x64'].sha256)
   })
 
   test('Apple silicon gets the arm64 DMG', async ({ browser }) => {
@@ -87,7 +70,7 @@ test.describe('download button', () => {
     const context = await browser.newContext({ userAgent: AGENTS.windows, locale: 'zh-CN' })
     await context.route('**/', async (route) => {
       const response = await route.fetch()
-      const body = (await response.text()).replace(/"windows-x64(-online)?":\{[^}]*\},?/g, '')
+      const body = (await response.text()).replace(/"windows-x64":\{[^}]*\},?/, '')
       await route.fulfill({ response, body })
     })
     const page = await context.newPage()
@@ -235,7 +218,6 @@ test.describe('download routes', () => {
 
   const files = {
     windows: 'New-World-Setup-9.8.7-x64.exe',
-    'windows-online': 'New-World-Online-Setup-9.8.7-x64.exe',
     'macos-arm64': 'New-World-9.8.7-macos-arm64.dmg',
     'macos-x64': 'New-World-9.8.7-macos-x64.dmg',
     'lang-zh-CN': 'New-World-lang-zh-CN.json',

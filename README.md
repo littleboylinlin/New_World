@@ -36,7 +36,7 @@ v0.18.1 读取 Schema 1 / 2，重新导出使用 Schema 2，作品信息及符�
 
 Windows 与 macOS 的当前正式版见 [GitHub Releases 最新版](https://github.com/littleboylinlin/New_World/releases/latest)，两个平台同时发布同一版本；每一版的改动见 [发行说明](docs/releases)。升级与回退前须阅读本页的备份提示。原有完整工程迁移、文件关联、阅读批注及正文导出继续保留。使用方式和限制见 [工程格式规范](docs/newworld-format.md) 和 [阅读批注](docs/reading-annotations.md)，AI 接入协议详见 `AI_INTEGRATION.md`。检查更新时各自只选择本平台的安装包。
 
-在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`（完整安装包，可离线安装），或几百 KB 的在线安装包 `New-World-Online-Setup-<版本>-x64.exe`：它在安装时从镜像下载同版本的 `New-World-<版本>-x64.nsis.7z`，按打包时记下的 SHA-512 校验后安装；联网不便时，可以手动下载这个 .7z，用 `--package-file=<.7z 路径>` 参数运行在线安装包。应用内更新始终使用完整安装包。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
+在 [GitHub Releases](https://github.com/littleboylinlin/New_World/releases) 下载对应版本的 `New-World-Setup-<版本>-x64.exe`。目标平台为 Windows 11 x64，安装到当前用户，无需 Node.js。当前安装包未做 Authenticode 签名，Windows 可能提示未知发布者。可用 PowerShell 的 `Get-FileHash <安装包> -Algorithm SHA256` 与同页 `SHA256SUMS.txt` 核对。
 
 安装向导可选择新建或空的安装目录。升级时默认沿用已有安装位置。完成页显示实际路径，可勾选「创建桌面快捷方式」和「启动 New World」。开始菜单始终提供入口。
 

@@ -104,10 +104,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:desktop
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $online = (Resolve-Path "dist-windows/New-World-Online-Setup-$version-x64.exe").Path
-          $package = (Resolve-Path "dist-windows/New-World-$version-x64.nsis.7z").Path
-          powershell.exe -NoProfile -File tests/desktop/online-installer.ps1 -Installer $online -Package $package -Directory (Join-Path $env:RUNNER_TEMP 'NewWorldOnline')
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -123,8 +119,6 @@ jobs:
           name: windows-x64
           path: |
             dist-windows/New-World-Setup-*-x64.exe
-            dist-windows/New-World-Online-Setup-*-x64.exe
-            dist-windows/New-World-*-x64.nsis.7z
             dist-windows/New-World-lang-*.json
           if-no-files-found: error
           compression-level: 0
