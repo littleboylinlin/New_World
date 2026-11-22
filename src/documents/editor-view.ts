@@ -339,7 +339,7 @@ export async function renderEdition(
   let storyRequest = 0
   const right = element('div', 'toolbar-group toolbar-end')
   right.append(
-    bar.add({ id: 'story', node: storyButton, priority: 95,
+    bar.add({ id: 'story', node: storyButton, priority: 64,
       menu: () => [{ label: t('story.entry'), icon: 'cards', hint: storyCount.textContent || undefined, action: openSettings }] }),
     bar.add({ id: 'find', node: findButton, priority: 88, menu: () => [{ label: t('editor.findReplace'), icon: 'search', hint: 'Ctrl/⌘ F', action: () => find.open() }] }),
     bar.add({ id: 'appearance', node: aa, priority: 66, menu: () => [{ label: t('appearance.title'), icon: 'appearance', action: () => aa.openPanel(moreButton) }] }),
