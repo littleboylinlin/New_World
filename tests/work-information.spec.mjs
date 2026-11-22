@@ -170,7 +170,7 @@ test('不安全/超限元数据、未知结构字段及未来 Schema 明确拒�
   })
 })
 
-test('正文五种格式的信息选项默认关闭，可选择标题副标题、作者与多段简介', async ({ page }, info) => {
+test('正文六种格式的信息选项默认关闭，可选择标题副标题、作者与多段简介', async ({ page }, info) => {
   await create(page, 'original', '元数据导出书', { ...values, author: 'Export Author', synopsis: 'Intro one.\nLine two.\n\nIntro three.' })
   await editor(page).fill('BODY ONLY CONTENT.'); await page.keyboard.press('Control+s'); await expect(page.locator('.save-status')).toHaveText('已保存')
   async function exportAs(format, selected) {
@@ -193,6 +193,19 @@ test('正文五种格式的信息选项默认关闭，可选择标题副标题�
   const xml = Buffer.from(await entries.find(e=>e.filename==='word/document.xml').getData(new Uint8ArrayWriter())).toString()
   expect(xml.indexOf('Export Author')).toBeLessThan(xml.indexOf('BODY ONLY CONTENT.')); expect((xml.match(/<w:sectPr/g)??[]).length).toBe(2)
   const core = Buffer.from(await entries.find(e=>e.filename==='docProps/core.xml').getData(new Uint8ArrayWriter())).toString(); expect(core).toContain('Export Author'); await zip.close()
+  const epubPlain = await exportAs('EPUB', []); const epubPlainZip = new ZipReader(new Uint8ArrayReader(epubPlain)); const epubPlainEntries = await epubPlainZip.getEntries()
+  expect(epubPlainEntries.some(e => e.filename === 'OEBPS/titlepage.xhtml')).toBe(false)
+  const epubPlainOpf = Buffer.from(await epubPlainEntries.find(e => e.filename === 'OEBPS/content.opf').getData(new Uint8ArrayWriter())).toString()
+  expect(epubPlainOpf).toContain('<dc:title>元数据导出书</dc:title>'); expect(epubPlainOpf).toContain('<dc:creator>Export Author</dc:creator>')
+  const epubPlainCh1 = Buffer.from(await epubPlainEntries.find(e => e.filename === 'OEBPS/chapters/chapter-001.xhtml').getData(new Uint8ArrayWriter())).toString()
+  expect(epubPlainCh1).toContain('BODY ONLY CONTENT.'); expect(epubPlainCh1).not.toContain('Intro one.'); await epubPlainZip.close()
+  const epubWithInfo = await exportAs('EPUB', selected); const epubInfoZip = new ZipReader(new Uint8ArrayReader(epubWithInfo)); const epubInfoEntries = await epubInfoZip.getEntries()
+  const epubInfoOpf = Buffer.from(await epubInfoEntries.find(e => e.filename === 'OEBPS/content.opf').getData(new Uint8ArrayWriter())).toString()
+  expect(epubInfoOpf.indexOf('idref="titlepage"')).toBeGreaterThan(-1); expect(epubInfoOpf.indexOf('idref="titlepage"')).toBeLessThan(epubInfoOpf.indexOf('idref="chapter-001"'))
+  const epubTitlePage = Buffer.from(await epubInfoEntries.find(e => e.filename === 'OEBPS/titlepage.xhtml').getData(new Uint8ArrayWriter())).toString()
+  expect(epubTitlePage).toContain('元数据导出书'); expect(epubTitlePage).toContain(values.subtitle); expect(epubTitlePage).toContain('Export Author'); expect(epubTitlePage).toContain('Intro one.<br/>Line two.<br/><br/>Intro three.')
+  const epubInfoCh1 = Buffer.from(await epubInfoEntries.find(e => e.filename === 'OEBPS/chapters/chapter-001.xhtml').getData(new Uint8ArrayWriter())).toString()
+  expect(epubInfoCh1).toContain('BODY ONLY CONTENT.'); await epubInfoZip.close()
   await page.evaluate(() => { window.newWorldDesktop = { savePdf: async () => { window.printedWork = document.querySelector('.print-edition').innerHTML } } })
   await editorAction(page, '导出'); const form=page.getByRole('dialog',{name:'导出编辑稿'})
   await form.getByRole('radio',{name:'PDF',exact:true}).check(); for (const label of selected) await form.getByRole('checkbox',{name:label,exact:true}).check()
