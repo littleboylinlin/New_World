@@ -507,10 +507,12 @@ ipcMain.handle('new-world:project-open', async (event) => {
   return picked.canceled || !picked.filePaths[0] ? null : projectFiles.readProjectFile(picked.filePaths[0])
 })
 ipcMain.handle('new-world:project-save', async (event, name, bytes) => {
-  if (!trustedMainRenderer(event) || typeof name !== 'string' || name.length > 255
+  // The story settings window of a work can export that work too.
+  const storyWindow = isTrustedSecondaryRenderer(event, appUrl, storyWindows.values()) ? BrowserWindow.fromWebContents(event.sender) : null
+  if ((!trustedMainRenderer(event) && !storyWindow) || typeof name !== 'string' || name.length > 255
     || !(bytes instanceof Uint8Array) || bytes.byteLength > projectFiles.maxBytes) throw new Error('Invalid project export')
   const filename = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'New_World.newworld'
-  const picked = await dialog.showSaveDialog(mainWindow, {
+  const picked = await dialog.showSaveDialog(storyWindow ?? mainWindow, {
     title: t('project.export'), defaultPath: join(app.getPath('documents'), filename),
     filters: [{ name: 'New_World', extensions: ['newworld'] }],
   })

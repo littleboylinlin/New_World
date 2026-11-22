@@ -2,8 +2,8 @@ import { t } from '../i18n'
 import { storageError } from '../library'
 import { button, element } from '../ui'
 import type { Edition } from '../documents/model'
-import { blankStoryCard, maxStoryName, storyChapterKey, storyDirections, storyStrokes, uniqueAliases } from './model'
-import type { StoryCardInput, StoryChapter, StoryEdge, StoryGroup, StoryImage, StoryTag, StoryText } from './model'
+import { blankStoryCard, maxStoryName, storyChapterKey, uniqueAliases } from './model'
+import type { StoryCardInput, StoryChapter, StoryTag } from './model'
 
 export function storyLabel<C extends HTMLElement>(name: string, control: C) {
   const label = element('label', 'field-label')
@@ -238,26 +238,4 @@ export function cardInspector(options: InspectorOptions<StoryCardInput>, value =
       }
     },
   }
-}
-
-export function edgeInspector(options: InspectorOptions<StoryEdge>, edge: StoryEdge) {
-  const name = storyInput(edge.name)
-  const direction = optionsList(t('story.direction'), storyDirections, edge.direction, 'story.direction.')
-  const stroke = optionsList(t('story.stroke'), storyStrokes, edge.stroke, 'story.stroke.')
-  const color = storyInput(edge.color, 'color')
-  const panel = inspector(options, () => ({
-    ...edge, name: name.value.trim(), color: color.value,
-    direction: direction.value as StoryEdge['direction'], stroke: stroke.value as StoryEdge['stroke'],
-  }), name)
-  panel.body.append(storyLabel(t('story.relationName'), name), storyLabel(t('story.direction'), direction),
-    storyLabel(t('story.stroke'), stroke), storyLabel(t('story.color'), color))
-  return panel
-}
-
-type SimpleNode = StoryText | StoryGroup | StoryImage
-export function objectInspector(options: InspectorOptions<SimpleNode>, node: SimpleNode) {
-  const field = node.kind === 'text' ? textarea(node.text, 6) : storyInput(node.name)
-  const panel = inspector(options, (): SimpleNode => node.kind === 'text' ? { ...node, text: field.value } : { ...node, name: field.value }, field)
-  panel.body.append(storyLabel(t(node.kind === 'text' ? 'story.body' : 'story.name'), field))
-  return panel
 }

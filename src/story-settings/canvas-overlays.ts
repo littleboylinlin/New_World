@@ -1,203 +1,127 @@
 import { t } from '../i18n'
-import { button, element, icon } from '../ui'
-import type { IconName } from '../ui'
-import { optionsList, storyInput } from './card-editor'
-import { clamp } from './geometry'
-import { storyDirections, storyStrokes } from './model'
-import type { Point, Rect, StoryEdge } from './model'
+import { button, element } from '../ui'
+import type { Rect, StoryCard, StoryTag } from './model'
 
-type EdgeChange = Partial<Pick<StoryEdge, 'name' | 'direction' | 'stroke'>>
-interface OverlayOptions {
-  connect: (id: string) => void
-  prepareEdit: () => boolean
-  name: (id: string) => void
-  change: (id: string, change: EdgeChange) => void
-  remove: (id: string) => void
+export interface InlineEditor {
+  form: HTMLFormElement
+  field: HTMLInputElement | HTMLTextAreaElement
+  place: (rect: Rect) => void
+  close: () => void
 }
 
-function control(key: string, symbol: IconName, extra = '') {
-  const item = button('', `button button-small button-quiet story-square ${extra}`, symbol)
-  const label = t(`story.${key}`)
-  item.setAttribute('aria-label', label)
-  item.title = label
-  return item
+interface InlineOptions {
+  rect: Rect
+  value: string
+  label: string
+  className: string
+  multiline?: boolean
+  fontSize?: number
+  /** Return false to keep the editor open (e.g. while saving failed). */
+  commit: (value: string) => void
+  cancel: () => void
 }
 
-function picker(key: string, symbol: IconName, values: readonly string[]) {
-  const label = t(`story.${key}`)
-  const wrapper = element('label', 'button button-small button-quiet story-square story-edge-picker')
-  wrapper.title = label
-  const field = optionsList(label, values, values[0], `story.${key}.`)
-  wrapper.append(icon(symbol), field)
-  return { wrapper, field }
+/**
+ * A small text field placed over the canvas, where the text appears. Enter saves, Shift+Enter adds a
+ * line in multi-line text, Escape cancels and clicking elsewhere saves.
+ */
+export function inlineEditor(surface: HTMLElement, options: InlineOptions): InlineEditor {
+  const form = element('form', `story-canvas-control story-inline ${options.className}`)
+  const field = options.multiline ? element('textarea') : element('input')
+  field.className = 'story-inline-field'
+  field.value = options.value
+  field.setAttribute('aria-label', options.label)
+  if (field instanceof HTMLInputElement) field.enterKeyHint = 'done'
+  form.append(field)
+  surface.append(form)
+  let open = true
+  function place(rect: Rect) {
+    Object.assign(form.style, { left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px` })
+    if (options.fontSize) field.style.fontSize = `${options.fontSize}px`
+  }
+  function close() {
+    if (!open) return
+    open = false
+    form.remove()
+  }
+  function finish(save: boolean) {
+    if (!open) return
+    const value = field.value
+    close()
+    surface.focus({ preventScroll: true })
+    if (save) options.commit(value)
+    else options.cancel()
+  }
+  form.onsubmit = (event) => { event.preventDefault(); finish(true) }
+  field.addEventListener('keydown', (event) => {
+    const key = event as KeyboardEvent
+    if (key.isComposing) return
+    key.stopPropagation()
+    if (key.key === 'Escape') { key.preventDefault(); finish(false) }
+    else if (key.key === 'Enter' && !(options.multiline && key.shiftKey)) { key.preventDefault(); finish(true) }
+  })
+  field.addEventListener('blur', () => finish(true))
+  for (const type of ['pointerdown', 'dblclick', 'wheel'] as const) form.addEventListener(type, (event) => event.stopPropagation())
+  place(options.rect)
+  field.focus({ preventScroll: true })
+  field.select()
+  return { form, field, place, close }
 }
 
-export function storyCanvasOverlays(surface: HTMLElement, options: OverlayOptions) {
-  let selectedCard: string | undefined
-  let selectedEdge: StoryEdge | undefined
-  let menu: { id: string; anchor: Point } | undefined
-  let editor: { edge: StoryEdge; form: HTMLFormElement } | undefined
-  let deleteTouch: { pointerId: number; start: Point; edgeId: string } | undefined
-  let handledDeleteTouch = false
-  const more = control('cardActions', 'more', 'story-canvas-control story-card-more')
-  more.setAttribute('aria-expanded', 'false')
-  const menuPanel = element('div', 'story-canvas-control story-canvas-popup story-card-menu')
-  menuPanel.setAttribute('role', 'group')
-  menuPanel.setAttribute('aria-label', t('story.cardActions'))
-  const connect = button(t('story.connectTo'), 'button button-small button-quiet', 'connect')
-  menuPanel.append(connect)
-  const tools = element('div', 'story-canvas-control story-canvas-popup story-edge-tools')
-  tools.setAttribute('role', 'group')
-  tools.setAttribute('aria-label', t('story.relationActions'))
-  const name = control('renameEdge', 'edit')
-  name.append(t('story.renameEdge'))
-  const direction = picker('direction', 'swap', storyDirections)
-  const stroke = picker('stroke', 'rule', storyStrokes)
-  const remove = control('deleteEdge', 'trash', 'remove-button')
-  tools.append(name, direction.wrapper, stroke.wrapper, remove)
-  for (const item of [more, menuPanel, tools]) item.hidden = true
-  surface.append(more, menuPanel, tools)
+/** A short note at the bottom of the canvas, optionally with one action button. */
+export function canvasToast(surface: HTMLElement) {
+  const box = element('div', 'story-canvas-control story-toast')
+  box.setAttribute('role', 'status')
+  const text = element('span', 'story-toast-text')
+  const action = button('', 'button button-small button-quiet story-toast-action')
+  action.hidden = true
+  box.append(text, action)
+  surface.append(box)
+  let timer = 0
+  function show(message: string, options: { error?: boolean; action?: { label: string; run: () => void }; duration?: number } = {}) {
+    clearTimeout(timer)
+    text.textContent = message
+    box.classList.toggle('story-toast-error', Boolean(options.error))
+    box.dataset.visible = message ? 'true' : 'false'
+    action.hidden = !options.action
+    action.textContent = options.action?.label ?? ''
+    action.onclick = options.action ? () => { hide(); options.action!.run() } : null
+    if (message) timer = window.setTimeout(hide, options.duration ?? (options.action ? 6000 : 2400))
+  }
+  function hide() {
+    clearTimeout(timer)
+    text.textContent = ''
+    action.hidden = true
+    box.dataset.visible = 'false'
+  }
+  hide()
+  return { element: box, show, hide, message: () => text.textContent ?? '' }
+}
 
-  const margin = 6
-  function place(item: HTMLElement, across: number, down: number) {
-    const left = clamp(across, margin, Math.max(margin, surface.clientWidth - item.offsetWidth - margin))
-    const top = clamp(down, margin, Math.max(margin, surface.clientHeight - item.offsetHeight - margin))
-    item.style.left = `${left}px`
-    item.style.top = `${top}px`
-  }
 
-  function near(item: HTMLElement, point: Point, above: boolean, gap: number) {
-    const higher = point.y - item.offsetHeight - gap
-    const lower = point.y + gap
-    const top = above ?
-      (higher >= margin ? higher : lower) :
-      (lower + item.offsetHeight <= surface.clientHeight - margin ? lower : higher)
-    place(item, point.x - item.offsetWidth / 2, top)
+/** A card's details as shown beside it on hover and in the properties panel: tags, aliases, fields and body. */
+export function cardDetails(card: StoryCard, tags: readonly StoryTag[], bodyLines = 6) {
+  const box = element('div', 'story-card-details')
+  const chips = element('div', 'story-detail-tags')
+  for (const id of card.tagIds) {
+    const tag = tags.find((item) => item.id === id)
+    if (!tag) continue
+    const chip = element('span', 'story-chip', tag.name)
+    chip.style.setProperty('--tag-color', tag.color)
+    chips.append(chip)
   }
-
-  function hideMenu(restoreFocus = false) {
-    if (!menu) return false
-    menu = undefined
-    menuPanel.hidden = true
-    more.setAttribute('aria-expanded', 'false')
-    if (restoreFocus && !more.hidden) more.focus({ preventScroll: true })
-    return true
+  if (chips.childElementCount) box.append(chips)
+  if (card.aliases.length) box.append(element('p', 'story-detail-alias', t('story.aliasLine', [card.aliases.join(t('story.nameSeparator'))])))
+  const fields = card.fields.filter((field) => field.key || field.value).slice(0, 4)
+  if (fields.length) {
+    const list = element('dl', 'story-detail-fields')
+    for (const field of fields) list.append(element('dt', '', field.key), element('dd', '', field.value))
+    box.append(list)
   }
-
-  function openMenu(id: string, anchor: Point, focus = false) {
-    menu = { id, anchor }
-    more.setAttribute('aria-expanded', 'true')
-    menuPanel.hidden = false
-    near(menuPanel, anchor, false, 8)
-    if (focus) connect.focus({ preventScroll: true })
+  if (card.body.trim()) {
+    const body = element('p', 'story-detail-body', card.body.trim())
+    body.style.setProperty('--lines', String(bodyLines))
+    box.append(body)
   }
-
-  more.onclick = (event) => {
-    if (hideMenu() || !selectedCard) return
-    openMenu(selectedCard, { x: more.offsetLeft + more.offsetWidth / 2, y: more.offsetTop + more.offsetHeight }, event.detail === 0)
-  }
-  connect.onclick = () => {
-    const id = menu?.id
-    hideMenu()
-    if (id) options.connect(id)
-  }
-  name.onclick = () => { if (selectedEdge) options.name(selectedEdge.id) }
-  direction.field.onchange = () => {
-    if (!selectedEdge) return
-    const value = direction.field.value as StoryEdge['direction']
-    direction.field.value = selectedEdge.direction
-    if (value !== selectedEdge.direction && options.prepareEdit()) options.change(selectedEdge.id, { direction: value })
-  }
-  stroke.field.onchange = () => {
-    if (!selectedEdge) return
-    const value = stroke.field.value as StoryEdge['stroke']
-    stroke.field.value = selectedEdge.stroke
-    if (value !== selectedEdge.stroke && options.prepareEdit()) options.change(selectedEdge.id, { stroke: value })
-  }
-  // A tap can follow a captured canvas drag before the browser synthesizes a
-  // fresh click. Recognize it on the delete control itself and keep keyboard
-  // and mouse activation on the native click path.
-  remove.onpointerdown = (event) => {
-    handledDeleteTouch = false
-    deleteTouch = event.pointerType === 'touch' && selectedEdge
-      ? { pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, edgeId: selectedEdge.id }
-      : undefined
-  }
-  remove.onpointercancel = () => { deleteTouch = undefined }
-  remove.onpointerup = (event) => {
-    const touch = deleteTouch
-    if (touch?.pointerId !== event.pointerId) return
-    deleteTouch = undefined
-    handledDeleteTouch = true
-    if (Math.hypot(event.clientX - touch.start.x, event.clientY - touch.start.y) > 9 ||
-        !remove.contains(document.elementFromPoint(event.clientX, event.clientY))) return
-    if (selectedEdge?.id === touch.edgeId) options.remove(touch.edgeId)
-  }
-  remove.onclick = (event) => {
-    if (event.detail && handledDeleteTouch) return
-    if (selectedEdge) options.remove(selectedEdge.id)
-  }
-
-  function clearEditor() {
-    const form = editor?.form
-    editor = undefined
-    form?.remove()
-  }
-
-  function editName(edge: StoryEdge, point: Point) {
-    clearEditor()
-    const form = element('form', 'story-canvas-control story-canvas-popup story-label-editor')
-    const field = storyInput(edge.name)
-    field.classList.add('story-inline-label')
-    field.setAttribute('aria-label', t('story.relationName'))
-    field.enterKeyHint = 'done'
-    const save = control('save', 'check')
-    save.type = 'submit'
-    form.append(field, save)
-    editor = { edge, form }
-    surface.append(form)
-    tools.hidden = true
-    near(form, point, true, 8)
-    const finish = (save: boolean, focus: boolean) => {
-      if (editor?.form !== form) return
-      clearEditor()
-      if (selectedEdge?.id === edge.id) tools.hidden = false
-      if (focus) surface.focus({ preventScroll: true })
-      const value = field.value.trim()
-      if (save && value !== edge.name) options.change(edge.id, { name: value })
-    }
-    form.onsubmit = (event) => { event.preventDefault(); finish(true, true) }
-    form.addEventListener('focusout', (event) => {
-      if (!(event.relatedTarget instanceof Node) || !form.contains(event.relatedTarget)) finish(true, false)
-    })
-    field.onkeydown = (event) => {
-      if (event.isComposing || event.key !== 'Escape') return
-      event.preventDefault()
-      event.stopPropagation()
-      finish(false, true)
-    }
-    // Retain the field and its keyboard in Safari when the save button is tapped.
-    save.onpointerdown = (event) => event.preventDefault()
-    field.focus({ preventScroll: true })
-    field.select()
-  }
-
-  return {
-    openMenu, hideMenu, editName, clearEditor,
-    editing: () => editor?.edge.id,
-    render(card?: { id: string; rect: Rect }, relation?: { edge: StoryEdge; point: Point }, namePoint?: Point) {
-      selectedCard = card?.id
-      selectedEdge = relation?.edge
-      if (menu && selectedCard !== menu.id) hideMenu()
-      more.hidden = !card
-      tools.hidden = !relation || Boolean(editor)
-      if (card) place(more, card.rect.x + card.rect.width - more.offsetWidth, card.rect.y - more.offsetHeight - 4)
-      if (relation) {
-        direction.field.value = relation.edge.direction
-        stroke.field.value = relation.edge.stroke
-        if (!tools.hidden) near(tools, relation.point, true, 16)
-      }
-      if (editor && namePoint) near(editor.form, namePoint, true, 8)
-    },
-  }
+  return box.childElementCount ? box : undefined
 }

@@ -762,13 +762,12 @@ export async function renderEdition(
   // a drag or an open menu.
   function paintStoryLinks() {
     const linked = storyCards.filter((card) => card.chapters.some((ref) => ref.editionId === edition.id && ref.chapterId === chapter.id))
-    storyCount.textContent = storyCards.length ? String(storyCards.length) : ''
+    // The badge counts the cards linked to the open chapter, and is hidden when there are none.
+    storyCount.textContent = linked.length ? String(linked.length) : ''
     const names = linked.slice(0, 5).map((card) => card.name)
     if (linked.length > names.length) names.push('…')
-    const detail = linked.length ? t('story.chapterCards', [linked.length, names.join(t('story.nameSeparator'))])
-      : storyCards.length ? t('story.bookCards', [storyCards.length]) : ''
-    storyButton.title = detail || t('story.entry')
-    if (detail) storyButton.setAttribute('aria-description', detail)
+    storyButton.title = linked.length ? t('story.chapterCards', [linked.length, names.join(t('story.nameSeparator'))]) : t('story.entry')
+    if (linked.length) storyButton.setAttribute('aria-description', t('story.chapterCardsBadge', [linked.length]))
     else storyButton.removeAttribute('aria-description')
     bar.layout()
   }
