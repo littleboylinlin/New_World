@@ -41,6 +41,7 @@ export default defineConfig({
         },
         ...dependencyNotices(),
         { src: 'src/fonts/*-OFL.txt', dest: 'licenses' },
+        { src: 'src/story-settings/Excalidraw-MIT.txt', dest: 'licenses' },
       ],
     }),
   ],

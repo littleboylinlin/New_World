@@ -26,21 +26,32 @@ export interface StoryGroup extends StoryItem { kind: 'group'; name: string }
 export interface StoryImage extends StoryItem { kind: 'image'; src: string; name: string }
 export type StoryNode = StoryCard | StoryText | StoryGroup | StoryImage
 
-export const storySides = ['top', 'right', 'bottom', 'left'] as const
-export type StorySide = typeof storySides[number]
-export interface NodeEndpoint { nodeId: string; side: StorySide }
+/** An arrow end glued to the outline of a card, text or image. It follows the object when it moves or resizes. */
+export interface NodeEndpoint { nodeId: string }
+/** An arrow end glued to another arrow, at a fraction of that arrow's length from its start. */
 export interface EdgeEndpoint { edgeId: string; at: number }
+/** A loose arrow end in canvas coordinates. */
+export interface PointEndpoint { x: number; y: number }
+export type StoryEndpoint = NodeEndpoint | EdgeEndpoint | PointEndpoint
 export const storyDirections = ['forward', 'back', 'both', 'none'] as const
 export const storyStrokes = ['solid', 'dash', 'dot'] as const
+export const maxStoryBend = 100_000
 export interface StoryEdge {
   id: string
-  from: NodeEndpoint
-  to: NodeEndpoint | EdgeEndpoint
+  from: StoryEndpoint
+  to: StoryEndpoint
   name: string
   direction: typeof storyDirections[number]
   stroke: typeof storyStrokes[number]
   color: string
+  /** Signed distance of the curve's middle from the straight line, perpendicular to from → to. */
+  bend: number
 }
+
+export const isNodeEnd = (end: StoryEndpoint): end is NodeEndpoint => 'nodeId' in end
+export const isEdgeEnd = (end: StoryEndpoint): end is EdgeEndpoint => 'edgeId' in end
+/** The ids an arrow refers to: the nodes or arrows its ends are glued to. */
+export const storyEndRefs = (edge: StoryEdge) => [edge.from, edge.to].flatMap((end) => isNodeEnd(end) ? [end.nodeId] : isEdgeEnd(end) ? [end.edgeId] : [])
 
 export interface StoryScene {
   nodes: StoryNode[]
@@ -180,32 +191,39 @@ function isNode(value: unknown) {
 }
 const isTag = (value: unknown) => plain(value) && keys(value, ['id', 'name', 'color'])
   && line(value.id) && line(value.name) && color(value.color)
-const isNodeEndpoint = (value: unknown) => plain(value) && keys(value, ['nodeId', 'side']) && line(value.nodeId)
-  && storySides.some((side) => side === value.side)
-const isEdgeEndpoint = (value: unknown) => plain(value) && keys(value, ['edgeId', 'at']) && line(value.edgeId) && bounded(value.at, 0, 1)
+const isEndpoint = (value: unknown) => plain(value) && (
+  (keys(value, ['nodeId']) && line(value.nodeId))
+  || (keys(value, ['edgeId', 'at']) && line(value.edgeId) && bounded(value.at, 0, 1))
+  || (keys(value, ['x', 'y']) && validPosition(value)))
 
 function isEdge(value: unknown) {
-  return plain(value) && keys(value, ['id', 'from', 'to', 'name', 'direction', 'stroke', 'color'])
-    && line(value.id) && text(value.name) && color(value.color)
-    && isNodeEndpoint(value.from) && (isNodeEndpoint(value.to) || isEdgeEndpoint(value.to))
+  return plain(value) && keys(value, ['id', 'from', 'to', 'name', 'direction', 'stroke', 'color', 'bend'])
+    && line(value.id) && text(value.name) && color(value.color) && isEndpoint(value.from) && isEndpoint(value.to)
+    && bounded(value.bend, -maxStoryBend, maxStoryBend)
     && storyDirections.some((direction) => direction === value.direction) && storyStrokes.some((stroke) => stroke === value.stroke)
 }
 
-function validEdges(scene: StoryScene) {
-  const edges = new Map(scene.edges.map((edge) => [edge.id, edge]))
-  const visited = new Set<string>()
-  for (const start of scene.edges) {
-    if ('nodeId' in start.to && start.to.nodeId === start.from.nodeId) return false
-    const chain = new Set<string>()
-    let edge: StoryEdge | undefined = start
-    while (edge && !visited.has(edge.id)) {
-      if (chain.has(edge.id)) return false
-      chain.add(edge.id)
-      edge = 'edgeId' in edge.to ? edges.get(edge.to.edgeId) : undefined
+/** Rejects an arrow glued to itself, both ends on one node, and arrows that hang on each other in a loop. */
+export function validStoryEdges(edges: readonly StoryEdge[]) {
+  const byId = new Map(edges.map((edge) => [edge.id, edge]))
+  const state = new Map<string, 'open' | 'done'>()
+  function visit(edge: StoryEdge): boolean {
+    const mark = state.get(edge.id)
+    if (mark) return mark === 'done'
+    state.set(edge.id, 'open')
+    for (const end of [edge.from, edge.to]) {
+      const target = isEdgeEnd(end) ? byId.get(end.edgeId) : undefined
+      if (target && !visit(target)) return false
     }
-    for (const id of chain) visited.add(id)
+    state.set(edge.id, 'done')
+    return true
   }
-  return true
+  return edges.every((edge) => {
+    const { from, to } = edge
+    if (isNodeEnd(from) && isNodeEnd(to) && from.nodeId === to.nodeId) return false
+    if ((isEdgeEnd(from) && from.edgeId === edge.id) || (isEdgeEnd(to) && to.edgeId === edge.id)) return false
+    return visit(edge)
+  })
 }
 
 export function isStoryScene(value: unknown): value is StoryScene {
@@ -217,7 +235,7 @@ export function isStoryScene(value: unknown): value is StoryScene {
   const tags = new Set(scene.tags.map((tag) => tag.id))
   const ids = [...scene.nodes, ...scene.edges, ...scene.tags].map(({ id }) => id)
   return new Set(ids).size === ids.length && storyCards(scene).every((card) => card.tagIds.every((id) => tags.has(id)))
-    && validEdges(scene) && new TextEncoder().encode(JSON.stringify(scene)).length <= maxSceneCharacters
+    && validStoryEdges(scene.edges) && new TextEncoder().encode(JSON.stringify(scene)).length <= maxSceneCharacters
 }
 
 export function isStoryView(value: unknown): value is StoryView {

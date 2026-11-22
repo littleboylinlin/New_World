@@ -1,6 +1,6 @@
 import { bounds, selectedNodes } from './geometry'
-import { isStoryScene } from './model'
-import type { Point, StoryEdge, StoryScene, StoryWork } from './model'
+import { isEdgeEnd, isNodeEnd, isStoryScene } from './model'
+import type { Point, StoryEdge, StoryEndpoint, StoryScene, StoryWork } from './model'
 
 interface Clip {
   format: 'new-world-story-canvas'
@@ -13,11 +13,14 @@ export function copyStorySelection(work: StoryWork, scene: StoryScene, selection
   const nodes = selectedNodes(scene.nodes, selection)
   const ids = new Set(nodes.map(({ id }) => id))
   const edges = new Set(scene.edges.filter((edge) => selection.has(edge.id)).map((edge) => edge.id))
+  // Arrows between copied objects come along; an arrow glued to a copied arrow too.
+  const inside = (end: StoryEndpoint) => isNodeEnd(end) ? ids.has(end.nodeId) : isEdgeEnd(end) ? edges.has(end.edgeId) : true
   let changed = true
   while (changed) {
     changed = false
     for (const edge of scene.edges) {
-      if (!edges.has(edge.id) && ids.has(edge.from.nodeId) && ('nodeId' in edge.to ? ids.has(edge.to.nodeId) : edges.has(edge.to.edgeId))) {
+      if (!edges.has(edge.id) && inside(edge.from) && inside(edge.to) && (ids.size || edges.size)
+        && [edge.from, edge.to].some((end) => !('x' in end))) {
         edges.add(edge.id)
         changed = true
       }
@@ -46,8 +49,8 @@ export function pasteStorySelection(value: string, work: StoryWork, existing: St
     mapping.set(tag.id, id)
     if (!match) tags.push({ ...tag, id })
   }
-  const box = bounds(source.nodes)
-  const offset = box ? { x: center.x - box.x - box.width / 2 + 20, y: center.y - box.y - box.height / 2 + 20 } : { x: 0, y: 0 }
+  const box = bounds([...source.nodes, ...source.edges.flatMap((edge) => [edge.from, edge.to].flatMap((end) => 'x' in end ? [{ ...end, width: 0, height: 0 }] : []))])
+  const offset = box ? { x: center.x - box.x - box.width / 2 + 20, y: center.y - box.y - box.height / 2 + 20 } : { x: 20, y: 20 }
   const nodes = source.nodes.map((node) => {
     const next = { ...node, id: mapping.get(node.id)!, x: node.x + offset.x, y: node.y + offset.y }
     if (next.kind === 'card') {
@@ -57,21 +60,14 @@ export function pasteStorySelection(value: string, work: StoryWork, existing: St
     return next
   })
   const liveNodes = new Set([...existing.nodes, ...nodes].map(({ id }) => id))
-  const edges: StoryEdge[] = source.edges.map((edge) => ({
-    ...edge, id: mapping.get(edge.id)!,
-    from: { ...edge.from, nodeId: mapping.get(edge.from.nodeId) ?? edge.from.nodeId },
-    to: 'nodeId' in edge.to
-      ? { ...edge.to, nodeId: mapping.get(edge.to.nodeId) ?? edge.to.nodeId }
-      : { ...edge.to, edgeId: mapping.get(edge.to.edgeId) ?? edge.to.edgeId },
-  }))
+  const remap = (end: StoryEndpoint): StoryEndpoint => isNodeEnd(end) ? { nodeId: mapping.get(end.nodeId) ?? end.nodeId }
+    : isEdgeEnd(end) ? { ...end, edgeId: mapping.get(end.edgeId) ?? end.edgeId } : { x: end.x + offset.x, y: end.y + offset.y }
+  const edges: StoryEdge[] = source.edges.map((edge) => ({ ...edge, id: mapping.get(edge.id)!, from: remap(edge.from), to: remap(edge.to) }))
   const allowedNodes = same ? liveNodes : new Set(nodes.map(({ id }) => id))
   const originalEdges = same ? new Set(existing.edges.map(({ id }) => id)) : new Set<string>()
-  const missing = new Set(edges.filter((edge) => !allowedNodes.has(edge.from.nodeId) ||
-    ('nodeId' in edge.to && !allowedNodes.has(edge.to.nodeId))).map(({ id }) => id))
   const edgeIds = new Set(edges.map(({ id }) => id))
-  for (const edge of edges) {
-    if ('edgeId' in edge.to && !edgeIds.has(edge.to.edgeId) && !originalEdges.has(edge.to.edgeId)) missing.add(edge.id)
-  }
+  const missing = new Set(edges.filter((edge) => [edge.from, edge.to].some((end) =>
+    (isNodeEnd(end) && !allowedNodes.has(end.nodeId)) || (isEdgeEnd(end) && !edgeIds.has(end.edgeId) && !originalEdges.has(end.edgeId)))).map(({ id }) => id))
   const imported = remainingStoryEdges(edges, missing, new Set())
   return { nodes, edges: imported, tags }
 }
@@ -79,13 +75,31 @@ export function pasteStorySelection(value: string, work: StoryWork, existing: St
 export function remainingStoryEdges(edges: StoryEdge[], removed: Set<string>, nodes: ReadonlySet<string>) {
   const dependents = new Map<string, string[]>()
   for (const edge of edges) {
-    if (nodes.has(edge.from.nodeId) || ('nodeId' in edge.to && nodes.has(edge.to.nodeId))) removed.add(edge.id)
-    if ('edgeId' in edge.to) {
-      const list = dependents.get(edge.to.edgeId) ?? []
-      list.push(edge.id)
-      dependents.set(edge.to.edgeId, list)
+    for (const end of [edge.from, edge.to]) {
+      if (isNodeEnd(end) && nodes.has(end.nodeId)) removed.add(edge.id)
+      if (isEdgeEnd(end)) {
+        const list = dependents.get(end.edgeId) ?? []
+        list.push(edge.id)
+        dependents.set(end.edgeId, list)
+      }
     }
   }
   for (const id of removed) for (const dependent of dependents.get(id) ?? []) removed.add(dependent)
   return edges.filter((edge) => !removed.has(edge.id))
+}
+
+/** The bends of arrows already joining two nodes, seen in the from → to orientation. */
+export function parallelBends(edges: readonly StoryEdge[], from: string, to: string, except?: string) {
+  return edges.flatMap((edge) => {
+    if (edge.id === except || !isNodeEnd(edge.from) || !isNodeEnd(edge.to)) return []
+    if (edge.from.nodeId === from && edge.to.nodeId === to) return [edge.bend]
+    if (edge.from.nodeId === to && edge.to.nodeId === from) return [-edge.bend]
+    return []
+  })
+}
+
+/** An arrow already pointing from one node to the other. */
+export function sameRelation(edges: readonly StoryEdge[], from: string, to: string, except?: string) {
+  return edges.find((edge) => edge.id !== except && isNodeEnd(edge.from) && isNodeEnd(edge.to)
+    && edge.from.nodeId === from && edge.to.nodeId === to)
 }

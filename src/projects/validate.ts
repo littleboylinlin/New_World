@@ -13,7 +13,7 @@ import { validateTasks, projectTaskData } from '../tasks/model'
 import { validateTaskAssets } from '../tasks/resources'
 import type { Detached, ProjectData, ProjectRoot } from './model'
 import { MetadataError, validateWorkMetadata } from '../work-metadata'
-import { storyCards, validStoryRows } from '../story-settings/model'
+import { storyCards, storyEndRefs, validStoryRows } from '../story-settings/model'
 
 const schema = getSchema(documentExtensions)
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 255 && !/[\x00-\x1f]/.test(v)
@@ -173,8 +173,7 @@ export function referencedIds(data: ProjectData) {
     for (const node of [...board.scene.nodes, ...board.scene.tags]) refs.canvas.add(node.id)
     for (const edge of board.scene.edges) {
       refs.canvas.add(edge.id)
-      refs.canvas.add(edge.from.nodeId)
-      refs.canvas.add('nodeId' in edge.to ? edge.to.nodeId : edge.to.edgeId)
+      for (const id of storyEndRefs(edge)) refs.canvas.add(id)
     }
   }
   return refs
