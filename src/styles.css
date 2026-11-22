@@ -449,6 +449,8 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .markdown-source { font-family: ui-monospace, "Noto Sans Mono CJK SC", monospace; font-size: .96rem; line-height: 1.8; }
 .preview-body canvas { display: block; width: auto; max-width: 100%; height: auto; max-height: 1200px; margin-inline: auto; border: 2px solid var(--ink); object-fit: contain; background: #fff; }
 :root[data-theme="soft-paper"] .preview-body canvas { background: var(--surface); }
+.reading-image { display: grid; justify-items: center; gap: 12px; margin: 0; padding: 12px 0 22px; }
+.reading-image img { display: block; max-width: 100%; max-height: 75vh; width: auto; height: auto; object-fit: contain; }
 
 /* Desktop app: the header doubles as the window title bar, footer stays docked, and the page scrolls between them. */
 @media screen {

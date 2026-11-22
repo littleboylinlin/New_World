@@ -3,7 +3,7 @@ import { formDialog } from '../dialogs'
 import { element } from '../ui'
 import { exportStyles } from './export-style'
 import type { ExportStyle } from './export-style'
-import { exportEdition, isTextFormat, outputFormats, renderExportPreview } from './export'
+import { exportEdition, outputFormats, renderExportPreview, usesExportStyle } from './export'
 import type { OutputFormat } from './export'
 import type { ChapterInfo, ChapterInput } from './model'
 import { selectedWorkInfo } from './work-export'
@@ -14,6 +14,7 @@ export function showExportDialog(
   readPreview: (chapter: ChapterInfo) => Promise<ChapterInput>,
   readSelection: (ids: Set<string>) => Promise<ChapterInput[]>,
   readWork?: () => Promise<WorkExportSource>,
+  initialSelectedIds?: ReadonlySet<string>,
 ) {
   const formats = element('div', 'export-formats')
   formats.setAttribute('role', 'radiogroup')
@@ -56,11 +57,13 @@ export function showExportDialog(
     box.type = 'checkbox'
     box.name = 'chapter'
     box.value = info.id
-    box.checked = true
+    box.checked = initialSelectedIds ? initialSelectedIds.has(info.id) : true
     row.append(box, element('span', '', info.title))
     chapterBox.append(row)
     return box
   })
+  allInput.checked = boxes.every((box) => box.checked)
+  allInput.indeterminate = !allInput.checked && boxes.some((box) => box.checked)
 
   const preview = element('section', 'export-preview')
   preview.setAttribute('aria-label', t('export.exportPreview'))
@@ -78,10 +81,10 @@ export function showExportDialog(
     information.append(label); infoBoxes.set(key, input)
   }
   information.hidden = !readWork
-  const readInformation = async () => {
+  const readInformation = async (work?: WorkExportSource) => {
     if (!readWork || ![...infoBoxes.values()].some((box) => box.checked)) return undefined
     const selection = Object.fromEntries([...infoBoxes].map(([key, box]) => [key, box.checked])) as unknown as WorkExportSelection
-    return selectedWorkInfo(await readWork(), selection)
+    return selectedWorkInfo(work ?? await readWork(), selection)
   }
   options.append(formats, styleLabel, styleHint, information, chapterBox)
   const layout = element('div', 'export-layout')
@@ -93,7 +96,7 @@ export function showExportDialog(
     const token = ++request
     const format = selectedFormat()
     const preset = selectedStyle()
-    style.disabled = isTextFormat(format)
+    style.disabled = !usesExportStyle(format)
     styleHint.hidden = !style.disabled
     const first = chapters.find((_, index) => boxes[index].checked)
     if (!first) {
@@ -138,7 +141,8 @@ export function showExportDialog(
     const preset = selectedStyle()
     const selection = await readSelection(ids)
     if (!selection.length) throw new Error(t('export.aSelectedChapterHasBeenRemovedChooseChapters'))
-    await exportEdition(format, title, selection, preset, await readInformation())
+    const work = readWork ? await readWork() : undefined
+    await exportEdition(format, title, selection, preset, await readInformation(work), work)
   })
   void refreshPreview()
 }

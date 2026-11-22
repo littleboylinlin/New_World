@@ -28,9 +28,9 @@ Editing continues in the local library. Export again to save an updated project 
 
 ## Work information (introduced in v0.18.1)
 
-v0.18.1 adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX and PDF exports offer three optional work-information switches, all off by default, using the existing converters.
+v0.18.1 adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX, PDF and EPUB exports offer three optional work-information switches, all off by default, using the existing converters.
 
-v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; the current release keeps the v0.19.0 database and project formats; see above for compatibility. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
+v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; the current database is v11, projects write Schema 3, and full-library backups write format 3 (see compatibility below). See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
 
 ## Windows desktop
 
@@ -60,11 +60,11 @@ Mac users upgrading from v0.9.x still follow the old flow once: download the DMG
 
 ## Interface language
 
-Simplified Chinese and English are supported. The first Windows install or first Mac launch needs network access to download exactly one language pack based on the system language: Chinese systems get Simplified Chinese, everything else gets English. Language packs are published separately from the installers; the installer verifies size and SHA-256, retries failed downloads, and only continues after verification passes.
+Simplified Chinese and English are supported. The Windows installer bundles both language packs (since v0.27.1), while first Mac launch downloads only the pack matching the system language from the mirror with GitHub fallback (Chinese systems get Simplified Chinese, others get English). Language packs are also published alongside installers; the app and installer verify size and SHA-256 and retry on failure before continuing.
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For a first offline install, place the required language pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.20.1\zh-CN.json` or `en.json`; the installer uses it directly once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For offline pack placement, put the required pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.30.0\zh-CN.json` or `en.json`; it is used once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. In full screen the top-right buttons become “Exit full screen” and close, and on macOS the app bar takes back the space of the traffic lights. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -72,14 +72,14 @@ The app bar at the top of the window doubles as the title bar and can be dragged
 
 "Settings → Appearance" sets the theme, English font, Chinese font and text size. Changes apply right away. The "Aa" button in the reading and editor toolbars opens a small panel for the theme, text size and English font; "More settings…" opens the full settings.
 
-- Theme: Match system, White, Dark or Beige, applied to the whole app. The default follows the system's light or dark mode. The app bar doubles as the window title bar and stays dark in every theme.
+- Theme: Match system, White, Dark, Beige, or Soft Paper (introduced in v0.28.0), applied to the whole app. The default follows the system's light or dark mode. The app bar doubles as the window title bar and stays dark in every theme.
 - English font: Times New Roman (default), Georgia, Lora, Inter or System Sans. Lora and Inter ship with the app and work offline; their licenses are in `src/fonts/` and in `licenses/` of the build.
 - Chinese font: Auto (default; Song with serif English fonts, otherwise Hei), Song, Hei or Kai, using the fonts installed on the system. Chinese characters, which the English fonts do not contain, use the chosen Chinese font.
 - Text size: shared by reading and writing, 14 to 28 px, with a reset to the default.
 - Layout: line spacing (compact, standard, relaxed), paragraph spacing (none, standard, wide), a two-character first-line indent, and text width (narrow, standard, wide).
 - Spell check: off by default. When on, only the English spelling of the chapter text is checked; titles and form fields are not. Right-click a marked word to pick a suggestion or add it to the dictionary. The Windows app ships US and UK English dictionaries, so it works offline and never downloads one on its own. Other Chromium `.bdic` dictionaries can be imported in the settings or downloaded from an https link you enter (the file name must match the one in Electron's `hunspell_dictionaries.zip`, such as `fr-FR-3-0.bdic`). The link itself must be https; if the server redirects to plain http the download still completes, with a warning to check the source. Added dictionaries are used together with the built-in ones and can be removed at any time, which deletes the file right away; macOS uses the system spell checker and the web version the browser's.
 
-Appearance is saved on this device. On the desktop it moves together with the library storage location, and the chosen theme is also kept in `NewWorld-appearance.json` so the window opens with the matching background instead of flashing light first. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style.
+Appearance is saved on this device. On the desktop it moves together with the library storage location, and the chosen theme is also kept in `NewWorld-appearance.json` so the window opens with the matching background instead of flashing light first. Exported DOCX and PDF files and printing always use black text on white paper with the fonts of the export style; EPUB fonts and colors are controlled by the reader.
 
 ## Running
 
@@ -168,23 +168,37 @@ Deleting a work, a continuation project's source, an edited version, or a chapte
 
 Every work card's menu has "Archive". Archived works disappear from the original and continuation/imitation libraries and the home counts but keep everything; the notice at the bottom of the page can undo it. "Archive" on the home page and "View archive" beside each library list show all archived works, which can still be opened, edited and exported, moved back to their library with "Unarchive", or deleted to the trash.
 
+## Version history
+
+Since v0.15.1, complete pre-edit chapter and idea revision snapshots (`revisions`, deduplicated compressed `revisionBlobs`, and `ideaRevisions`) are recorded automatically in a strict IndexedDB transaction before AI edits or restorations, along with persistent per-client AI cumulative-loss baselines (`aiBaselines`) to catch gradual content loss across edits or restarts.
+
+- Open “⋯ → History” in the editor or history on Ideas to preview snapshots, restore an older version (automatically backing up the current text first), or prune older revisions after confirmation.
+- Permanently deleting a work or emptying the trash cascades safely to unreferenced revisions and baselines using reference counts.
+
+## AI assistance and local integration
+
+- **Built-in AI services (v0.27.0)**: Connect your own API endpoints and keys in “Settings → AI integration” (`OpenAI Chat Completions`, `OpenAI Responses`, `Anthropic Messages`, and `Gemini`). Save multiple profiles, assign different profiles to polishing, asking, proofreading, and summaries, and import or export profiles without keys. On desktop, keys are encrypted in the system keychain; on the web, keys stay unsaved unless you opt in on that device. Requests go only to your configured endpoint, with a confirmation prompt before first use.
+- **In-editor and web-pane assistance**: Select text to polish, rewrite, expand, shorten, change tone, or ask questions; proofread a selection or chapter; or summarize a selection, chapter, or the whole book (caching per-chapter summaries locally so unchanged chapters are skipped). Polishing, rewriting, and proofreading open in a side-by-side diff view where you can accept all, accept or reject individual changes, insert below, or discard, saving a pre-edit revision snapshot first. On desktop, web panes can also summarize the selection or page into ideas or tasks.
+- **Writing styles library**: Create, edit, import, and export writing styles, summarize a style from sample chapters, assign default styles per work, and carry styles in full-library backups (v0.27.0).
+- **Local AI integration API (`v1`)**: Desktop settings offer an optional loopback-only HTTP JSON API (off by default) for external local tools with per-client Bearer tokens, granular permissions and work scopes, mandatory manual confirmation for deletions and major reductions, and local audit logs; see `AI_INTEGRATION.md`.
+
 ## Backup and restore
 
-"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes, writing stats and all task data (including projects, labels, templates, filters, completion history and attachments) into one `.zip` file.
+"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes, writing stats, chapter and idea revision history, writing styles, AI cumulative-loss baselines (`aiBaselines`), and all task data (including projects, labels, templates, filters, completion history and attachments) into one `.zip` file.
 
 - Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
 - Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
 - Backup location (desktop): `New World Backups` in Documents by default; choose another folder, go back to the default, or open the folder.
 - Encryption: none, or a password (AES-256, which tools such as 7-Zip can open). The desktop app keeps the password encrypted with the system keychain, so automatic backups are encrypted too; the web version asks for a password with each backup. A forgotten password cannot be recovered.
 - Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
-- v0.19.0 writes backup format 2; restoring it replaces all task stores, including task views and reminder settings. Reading legacy format 1 preserves existing tasks. Older apps reject format 2; rolling back requires a pre-upgrade format 1 backup and cannot directly reuse the upgraded database.
-- App device settings such as appearance, language and storage location are not part of a backup.
+- v0.30.0 writes backup format 3, packing AI cumulative-loss baselines (`aiBaselines`) and restoring them together; it continues reading formats 1 and 2 (format 1 keeps existing tasks; legacy formats 1 and 2 without `aiBaselines` clear local baselines to empty instead of attaching mismatched local baselines to restored chapters). Older apps reject format 3; keep a pre-upgrade backup if you might roll back.
+- Local-only data such as appearance, language, storage location, AI service configurations, API keys, and chapter summary caches are not included in backups.
 
 ## Format support
 
 "Edit" means a source can be converted into an independent manuscript. "Export" means a manuscript can produce a new file in that format. Downloading the original is a separate operation that preserves the imported file name and bytes.
 
-When exporting you can select chapters and preview the first selected one. PDF, DOCX, and HTML default to a standard black-on-white style, with compact and relaxed alternatives. TXT keeps paragraph spacing and Markdown keeps headings, lists, and other markup; both offer text previews.
+When exporting you can select chapters and preview the first selected one. PDF, DOCX, and HTML default to a standard black-on-white style, with compact and relaxed alternatives. TXT keeps paragraph spacing and Markdown keeps headings, lists, and other markup; both offer text previews. EPUB exports EPUB 3 (one file per chapter, with cover, local illustrations, title/author/language/unique identifier, and `toc.ncx` for older readers); fonts and colors are controlled by the reader.
 
 | Format | Import source | Source preview | Convert to manuscript | Export manuscript | Known limits |
 | --- | --- | --- | --- | --- | --- |
@@ -195,7 +209,7 @@ When exporting you can select chapters and preview the first selected one. PDF, 
 | DOCX | Yes | Body text | Yes | DOCX | Common text styles, headings, lists, tables, and decodable embedded images. Pagination, footnotes, headers/footers, revisions, and complex layouts may be simplified. |
 | DOC | Yes | — | — | — | Stores and downloads legacy Word sources. |
 | ODT | Yes | Body text | Partial | — | Extracts headings, paragraphs, basic lists, tables, common styles, and package images. Page layout, repeated cells, and complex styles may be simplified. |
-| EPUB | Yes | Text in reading order | Partial | — | Converts chapters, common styles, and package images. Fixed layout, external resources, and DRM content stay in the source. |
+| EPUB | Yes | Text in reading order | Partial | EPUB 3 (with `toc.ncx`) | Import converts chapters, common styles, and package images while fixed layout, external resources, and DRM content stay in the source; export builds per-chapter e-books with metadata, cover, and local illustrations. |
 | PDF | Yes | Page-by-page render | Partial | Desktop saves PDF directly; web uses print-to-save | Extracts readable text; order may need adjustment. Scans need OCR first, encrypted files need unlocking. Export re-paginates. |
 | MOBI, AZW3 | Yes | — | — | — | Stores and downloads e-book sources. |
 
@@ -203,15 +217,15 @@ Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, i
 
 ## Saving and privacy
 
-Text is auto-saved after about 500 ms without changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When storage is full, the last committed content and current in-memory changes are kept, with retry or export of the current chapter. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
+Text is auto-saved after about 500 ms without changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When saving fails (such as when storage is full), the last committed content and current in-memory changes are kept, and the failure banner offers Retry and Export this chapter directly while demoting Discard unsaved changes behind secondary confirmation. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
 
-The current database is IndexedDB v9 (v0.19.0 adds task stores). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
+The current database is IndexedDB v11 (v0.19.0 adds task stores in v9, v0.21.0 adds a trash deletion-time index in v10, and v0.27.0 adds writing styles in v11). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
 
 Import, conversion, editing, and export all happen locally. Illustrations are stored in manuscripts; HTML import and rich-text paste strip executable content and remote addresses.
 
 ## Engineering and verification
 
-Built with Vite, TypeScript, and Tiptap/ProseMirror. The editor uses a structured chapter model independent of source formats; format conversion, persistence, and export are maintained under `src/documents/`. Build output includes third-party license and attribution files. Version history, AI assistance, and character profiles are planned for later.
+Built with Vite, TypeScript, and Tiptap/ProseMirror. The editor uses a structured chapter model independent of source formats; format conversion, persistence, and export are maintained under `src/documents/`. Build output includes third-party license and attribution files. Character profiles are planned for later.
 
 ```sh
 npm ci

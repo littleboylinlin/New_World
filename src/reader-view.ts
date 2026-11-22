@@ -7,17 +7,82 @@ import { showNotice } from './undo'
 import { annotateTextPreviews } from './annotations/preview'
 import { canConvert, formats, textEncodings } from './formats'
 import type { TextEncoding } from './formats'
-import { readBook, storageError } from './library'
+import { maxCoverSize, readBook, storageError } from './library'
 import type { ImportedBook, LibraryId } from './library'
+import { imageInfo } from './documents/markup'
 import { emptyChapter, chapterText } from './documents/model'
 import { createEdition, listEditions } from './documents/store'
 import type { RegisterLeave } from './documents/editor-view'
-import { openText } from './text-preview'
+import { htmlText, openText, requireText } from './text-preview'
 import { appearanceMenu } from './appearance-view'
 import { bookPath, breadcrumbs, button, downloadFile, element, fileDetails, libraries, link, nextPaint, notice, originalPath, progressNotice } from './ui'
 
 function readingText(text: string, source = false) {
   return element('article', source ? 'reading-text markdown-source' : 'reading-text', text)
+}
+
+function rasterMime(bytes: Uint8Array): string | undefined {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return 'image/png'
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (bytes.length >= 6) {
+    const header = String.fromCharCode(...bytes.subarray(0, 6))
+    if (header === 'GIF87a' || header === 'GIF89a') return 'image/gif'
+  }
+  if (bytes.length >= 12) {
+    const riff = String.fromCharCode(...bytes.subarray(0, 4))
+    const webp = String.fromCharCode(...bytes.subarray(8, 12))
+    if (riff === 'RIFF' && webp === 'WEBP') return 'image/webp'
+    const box = String.fromCharCode(...bytes.subarray(4, 12))
+    if (box === 'ftypavif' || box === 'ftypavis') return 'image/avif'
+  }
+  if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return 'image/bmp'
+  return undefined
+}
+
+async function epubImageSection(
+  epub: { readAsset: (base: string, href: string, limit: number) => Promise<Blob | null> },
+  path: string,
+  source: string,
+  signal: AbortSignal,
+) {
+  const figure = element('figure', 'reading-image')
+  const urls: string[] = []
+  const template = document.createElement('template')
+  template.innerHTML = source
+  try {
+    for (const node of template.content.querySelectorAll('img[src], image[href], image')) {
+      if (node.closest('[hidden], script, noscript, template')) continue
+      const isImg = node.localName.toLowerCase() === 'img'
+      const href = (isImg ? node.getAttribute('src') : node.getAttribute('href') ?? node.getAttribute('xlink:href'))?.trim() ?? ''
+      if (!href) continue
+      const alt = (isImg ? node.getAttribute('alt') : node.getAttribute('aria-label'))?.trim() ?? ''
+      let src: string | undefined
+      if (href.startsWith('data:')) {
+        if (imageInfo(href)) src = href
+      } else {
+        const asset = await epub.readAsset(path, href, maxCoverSize).catch(() => null)
+        signal.throwIfAborted()
+        if (asset) {
+          const mime = rasterMime(new Uint8Array(await asset.slice(0, 12).arrayBuffer()))
+          signal.throwIfAborted()
+          if (mime) {
+            src = URL.createObjectURL(new Blob([asset], { type: mime }))
+            urls.push(src)
+          }
+        }
+      }
+      if (!src) continue
+      const img = element('img')
+      img.src = src
+      img.alt = alt
+      figure.append(img)
+    }
+    return { element: figure, urls }
+  } catch (error) {
+    for (const url of urls) URL.revokeObjectURL(url)
+    throw error
+  }
 }
 
 function previewProblem(error: unknown) {
@@ -141,7 +206,27 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
     if (book.format === 'epub') {
       const epub = await openEpub(blob, signal)
       if (!signal.aborted) {
-        showPaged(host, t('reader.epubText'), t('reader.section'), epub.length, async (index) => readingText(await epub.readSection(index)), signal, true)
+        let activeUrls: string[] = []
+        const revokeActiveUrls = () => {
+          for (const url of activeUrls) URL.revokeObjectURL(url)
+          activeUrls = []
+        }
+        signal.addEventListener('abort', revokeActiveUrls, { once: true })
+        showPaged(host, t('reader.epubText'), t('reader.section'), epub.length, async (index) => {
+          revokeActiveUrls()
+          const { path, source } = await epub.readSource(index)
+          const text = htmlText(source)
+          if (text.trim()) return readingText(text)
+          const { element: figure, urls } = await epubImageSection(epub, path, source, signal)
+          if (signal.aborted) {
+            for (const url of urls) URL.revokeObjectURL(url)
+            return figure
+          }
+          activeUrls = urls
+          if (figure.childElementCount) return figure
+          requireText(text)
+          return readingText(text)
+        }, signal, true)
       }
     } else {
       const text = await (book.format === 'docx' ? openDocx : openOdt)(blob, signal)

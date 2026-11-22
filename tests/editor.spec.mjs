@@ -1,8 +1,8 @@
 import { startWork, chooseImportType, activeLibrary } from './navigation-helpers.mjs'
 import { open, readFile } from 'node:fs/promises'
-import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
+import { TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
-import { chapterAction, chapterHeading, editorAction, moveChapter, saveNow, workAction } from './editor-helpers.mjs'
+import { chapterAction, chapterHeading, editWorkInformation, editorAction, moveChapter, saveNow, workAction } from './editor-helpers.mjs'
 import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
@@ -220,7 +220,7 @@ test('并发保存不会覆盖，冲突稿可另存并单独删除', async ({ pa
   await other.keyboard.press('Escape')
 })
 
-test('模拟存储空间不足，旧内容保留、当前输入可重试', async ({ page, context }) => {
+test('模拟存储空间不足，旧内容保留、当前输入可重试或导出救稿', async ({ page, context }, testInfo) => {
   await context.addInitScript(() => {
     const put = IDBObjectStore.prototype.put
     IDBObjectStore.prototype.put = function (...args) {
@@ -232,18 +232,60 @@ test('模拟存储空间不足，旧内容保留、当前输入可重试', async
   await newNovel(page, '存储试验')
   await textArea(page).fill('已提交的段落。')
   await manualSave(page)
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(chapterHeading(page)).toHaveText('第二章')
+  await textArea(page).fill('第二章已保存的开头。')
+  await manualSave(page)
+
   await page.evaluate(() => { window.storageFull = true })
   await textArea(page).fill('留在编辑器里的段落。')
   await saveNow(page)
   await expect(status(page)).toContainText('失败')
   await expect(page.getByRole('alert')).toContainText('本地存储空间不足')
+  const retryButton = page.getByRole('button', { name: '重试', exact: true })
+  const exportButton = page.getByRole('button', { name: '导出本章', exact: true })
+  const discardButton = page.getByRole('button', { name: '放弃本章未保存改动', exact: true })
+  await expect(retryButton).toBeVisible()
+  await expect(exportButton).toBeVisible()
+  await expect(discardButton).toBeVisible()
+
+  // Discarding requires secondary confirmation; cancelling keeps the unsaved draft intact.
+  await discardButton.click()
+  const confirmDiscard = page.getByRole('dialog', { name: '放弃未保存的改动？' })
+  await expect(confirmDiscard).toBeVisible()
+  await confirmDiscard.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(confirmDiscard).toBeHidden()
+  await expect(textArea(page)).toHaveText('留在编辑器里的段落。')
+
+  // Exporting this chapter pre-selects only the open chapter and exports the unsaved draft.
+  await exportButton.click()
+  const exportDialog = page.getByRole('dialog', { name: '导出编辑稿' })
+  await expect(exportDialog).toBeVisible()
+  await expect(exportDialog.getByRole('checkbox', { name: '第一章' })).not.toBeChecked()
+  await expect(exportDialog.getByRole('checkbox', { name: '第二章' })).toBeChecked()
+  await exportDialog.getByRole('radio', { name: 'TXT', exact: true }).check()
+  await expect(exportDialog.getByRole('region', { name: '导出预览' })).toContainText('留在编辑器里的段落。')
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    exportDialog.getByRole('button', { name: '开始导出', exact: true }).click(),
+  ])
+  const rescuedPath = testInfo.outputPath('rescued-chapter.txt')
+  await download.saveAs(rescuedPath)
+  const rescued = await readFile(rescuedPath, 'utf8')
+  expect(rescued).toContain('留在编辑器里的段落。')
+  expect(rescued).not.toContain('已提交的段落。')
+
   const verifier = await context.newPage()
   await verifier.goto(page.url())
-  await expect(textArea(verifier)).toHaveText('已提交的段落。')
+  await expect(textArea(verifier)).toHaveText('第二章已保存的开头。')
   await verifier.close()
   await expect(textArea(page)).toHaveText('留在编辑器里的段落。')
   await page.evaluate(() => { window.storageFull = false })
-  await manualSave(page)
+  await retryButton.click()
+  await expect(status(page)).toHaveText('已保存')
+  await expect(retryButton).toBeHidden()
   await page.reload()
   await expect(textArea(page)).toHaveText('留在编辑器里的段落。')
 })
@@ -602,6 +644,184 @@ test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
   expect(picked).toContain('第一封信从雾里来。')
   expect(picked).toContain('第三封信没有署名。')
   expect(picked).not.toContain('第二封信落在窗台。')
+})
+
+test('导出 EPUB 电子书：包含元数据、封面、本地插图、目录与兼容旧阅读器的 toc.ncx，并支持无封面英文作品', async ({ page }, testInfo) => {
+  await shelf(page)
+  await newNovel(page, '海港纪事')
+  await editWorkInformation(page)
+  const info = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
+  await info.getByLabel('作者', { exact: true }).fill('林海')
+  await info.getByLabel('作品简介', { exact: true }).fill('雾里的第一封来信。')
+  await info.getByRole('button', { name: '保存作品信息', exact: true }).click()
+  await expect(info).toBeHidden()
+
+  await textArea(page).fill('第一章的海风吹过码头。')
+  const illustrationChooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: '插图', exact: true }).click()
+  await (await illustrationChooser).setFiles({ name: 'harbor.png', mimeType: 'image/png', buffer: pixel })
+  await expect(textArea(page).locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  await manualSave(page)
+
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(chapterHeading(page)).toHaveText('第二章')
+  await textArea(page).fill('第二章的灯塔亮了。')
+  await manualSave(page)
+
+  await shelf(page)
+  const coverChooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: '「海港纪事」的操作' }).click()
+  await page.getByRole('menuitem', { name: '更换封面…' }).click()
+  await (await coverChooser).setFiles({ name: 'cover.png', mimeType: 'image/png', buffer: pixel })
+  await expect(page.getByRole('list', { name: '全部作品' }).locator('.book-cover img')).toBeVisible()
+  await page.getByRole('link', { name: '查看 海港纪事', exact: true }).click()
+  await expect(textArea(page)).toBeVisible()
+
+  await editorAction(page, '导出')
+  const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
+  await dialog.getByRole('radio', { name: 'EPUB', exact: true }).check()
+  await expect(dialog.getByLabel('导出样式')).toBeDisabled()
+  await expect(dialog.locator('.export-style-hint')).toBeVisible()
+  const [zhDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: '开始导出', exact: true }).click(),
+  ])
+  expect(zhDownload.suggestedFilename()).toMatch(/\.epub$/)
+  const zhEpubPath = testInfo.outputPath('harbor.epub')
+  await zhDownload.saveAs(zhEpubPath)
+  const zhBytes = await readFile(zhEpubPath)
+
+  const zhZip = new ZipReader(new Uint8ArrayReader(zhBytes))
+  try {
+    const entries = await zhZip.getEntries()
+    expect(entries[0].filename).toBe('mimetype')
+    expect(entries[0].compressionMethod).toBe(0)
+    expect(await entries[0].getData(new TextWriter())).toBe('application/epub+zip')
+
+    const entryMap = new Map(entries.map((entry) => [entry.filename, entry]))
+    expect(entryMap.has('META-INF/container.xml')).toBe(true)
+    const opf = await entryMap.get('OEBPS/content.opf').getData(new TextWriter())
+    const nav = await entryMap.get('OEBPS/nav.xhtml').getData(new TextWriter())
+    const ncx = await entryMap.get('OEBPS/toc.ncx').getData(new TextWriter())
+    const ch1 = await entryMap.get('OEBPS/chapters/chapter-001.xhtml').getData(new TextWriter())
+    const ch2 = await entryMap.get('OEBPS/chapters/chapter-002.xhtml').getData(new TextWriter())
+
+    expect(opf).toContain('<dc:title>海港纪事</dc:title>')
+    expect(opf).toContain('<dc:creator>林海</dc:creator>')
+    expect(opf).toContain('<dc:language>zh-CN</dc:language>')
+    expect(opf).toContain('properties="cover-image"')
+    expect(entryMap.has('OEBPS/cover.xhtml')).toBe(true)
+    expect(entryMap.has('OEBPS/images/cover.png')).toBe(true)
+    expect(entryMap.has('OEBPS/images/image-001.png')).toBe(true)
+    expect(nav).toContain('chapters/chapter-001.xhtml')
+    expect(nav).toContain('chapters/chapter-002.xhtml')
+    expect(ncx).toContain('playOrder="1"')
+    expect(ncx).toContain('playOrder="2"')
+    expect(ch1).toContain('第一章的海风吹过码头。')
+    expect(ch1).toContain('../images/image-001.png')
+    expect(ch2).toContain('第二章的灯塔亮了。')
+  } finally {
+    await zhZip.close()
+  }
+
+  // Round-trip: New World itself can preview and convert the exported EPUB back into chapters.
+  await shelf(page, 'reference')
+  await upload(page, [file('海港纪事.epub', zhBytes)])
+  await openBook(page, '海港纪事')
+  await expect(page.locator('.page-number')).toHaveText('1 / 3')
+  const coverPreview = page.locator('.reading-image img')
+  await expect(coverPreview).toHaveAttribute('alt', '封面')
+  await expect.poll(() => coverPreview.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await page.getByRole('button', { name: '下一节', exact: true }).click()
+  await expect(page.getByText('第一章的海风吹过码头。')).toBeVisible()
+  await convert(page)
+  await page.getByRole('button', { name: '第一章', exact: true }).click()
+  await expect(textArea(page)).toContainText('第一章的海风吹过码头。')
+  await expect(textArea(page).getByRole('img', { name: 'harbor.png' })).toHaveAttribute('src', /^data:image\/png;base64,/)
+
+  // English work without cover or author exports cleanly as well.
+  await shelf(page)
+  await newNovel(page, 'Harbor Notes')
+  await textArea(page).fill('First lantern along the quiet pier.')
+  await manualSave(page)
+  await editorAction(page, '导出')
+  await dialog.getByRole('radio', { name: 'EPUB', exact: true }).check()
+  const [enDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: '开始导出', exact: true }).click(),
+  ])
+  const enEpubPath = testInfo.outputPath('harbor-notes.epub')
+  await enDownload.saveAs(enEpubPath)
+  const enZip = new ZipReader(new Uint8ArrayReader(await readFile(enEpubPath)))
+  try {
+    const entries = await enZip.getEntries()
+    expect(entries[0].filename).toBe('mimetype')
+    expect(entries[0].compressionMethod).toBe(0)
+    const entryMap = new Map(entries.map((entry) => [entry.filename, entry]))
+    const opf = await entryMap.get('OEBPS/content.opf').getData(new TextWriter())
+    const ch1 = await entryMap.get('OEBPS/chapters/chapter-001.xhtml').getData(new TextWriter())
+    expect(opf).toContain('<dc:title>Harbor Notes</dc:title>')
+    expect(opf).toContain('<dc:language>en</dc:language>')
+    expect(opf).not.toContain('<dc:creator>')
+    expect(opf).not.toContain('cover-image')
+    expect(entryMap.has('OEBPS/cover.xhtml')).toBe(false)
+    expect(ch1).toContain('First lantern along the quiet pier.')
+  } finally {
+    await enZip.close()
+  }
+})
+
+test('EPUB 预览：纯图片章节显示图片，无文字也无图片的章节提示没有可预览的正文', async ({ page }) => {
+  const zip = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+  await zip.add('mimetype', new TextReader('application/epub+zip'), { level: 0, dataDescriptor: false, extendedTimestamp: false })
+  await zip.add('META-INF/container.xml', new TextReader(
+    '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles>'
+    + '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
+    + '</rootfiles></container>',
+  ))
+  await zip.add('OEBPS/content.opf', new TextReader(
+    '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
+    + '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:00000000-0000-0000-0000-000000000099</dc:identifier>'
+    + '<dc:title>插画试读</dc:title><dc:language>zh-CN</dc:language></metadata>'
+    + '<manifest>'
+    + '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>'
+    + '<item id="blank" href="blank.xhtml" media-type="application/xhtml+xml"/>'
+    + '<item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>'
+    + '<item id="img" href="images/plate.png" media-type="image/png"/>'
+    + '</manifest><spine><itemref idref="cover"/><itemref idref="blank"/><itemref idref="ch1"/></spine></package>',
+  ))
+  await zip.add('OEBPS/cover.xhtml', new TextReader(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>封面</title></head>'
+    + '<body><figure><img src="images/plate.png" alt="插画封面"/></figure></body></html>',
+  ))
+  await zip.add('OEBPS/blank.xhtml', new TextReader(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>空白页</title></head><body><p>   </p></body></html>',
+  ))
+  await zip.add('OEBPS/ch1.xhtml', new TextReader(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>正文</title></head><body><p>第三节的正文。</p></body></html>',
+  ))
+  await zip.add('OEBPS/images/plate.png', new Uint8ArrayReader(pixel))
+  const bytes = await zip.close()
+
+  await shelf(page)
+  await upload(page, [file('插画试读.epub', bytes)])
+  await openBook(page, '插画试读')
+  await expect(page.locator('.page-number')).toHaveText('1 / 3')
+  const plate = page.locator('.reading-image img')
+  await expect(plate).toHaveAttribute('alt', '插画封面')
+  await expect.poll(() => plate.evaluate((img) => img.naturalWidth)).toBe(2)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '下一节', exact: true }).click()
+  await expect(page.locator('.page-number')).toHaveText('2 / 3')
+  await expect(page.getByRole('alert')).toContainText('这一部分没有可预览的正文')
+
+  await page.getByRole('button', { name: '下一节', exact: true }).click()
+  await expect(page.locator('.page-number')).toHaveText('3 / 3')
+  await expect(page.getByText('第三节的正文。')).toBeVisible()
 })
 
 test.describe('移动编辑', () => {
