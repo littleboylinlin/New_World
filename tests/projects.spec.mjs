@@ -86,7 +86,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   for (const r of manifest.resources) expect(createHash('sha256').update(packed.get(r.path)).digest('hex')).toBe(r.sha256)
   const strings = [...packed.values()].map((b) => Buffer.from(b).toString()).join('')
   expect(strings).not.toContain('无关作品'); expect(strings).not.toContain('无关全局灵感'); expect(strings).not.toContain('should-not-export')
-  // The published Schema 1 fixture is immutable; new task samples use their own generator.
+  // The published Schema 1 fixture is kept for backwards compatibility.
   const clean = await freshPage(browser)
   try {
     await clean.page.locator('[data-filter="' + (library === 'original' ? 'reference' : 'original') + '"]').click()

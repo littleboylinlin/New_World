@@ -163,7 +163,7 @@ for (const library of ['original', 'reference'])
       await clean.context.close()
     }
   })
-test('Schema 3 损坏、未知字段、错误引用和危险附件明确拒绝，附件写入中断整体回滚', async ({
+test('工程损坏、未知字段、错误引用和危险附件明确拒绝，附件写入中断整体回滚', async ({
   page,
   browser,
 }, info) => {
@@ -176,7 +176,7 @@ test('Schema 3 损坏、未知字段、错误引用和危险附件明确拒绝�
   try {
     const before = await clean.page.evaluate(databaseSnapshot)
     const cases = [
-      ['future', (e) => modify(e, 'manifest.json', (m) => (m.schemaVersion = 4))],
+      ['future', (e) => modify(e, 'manifest.json', (m) => (m.schemaVersion = manifest.schemaVersion + 1))],
       ['unknown', (e) => modify(e, manifest.records.tasks, (v) => (v[0].runCode = 'unsafe'))],
       [
         'parent',

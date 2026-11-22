@@ -111,7 +111,7 @@ test('Schema 1 不补默认信息，编辑保留未知字段与未改动的 CRLF
   expect((await page.evaluate(databaseSnapshot)).books[0].metadata).toEqual({ ...book.metadata, future: { concurrent: true } })
 })
 
-for (const library of ['original', 'reference']) test(`${library} Schema 3 完整往返及副本保留未知元数据，全部原文/历史/批注数据不变`, async ({ page, browser }, info) => {
+for (const library of ['original', 'reference']) test(`${library} 工程完整往返及副本保留未知元数据，全部原文/历史/批注数据不变`, async ({ page, browser }, info) => {
   await page.goto('/#/writing'); await expect(page.getByRole('button', { name: importName })).toBeVisible()
   const seeded = await page.evaluate(seedProject, projectFixture(library, pixel.toString('base64')))
   const metadata = { ...values, language: 'zh-Hans', future: { id: seeded.root, bookId: seeded.first, code: '<script>window.pwned=true</script>', nested: [null, true, 5] } }
@@ -121,8 +121,8 @@ for (const library of ['original', 'reference']) test(`${library} Schema 3 完�
   await page.goto(`/#/${library}`)
   const path = info.outputPath('带作品信息.newworld'); await exportProject(page, path)
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
-  const entries = await unpack(path); expect(JSON.parse(Buffer.from(entries.get('manifest.json')).toString()).schemaVersion).toBe(3)
-  // Published Schema 2 sample stays immutable; Schema 3 task samples have a separate generator test.
+  const entries = await unpack(path); expect(JSON.parse(Buffer.from(entries.get('manifest.json')).toString()).schemaVersion).toBe(4)
+  // Keep the published Schema 2 and 3 fixtures available for backwards compatibility tests.
   const context = await withoutRelease(await browser.newContext({ locale: 'zh-CN' }))
   const clean = await context.newPage(); await clean.addInitScript(() => { window.showSaveFilePicker = undefined })
   try {
