@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { action, addStoryChapter, boardState, canvas, cardPanel, closeCard, drag, editCard, fillNewCard, midpoint, newStoryWork, openStoryWindow, renameStoryChapter, storyCard, storyEntry } from '../story-settings-helpers.mjs'
+import { action, addStoryChapter, boardState, canvas, cardPanel, closeCard, connect, drag, editCard, midpoint, nameEdge, newCard, newStoryWork, openStoryWindow, renameStoryChapter, saveCard, storyCard, storyEntry } from '../story-settings-helpers.mjs'
 
 export async function desktopStorySettingsFlow(app, page, name) {
   await page.goto('new-world://app/#/writing')
@@ -14,21 +14,25 @@ export async function desktopStorySettingsFlow(app, page, name) {
   expect(native.find((window) => window.story)?.independent).toBe(true)
   await expect(story.evaluate(() => window.newWorldDesktop.openStorySettings(location.hash))).rejects.toThrow()
 
-  await action(story, '新建卡片').click()
+  await newCard(story, '守灯人', { x: 260, y: 220 })
+  await editCard(story, '守灯人')
   const panel = cardPanel(story)
   const linked = panel.getByRole('combobox', { name: '关联章节', exact: true })
   await expect(linked.locator('option:checked')).toHaveText('第 1 章 · 第一章')
   await addStoryChapter(page, '退潮')
   await expect(linked.locator('option').filter({ hasText: '第 2 章 · 退潮' })).toHaveCount(1)
   await linked.selectOption({ label: '第 2 章 · 退潮' })
-  await fillNewCard(story, '守灯人')
+  await saveCard(story)
+  await expect(panel.getByRole('status')).toHaveText('已保存')
   await closeCard(story)
   await expect(storyEntry(page)).toHaveAttribute('title', '本章关联 1 张卡片 · 守灯人')
   await renameStoryChapter(page, '退潮', '风暴')
   await storyEntry(page).click()
   await expect(story.getByText('新卡默认关联「风暴」')).toBeVisible()
   expect(app.windows()).toHaveLength(2)
-  await action(story, '新建卡片').click()
+  await newCard(story, '灯塔', { x: 620, y: 420 })
+  await expect.poll(async () => (await boardState(story)).scene.nodes[1].chapters).toHaveLength(1)
+  await editCard(story, '灯塔')
   await expect(linked.locator('option:checked')).toHaveText('第 2 章 · 风暴')
   await closeCard(story)
 
@@ -39,18 +43,9 @@ export async function desktopStorySettingsFlow(app, page, name) {
   await action(story, '放大').click()
   await expect.poll(async () => (await boardState(story)).view.zoom).toBeGreaterThan(1)
 
-  const connect = action(story, '连线')
-  await connect.click()
-  await storyCard(story, '守灯人').click()
-  const area = await canvas(story).boundingBox()
-  await canvas(story).click({ position: { x: 80, y: area.height - 105 } })
-  const relation = story.getByRole('group', { name: '关系操作' })
-  await action(relation, '改名').click()
-  const relationName = canvas(story).getByRole('textbox', { name: '关系名称' })
-  await relationName.fill('守护')
-  await relationName.press('Enter')
+  const relation = await connect(story, '守灯人', '灯塔')
+  await nameEdge(story, relation.id, '守护')
   await expect(story.locator('.story-edge-label')).toHaveText('守护')
-  await expect(connect).toHaveAttribute('aria-pressed', 'false')
   const board = await boardState(story)
 
   const closed = story.waitForEvent('close')
@@ -63,7 +58,7 @@ export async function desktopStorySettingsFlow(app, page, name) {
   const reopened = await openStoryWindow(page, app)
   await expect(canvas(reopened)).toHaveAttribute('data-zoom', String(board.view.zoom))
   expect(await boardState(reopened)).toEqual(board)
-  await action(reopened, '适合画布').click()
+  await action(reopened, '适应全部内容').click()
   await editCard(reopened, '守灯人')
   await expect(cardPanel(reopened).getByRole('combobox', { name: '关联章节', exact: true }).locator('option:checked')).toHaveText('第 2 章 · 风暴')
 }

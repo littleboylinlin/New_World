@@ -5,8 +5,8 @@ import { test, expect } from './app-test.mjs'
 import { bookAction, pixel } from './fixtures.mjs'
 import { databaseSnapshot } from './project-fixture.mjs'
 import {
-  addStoryChapter, boardState, cardPanel, closeCard, connect, deleteCard, editCard, midpoint, newCard,
-  newStoryWork, openStoryWindow, saveCard, storyCard,
+  addStoryChapter, boardState, cardPanel, closeCard, connect, deleteCard, editCard, nameEdge, newCard,
+  newStoryWork, openMenu, openStoryWindow, saveCard, selectCard, storyCard,
 } from './story-settings-helpers.mjs'
 
 const button = (page, name) => page.getByRole('button', { name, exact: true })
@@ -52,22 +52,17 @@ async function seedCards(page) {
   await saveCard(story)
   await expect(panel.getByRole('status')).toHaveText('已保存')
   await closeCard(story)
-  await connect(story, '守灯人', 'right', await midpoint(storyCard(story, '雾港')))
-  await panel.getByLabel('关系名称', { exact: true }).fill('居于')
-  await saveCard(story)
-  await expect(story.locator('.story-edge-label')).toHaveText('居于')
-  await closeCard(story)
+  const relation = await connect(story, '守灯人', '雾港')
+  await nameEdge(story, relation.id, '居于')
 
-  await storyCard(story, '守灯人').click()
+  await selectCard(story, '守灯人')
   await button(story, '分组框').click()
   await expect(story.locator('.story-node-group')).toHaveCount(1)
-  await closeCard(story)
   const chooser = story.waitForEvent('filechooser')
   await button(story, '图片').click()
   await (await chooser).setFiles({ name: '位置草图.png', mimeType: 'image/png', buffer: pixel })
   await expect(story.locator('.story-node-image img')).toBeVisible()
-  await closeCard(story)
-  await button(story, '标签').click()
+  await openMenu(story, '标签')
   await story.locator('.story-sidebar').getByLabel('标签名称').fill('灯塔组')
   await button(story, '新增标签').click()
   await expect.poll(async () => (await boardState(story)).scene.tags.length).toBe(1)
@@ -140,6 +135,8 @@ test('全库备份往返保留活动卡片、卡片回收记录和已删除作�
   expect(manifest.storyBoards).toEqual(before.storyBoards)
   expect(manifest.trash.find((entry) => entry.kind === 'book').storyBoard.scene.nodes[0].name).toBe('青铜罗盘')
 
+  // The seeded view is zoomed in; bring the cards out from under the top islands first.
+  await button(story, '适应全部内容').click()
   await deleteCard(story, '守灯人')
   await restore(page, path)
   await expect(storyCard(story, '守灯人')).toBeVisible()
@@ -212,7 +209,7 @@ test('工程保留本书卡片和回收记录，副本重映射版本、章节�
       .toEqual(original.scene.nodes.map(({ x, y, width, height }) => [x, y, width, height]))
     const copiedStory = await fresh.newPage()
     await copiedStory.goto(new URL(`#/story-settings/${copy.library}/${copy.bookId}`, receiver.url()).href)
-    await button(copiedStory, '回收站').click()
+    await openMenu(copiedStory, '回收站')
     await button(copiedStory.locator('.story-trash-row'), '恢复').click()
     await expect(copiedStory.locator('.story-edge-label')).toHaveText('居于')
   } finally {

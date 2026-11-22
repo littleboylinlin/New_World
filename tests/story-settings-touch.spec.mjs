@@ -1,7 +1,11 @@
 import { devices } from '@playwright/test'
 import { test, expect } from './app-test.mjs'
-import { action, boardState, canvas, cardPanel, closeCard, fillNewCard, midpoint, newStoryWork, openStoryWindow, storyCard } from './story-settings-helpers.mjs'
+import {
+  action, arrow, boardState, canvas, card, edgeGeometry, edgeMiddle, expectOnOutline, inlineField, intersects, liveView, newStoryWork,
+  openStoryWindow, props, seedBoard, status, storyCard, toPage, tool, toolbar,
+} from './story-settings-helpers.mjs'
 
+// WebKit runs as an iPhone, Chromium as an Android phone.
 test.use({
   contextOptions: async ({ browserName }, use) => {
     const phone = devices[browserName === 'webkit' ? 'iPhone 13' : 'Pixel 7']
@@ -10,24 +14,20 @@ test.use({
 })
 test.setTimeout(90_000)
 
-async function startBoard(page) {
+async function startBoard(page, scene, view) {
   await page.goto('/#/writing')
   await newStoryWork(page, '触屏故事设定')
   const story = await openStoryWindow(page)
   expect(await story.evaluate(() => matchMedia('(any-pointer: coarse)').matches)).toBe(true)
+  if (scene) await seedBoard(story, { tags: [], edges: [], ...scene }, view)
   const area = await canvas(story).boundingBox()
   return { story, area }
 }
 
 async function tapAt(page, { x, y }) { await page.touchscreen.tap(x, y) }
-
-async function addByDoubleTap(story, area, name, point) {
-  await tapAt(story, { x: area.x + point.x - 12, y: area.y + point.y - 8 })
-  await expect(cardPanel(story)).toBeHidden()
-  await tapAt(story, { x: area.x + point.x, y: area.y + point.y })
-  await expect(cardPanel(story).getByLabel('名称', { exact: true })).toBeVisible()
-  await fillNewCard(story, name)
-  await closeCard(story)
+async function doubleTap(page, point) {
+  await tapAt(page, point)
+  await tapAt(page, point)
 }
 
 // Playwright exposes native taps on both engines. Its public continuous touch API
@@ -65,223 +65,239 @@ async function touchPath(page, browserName) {
     start: (...points) => send('touchStart', points),
     move: (...points) => send('touchMove', points),
     end: () => send('touchEnd', []),
+    /** One finger from a to b in a few steps. */
+    async swipe(from, to, steps = 5) {
+      await send('touchStart', [from])
+      for (let i = 1; i <= steps; i++) await send('touchMove', [{ x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps }])
+      // Rest before lifting, as a finger does; otherwise Chromium starts a fling and swallows the next tap's click.
+      await page.waitForTimeout(80)
+      await send('touchMove', [to])
+      await send('touchEnd', [])
+    },
   }
 }
 
+/** A control a finger can hit: at least 44 × 44 CSS pixels, inside the screen, and not covered. */
 async function expectTouchTarget(locator) {
   await expect.poll(() => locator.evaluate((item) => {
     const { x, y, width, height, right, bottom } = item.getBoundingClientRect()
-    const board = item.closest('.story-canvas')?.getBoundingClientRect()
     const view = window.visualViewport
-    const hits = [[.5, .5], [.045, .5], [.955, .5], [.5, .045], [.5, .955]]
+    const hits = [[.5, .5], [.06, .5], [.94, .5], [.5, .06], [.5, .94]]
     return {
-      largeEnough: Math.round(width * 100) >= 4400 && Math.round(height * 100) >= 4400,
-      inView: x >= (board?.left ?? 0) && y >= (board?.top ?? 0) &&
-        right <= Math.min(board?.right ?? Infinity, view.width) && bottom <= Math.min(board?.bottom ?? Infinity, view.height),
+      largeEnough: Math.round(width) >= 44 && Math.round(height) >= 44,
+      inView: x >= 0 && y >= 0 && right <= view.width && bottom <= view.height,
       receivesTouch: hits.every(([u, v]) => item.contains(document.elementFromPoint(x + width * u, y + height * v))),
     }
-  }), { message: `${locator} has a full, reachable 44 × 44 CSS-pixel touch area` })
-    .toEqual({ largeEnough: true, inView: true, receivesTouch: true })
+  }), { message: `${locator} has a full, reachable 44 × 44 touch area` }).toEqual({ largeEnough: true, inView: true, receivesTouch: true })
 }
 
-const links = (page) => expect.poll(async () => (await boardState(page)).scene.edges)
-const hint = (page) => canvas(page).getByRole('status')
-
-test('手机用连线模式、卡片菜单和连接点建关系，浮动工具条可直接改名 @webkit', async ({ page, browserName }) => {
-  const { story, area } = await startBoard(page)
-  const finger = await touchPath(story, browserName)
-  await addByDoubleTap(story, area, '守灯人', { x: 88, y: 96 })
-  await addByDoubleTap(story, area, '船长', { x: 88, y: 332 })
-  const source = storyCard(story, '守灯人')
-  const target = storyCard(story, '船长')
-  const connect = action(story, '连线')
-  await expectTouchTarget(action(story, '新建卡片'))
-  await expectTouchTarget(connect)
-
-  await connect.tap()
-  await expect(hint(story)).toHaveText('点选起点卡片')
-  await source.tap()
-  await expect(hint(story)).toContainText('点选终点')
-  await source.tap()
-  await expect(hint(story)).toContainText('不能连接到起点本身')
-  await links(story).toHaveLength(0)
-  await target.tap()
-  await links(story).toHaveLength(1)
-  await expect(connect).toHaveAttribute('aria-pressed', 'false')
-  await expect(hint(story)).toHaveText('已建立关系')
-  await expect(cardPanel(story)).toBeHidden()
-  const state = await boardState(story)
-  const [a, b] = state.scene.nodes
-  const edge = state.scene.edges[0]
-  expect(edge).toMatchObject({ from: { nodeId: a.id, side: 'bottom' }, to: { nodeId: b.id, side: 'top' } })
-
-  const tools = story.getByRole('group', { name: '关系操作' })
-  await tapAt(story, { x: area.x + 25, y: area.y + 220 })
-  await expect(tools).toBeHidden()
-  const hit = await story.locator('.story-hit').evaluate((line) => {
-    const box = line.getBoundingClientRect()
-    return { x: box.x + box.width / 2 + 11, y: box.y + box.height / 2 }
+/** A small handle whose invisible hit area reaches 18 px out in every direction. */
+async function expectHandleReach(locator) {
+  const reach = await locator.evaluate((item) => {
+    const box = item.getBoundingClientRect()
+    const x = box.x + box.width / 2, y = box.y + box.height / 2
+    return [[0, 0], [18, 0], [-18, 0], [0, 18], [0, -18]].every(([dx, dy]) => item.contains(document.elementFromPoint(x + dx, y + dy)))
   })
-  await tapAt(story, hit)
-  const rename = action(tools, '改名')
-  const direction = tools.getByRole('combobox', { name: '箭头方向' })
-  const style = tools.getByRole('combobox', { name: '线条样式' })
-  await expectTouchTarget(rename)
-  await expectTouchTarget(direction)
-  await expectTouchTarget(style)
-  await expectTouchTarget(action(tools, '删除关系'))
-  await rename.tap()
-  await canvas(story).getByRole('textbox', { name: '关系名称' }).fill('师徒')
-  const save = action(canvas(story), '保存')
-  await expectTouchTarget(save)
-  await save.tap()
-  await expect(story.locator('.story-edge-label')).toHaveText('师徒')
-  await direction.selectOption('both')
-  await links(story).toMatchObject([{ direction: 'both' }])
-  await style.selectOption('dash')
-  await links(story).toMatchObject([{ name: '师徒', direction: 'both', stroke: 'dash' }])
+  expect(reach).toBe(true)
+}
 
-  await connect.tap()
-  await story.keyboard.press('Escape')
-  await expect(connect).toHaveAttribute('aria-pressed', 'false')
-  await connect.tap()
-  await connect.tap()
-  await expect(connect).toHaveAttribute('aria-pressed', 'false')
+/** A spot on the bare board, clear of cards and floating controls, with room below and to the right. */
+async function blankPoint(page) {
+  const point = await page.evaluate(() => {
+    const surface = document.querySelector('.story-canvas')
+    const box = surface.getBoundingClientRect()
+    for (let y = box.top + 80; y < box.bottom - 260; y += 20) for (let x = box.left + 40; x < box.right - 100; x += 20) {
+      // Keep a finger's width from any card: touch input snaps to nearby buttons.
+      const clear = [[0, 0], [-24, -24], [24, -24], [-24, 24], [24, 24], [-30, 20], [-40, 30], [60, 110]].every(([dx, dy]) => document.elementFromPoint(x + dx, y + dy) === surface)
+      if (clear) return { x, y }
+    }
+  })
+  if (!point) throw new Error('No blank spot on the board')
+  return point
+}
 
-  // The card menu can link to the padded hit area of an existing line.
-  await target.tap()
-  const more = action(story, '卡片操作')
-  await expectTouchTarget(more)
-  await more.tap()
-  const connectTo = action(canvas(story), '连到…')
-  await expectTouchTarget(connectTo)
-  await connectTo.tap()
-  await expect(hint(story)).toContainText('点选终点')
-  expect(await story.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-edge-id]')?.getAttribute('data-edge-id'), hit)).toBe(edge.id)
-  await tapAt(story, hit)
-  await expect(hint(story)).toHaveText('已建立关系')
-  await links(story).toMatchObject([{ id: edge.id }, { from: { nodeId: b.id }, to: { edgeId: edge.id } }])
+const middle = async (page, node) => toPage(page, { x: node.x + node.width / 2, y: node.y + node.height / 2 })
+const links = (page) => expect.poll(async () => (await boardState(page)).scene.edges)
 
-  // Start well outside the visual dot. The bigger target must still start a line.
-  await source.tap()
-  const ports = source.locator('[data-port]')
-  await expect(ports).toHaveCount(4)
-  for (const port of await ports.all()) await expectTouchTarget(port)
-  const port = await midpoint(source.locator('[data-port="bottom"]'))
-  await finger.start({ x: port.x + 15, y: port.y + 5 })
-  await expect(canvas(story)).toHaveAttribute('data-gesture', 'edge')
-  await finger.move(await midpoint(target))
-  await expect(hint(story)).toHaveText('松手连接到这里')
-  await expect(target).toHaveClass(/story-link-target/)
+test('手机工具岛一排放在底部，双击空白建卡、双击卡片改名，属性面板不压住卡片 @webkit', async ({ page }) => {
+  const near = card('near', '灯塔', 40, 400, { body: '只在夜里亮。', aliases: ['北灯'] })
+  const { story } = await startBoard(page, { nodes: [near] })
+  const bar = toolbar(story)
+  const layout = await bar.evaluate((element) => {
+    const items = [...element.querySelectorAll('button')].map((item) => item.getBoundingClientRect())
+    const box = element.getBoundingClientRect()
+    return {
+      count: items.length, rows: new Set(items.map((item) => Math.round(item.top))).size, scroll: element.scrollWidth - element.clientWidth,
+      inside: box.left >= 0 && box.right <= innerWidth, fromBottom: innerHeight - box.bottom, top: box.top,
+    }
+  })
+  expect(layout).toMatchObject({ count: 8, rows: 1, scroll: 0, inside: true })
+  expect(layout.fromBottom).toBeLessThan(40)
+  expect(layout.top).toBeGreaterThan(innerHeight(story) / 2)
+  for (const name of ['选择', '平移', '卡片', '箭头', '文字', '分组框', '图片', '橡皮擦']) await expectTouchTarget(tool(story, name))
+  await expect(props(story)).toBeHidden()
+
+  // Double-tap the background for a card; double-tap a card to rename it.
+  const area = await canvas(story).boundingBox()
+  await doubleTap(story, { x: area.x + 200, y: area.y + 220 })
+  await inlineField(story).fill('守灯人')
+  await inlineField(story).press('Enter')
+  await expect(storyCard(story, '守灯人')).toBeVisible()
+  await expect.poll(async () => (await boardState(story)).scene.nodes).toHaveLength(2)
+  await canvas(story).press('Escape')
+  await doubleTap(story, await middle(story, near))
+  await expect(inlineField(story)).toHaveValue('灯塔')
+  await inlineField(story).fill('旧灯塔')
+  await inlineField(story).press('Enter')
+  await expect(storyCard(story, '旧灯塔')).toBeVisible()
+
+  // The card near the bottom is selected: the sheet takes the other side or the board moves, never covering it.
+  await canvas(story).press('Escape')
+  await tapAt(story, await middle(story, near))
+  const sheet = props(story)
+  await expect(sheet).toBeVisible()
+  await expect(sheet).toContainText('只在夜里亮。')
+  await expect(sheet).toContainText('北灯')
+  await expect.poll(async () => intersects(await sheet.boundingBox(), await storyCard(story, '旧灯塔').boundingBox())).toBe(false)
+  await expectTouchTarget(action(sheet, '编辑卡片'))
+  await expectTouchTarget(action(sheet, '删除'))
+  // The card shows its name only; the details stay in the sheet.
+  await expect(storyCard(story, '旧灯塔')).not.toContainText('只在夜里亮')
+})
+
+function innerHeight(page) { return page.viewportSize().height }
+
+test('手机手势：单指在空白处框选或平移，双指缩放，单指拖动卡片，互不干扰 @webkit', async ({ page, browserName }) => {
+  const a = card('a', '主角', 60, 140)
+  const b = card('b', '向导', 60, 420)
+  const { story } = await startBoard(page, { nodes: [a, b] })
+  const finger = await touchPath(story, browserName)
+  const initial = await boardState(story)
+
+  // One finger on the background with the select tool draws a marquee.
+  await finger.swipe(await toPage(story, { x: 30, y: 110 }), await toPage(story, { x: 300, y: 300 }))
+  await expect(storyCard(story, '主角')).toHaveAttribute('aria-pressed', 'true')
+  await expect(storyCard(story, '向导')).toHaveAttribute('aria-pressed', 'false')
+  expect(await boardState(story)).toEqual(initial)
+
+  // With the hand tool, the same swipe pans and keeps the selection.
+  await tool(story, '平移').tap()
+  await expect(tool(story, '平移')).toHaveAttribute('aria-pressed', 'true')
+  const before = await liveView(story)
+  await finger.swipe(await toPage(story, { x: 320, y: 360 }), await toPage(story, { x: 350, y: 400 }))
+  await expect.poll(async () => { const { x, y } = (await boardState(story)).view; return { x: x - before.x, y: y - before.y } }).toEqual({ x: 30, y: 40 })
+  expect((await boardState(story)).scene).toEqual(initial.scene)
+  await expect(storyCard(story, '主角')).toHaveAttribute('aria-pressed', 'true')
+
+  // One finger on a card moves the card, not the board.
+  await tool(story, '选择').tap()
+  await canvas(story).press('Escape')
+  const panned = await boardState(story)
+  await finger.swipe(await middle(story, b), { ...(await middle(story, b)), x: (await middle(story, b)).x + 40 })
+  await expect.poll(async () => (await boardState(story)).scene.nodes[1].x).toBe(b.x + 40)
+  expect((await boardState(story)).view).toEqual(panned.view)
+
+  // Two fingers zoom and pan; the card under the first finger stays put.
+  const moved = await boardState(story)
+  const start = await middle(story, moved.scene.nodes[0])
+  await finger.start(start)
+  await finger.start(start, { x: start.x + 60, y: start.y + 60 })
+  await finger.move({ x: start.x - 30, y: start.y - 20 }, { x: start.x + 110, y: start.y + 120 })
+  await finger.end()
+  await expect.poll(async () => (await boardState(story)).view.zoom).toBeGreaterThan(1.3)
+  expect((await boardState(story)).scene).toEqual(moved.scene)
+  await expect(canvas(story).locator('.story-marquee')).toBeHidden()
+
+  // A second finger that joins a marquee cancels it, so pinching never leaves a stray selection.
+  await canvas(story).press('Escape')
+  const blank = await blankPoint(story)
+  await finger.start(blank)
+  await finger.move({ x: blank.x - 20, y: blank.y + 30 })
+  await finger.start({ x: blank.x - 20, y: blank.y + 30 }, { x: blank.x + 40, y: blank.y + 90 })
+  await finger.move({ x: blank.x - 30, y: blank.y + 20 }, { x: blank.x + 60, y: blank.y + 110 })
+  await finger.end()
+  await expect(story.locator('.story-node[aria-pressed="true"]')).toHaveCount(0)
+  expect((await boardState(story)).scene).toEqual(moved.scene)
+})
+
+test('手机箭头：从卡片拖到另一张卡时高亮并建立关系，拖端点改连，重复关系提示，拖到边缘自动滚动 @webkit', async ({ page, browserName }) => {
+  const a = card('a', '守灯人', 40, 120)
+  const b = card('b', '船长', 120, 420)
+  const c = card('c', '雾港', 140, 700)
+  const { story, area } = await startBoard(page, { nodes: [a, b, c] })
+  const finger = await touchPath(story, browserName)
+  await tool(story, '箭头').tap()
+  const from = await middle(story, a)
+  const to = await middle(story, b)
+  await finger.start(from)
+  await finger.move({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 })
+  await finger.move(to)
+  await expect(storyCard(story, '船长')).toHaveClass(/story-bind-target/)
+  await finger.end()
+  await links(story).toEqual([expect.objectContaining({ from: { nodeId: 'a' }, to: { nodeId: 'b' } })])
+  await expect(tool(story, '选择')).toHaveAttribute('aria-pressed', 'true')
+  const [edge] = (await boardState(story)).scene.edges
+  const drawn = await edgeGeometry(story, edge.id)
+  expectOnOutline(a, drawn.from)
+  expectOnOutline(b, drawn.to)
+
+  // Tap the arrow, then drag its end handle onto another card.
+  await tapAt(story, await edgeMiddle(story, edge.id))
+  await expect(story.locator(`[data-edge-id="${edge.id}"]`)).toHaveClass(/selected/)
+  const handle = story.locator('[data-end="to"]')
+  await expectHandleReach(handle)
+  const grab = await handle.boundingBox()
+  await finger.swipe({ x: grab.x + grab.width / 2 + 12, y: grab.y + grab.height / 2 }, await middle(story, c))
+  await links(story).toEqual([expect.objectContaining({ id: edge.id, to: { nodeId: 'c' } })])
+
+  // The same relation again is refused, with a button to add it anyway.
+  await tool(story, '箭头').tap()
+  await expect(tool(story, '箭头')).toHaveAttribute('aria-pressed', 'true')
+  await finger.swipe(await middle(story, a), await middle(story, c))
+  await expect(status(story)).toContainText('已经有这个关系了')
+  await links(story).toHaveLength(1)
+  const again = action(status(story), '仍然新建')
+  await expectTouchTarget(again)
+  await again.tap()
+  await links(story).toHaveLength(2)
+  const [first, second] = (await boardState(story)).scene.edges
+  const gap = (await edgeGeometry(story, first.id)).mid
+  const other = (await edgeGeometry(story, second.id)).mid
+  expect(Math.hypot(gap.x - other.x, gap.y - other.y)).toBeGreaterThan(30)
+
+  // Holding an arrow at the screen's edge scrolls the board.
+  await tool(story, '箭头').tap()
+  const before = await liveView(story)
+  await finger.start(await middle(story, b))
+  await finger.move({ x: area.x + area.width - 4, y: area.y + area.height * .4 })
+  await expect.poll(async () => (await liveView(story)).x).toBeLessThan(before.x - 20)
   await finger.end()
   await links(story).toHaveLength(3)
-  const linked = await boardState(story)
-  expect(linked.scene.edges[2]).toMatchObject({ from: { nodeId: a.id, side: 'bottom' }, to: { nodeId: b.id } })
-  expect(linked.scene.nodes).toEqual(state.scene.nodes)
-  expect(linked.view).toEqual(state.view)
-
-  await expect(hint(story)).toHaveText('已建立关系')
-  const remove = action(tools, '删除关系')
-  await expectTouchTarget(remove)
-  await remove.tap()
-  await links(story).toHaveLength(2)
-  await expect(story.locator('dialog[open]')).toHaveCount(0)
 })
 
-test('手机单指移动卡片和平移画布，双指接管手势，拉线抵达边缘时滚动画布 @webkit', async ({ page, browserName }) => {
-  const { story, area } = await startBoard(page)
-  const finger = await touchPath(story, browserName)
-  const create = action(story, '新建卡片')
-  await expectTouchTarget(create)
-  await create.tap()
-  await fillNewCard(story, '旅客')
-  await closeCard(story)
-  const card = storyCard(story, '旅客')
-  const initial = await boardState(story)
-  const middle = await midpoint(card)
-  await finger.start(middle)
-  await finger.move({ x: middle.x + 31, y: middle.y + 25 })
-  await finger.end()
-  await expect.poll(async () => (await boardState(story)).scene.nodes[0].x).toBe(initial.scene.nodes[0].x + 31)
-  const moved = await boardState(story)
-  expect(moved).toMatchObject({ view: initial.view, scene: { edges: [], nodes: [{ y: initial.scene.nodes[0].y + 25 }] } })
-  await expect(action(canvas(story), '连到…')).toBeHidden()
-
-  const blank = { x: area.x + 37, y: area.y + 210 }
-  await finger.start(blank)
-  await finger.move({ x: blank.x + 18, y: blank.y + 27 })
-  await finger.end()
-  await expect.poll(async () => (await boardState(story)).view).toMatchObject({ x: moved.view.x + 18, y: moved.view.y + 27, zoom: 1 })
-  const panned = await boardState(story)
-  expect(panned.scene).toEqual(moved.scene)
-
-  const center = await midpoint(card)
-  await finger.start(center)
-  const first = { x: center.x - 12, y: center.y }
-  const second = { x: first.x + 78, y: first.y + 58 }
-  await finger.move(first)
-  await finger.start(first, second)
-  await finger.move({ x: first.x - 44, y: first.y + 21 }, { x: second.x + 17, y: second.y + 43 })
-  await finger.end()
-  await expect.poll(async () => (await boardState(story)).view.zoom).toBeGreaterThan(1.4)
-  const pinched = await boardState(story)
-  expect(pinched.view.x).not.toBe(panned.view.x)
-  expect(pinched.view.y).not.toBe(panned.view.y)
-  expect(pinched.scene).toEqual(moved.scene)
-  await expect(action(canvas(story), '连到…')).toBeHidden()
-
-  // Verify all four targets after scaling the world below 1×. The user can
-  // still grab the same area, and can hold the pointer at the viewport edge.
-  const minus = action(story, '缩小')
-  await expectTouchTarget(minus)
-  for (let i = 0; i < 5; i++) await minus.tap()
-  await expect.poll(async () => (await boardState(story)).view.zoom).toBeLessThan(.8)
-  for (const port of await card.locator('[data-port]').all()) await expectTouchTarget(port)
-  const beforeEdge = await boardState(story)
-  const screenX = () => story.locator('.story-world').evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).m41)
-  expect(await screenX()).toBeCloseTo(beforeEdge.view.x)
-  const handle = await midpoint(card.locator('[data-port="right"]'))
-  await finger.start(handle)
-  await finger.move({ x: area.x + area.width - 8, y: area.y + area.height * .45 })
-  await expect.poll(screenX).toBeLessThan(beforeEdge.view.x - 20)
-  await finger.end()
-  await links(story).toHaveLength(1)
-  const afterEdge = await boardState(story)
-  expect(afterEdge.view.x).toBeLessThan(beforeEdge.view.x - 20)
-  expect(afterEdge.scene.nodes[0]).toEqual(moved.scene.nodes[0])
-  expect(afterEdge.scene.nodes[1].kind).toBe('text')
-  expect(afterEdge.scene.edges[0]).toMatchObject({ from: { nodeId: moved.scene.nodes[0].id, side: 'right' }, to: { nodeId: afterEdge.scene.nodes[1].id } })
-})
-
-test('手机长按菜单可连线，框不可连接，减少动态效果时仍提示成功 @webkit', async ({ page, browserName }) => {
-  const { story, area } = await startBoard(page)
-  await story.emulateMedia({ reducedMotion: 'reduce' })
-  const finger = await touchPath(story, browserName)
-  await addByDoubleTap(story, area, '主角', { x: 83, y: 76 })
-  await addByDoubleTap(story, area, '向导', { x: 83, y: 313 })
-  const source = storyCard(story, '主角')
-  const target = storyCard(story, '向导')
-  await source.tap()
-  await action(story, '分组框').tap()
-  await closeCard(story)
-  const frame = story.locator('.story-group-title')
-  const before = await boardState(story)
-  await finger.start(await midpoint(source))
-  const menuItem = action(story, '连到…')
-  await expect(menuItem).toBeVisible()
-  await finger.end()
-  await expectTouchTarget(menuItem)
-  await menuItem.tap()
-  await tapAt(story, await midpoint(frame))
-  await expect(hint(story)).toContainText('分组框不能作为连线端点')
-  await links(story).toHaveLength(0)
-  // In link mode, dragging the source body also works and leaves the card still.
-  await finger.start(await midpoint(source))
-  await finger.move(await midpoint(target))
-  await expect(target).toHaveClass(/story-link-target/)
-  await finger.end()
-  await expect(hint(story)).toHaveText('已建立关系')
-  await expect(story.locator('.story-line')).toHaveCSS('animation-name', 'none')
-  await links(story).toHaveLength(1)
-  expect((await boardState(story)).scene.nodes).toEqual(before.scene.nodes)
+test('手机缩放到 50% 时线宽、箭头、关系名够大，线的可点区域更宽 @webkit', async ({ page }) => {
+  const a = card('a', '守灯人', 40, 100)
+  const b = card('b', '船长', 380, 600)
+  const { story } = await startBoard(page, { nodes: [a, b], edges: [arrow('link', 'a', 'b', { name: '师徒' })] }, { x: 20, y: 40, zoom: .5 })
+  const sizes = await story.locator('[data-edge-id="link"]').evaluate((group) => {
+    const zoom = .5
+    const head = group.querySelector('.story-head').getBoundingClientRect()
+    const label = group.querySelector('.story-edge-label')
+    return {
+      line: Number(group.querySelector('.story-line').getAttribute('stroke-width')) * zoom,
+      head: Math.max(head.width, head.height),
+      font: Number(label.getAttribute('font-size')) * zoom,
+      hit: Number(group.querySelector('.story-hit').getAttribute('stroke-width')) * zoom,
+    }
+  })
+  expect(sizes.line).toBeGreaterThanOrEqual(2.4)
+  expect(sizes.head).toBeGreaterThanOrEqual(10)
+  expect(sizes.font).toBeGreaterThanOrEqual(12)
+  expect(sizes.hit).toBeGreaterThanOrEqual(28)
+  // Tap 12 px beside the line, away from its name.
+  const line = await edgeGeometry(story, 'link')
+  const along = await toPage(story, { x: line.from.x + (line.to.x - line.from.x) * .3, y: line.from.y + (line.to.y - line.from.y) * .3 })
+  const length = Math.hypot(line.to.x - line.from.x, line.to.y - line.from.y)
+  await tapAt(story, { x: along.x - (line.to.y - line.from.y) / length * 12, y: along.y + (line.to.x - line.from.x) / length * 12 })
+  await expect(story.locator('[data-edge-id="link"]')).toHaveClass(/selected/)
 })
