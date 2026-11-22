@@ -180,7 +180,10 @@ test('手机用连线模式、卡片菜单和连接点建关系，浮动工具�
   expect(linked.scene.nodes).toEqual(state.scene.nodes)
   expect(linked.view).toEqual(state.view)
 
-  await action(tools, '删除关系').tap()
+  await expect(hint(story)).toHaveText('已建立关系')
+  const remove = action(tools, '删除关系')
+  await expectTouchTarget(remove)
+  await remove.tap()
   await links(story).toHaveLength(2)
   await expect(story.locator('dialog[open]')).toHaveCount(0)
 })

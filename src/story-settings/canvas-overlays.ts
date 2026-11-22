@@ -37,6 +37,8 @@ export function storyCanvasOverlays(surface: HTMLElement, options: OverlayOption
   let selectedEdge: StoryEdge | undefined
   let menu: { id: string; anchor: Point } | undefined
   let editor: { edge: StoryEdge; form: HTMLFormElement } | undefined
+  let deleteTouch: { pointerId: number; start: Point; edgeId: string } | undefined
+  let handledDeleteTouch = false
   const more = control('cardActions', 'more', 'story-canvas-control story-card-more')
   more.setAttribute('aria-expanded', 'false')
   const menuPanel = element('div', 'story-canvas-control story-canvas-popup story-card-menu')
@@ -112,7 +114,29 @@ export function storyCanvasOverlays(surface: HTMLElement, options: OverlayOption
     stroke.field.value = selectedEdge.stroke
     if (value !== selectedEdge.stroke && options.prepareEdit()) options.change(selectedEdge.id, { stroke: value })
   }
-  remove.onclick = () => { if (selectedEdge) options.remove(selectedEdge.id) }
+  // A tap can follow a captured canvas drag before the browser synthesizes a
+  // fresh click. Recognize it on the delete control itself and keep keyboard
+  // and mouse activation on the native click path.
+  remove.onpointerdown = (event) => {
+    handledDeleteTouch = false
+    deleteTouch = event.pointerType === 'touch' && selectedEdge
+      ? { pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, edgeId: selectedEdge.id }
+      : undefined
+  }
+  remove.onpointercancel = () => { deleteTouch = undefined }
+  remove.onpointerup = (event) => {
+    const touch = deleteTouch
+    if (touch?.pointerId !== event.pointerId) return
+    deleteTouch = undefined
+    handledDeleteTouch = true
+    if (Math.hypot(event.clientX - touch.start.x, event.clientY - touch.start.y) > 9 ||
+        !remove.contains(document.elementFromPoint(event.clientX, event.clientY))) return
+    if (selectedEdge?.id === touch.edgeId) options.remove(touch.edgeId)
+  }
+  remove.onclick = (event) => {
+    if (event.detail && handledDeleteTouch) return
+    if (selectedEdge) options.remove(selectedEdge.id)
+  }
 
   function clearEditor() {
     const form = editor?.form

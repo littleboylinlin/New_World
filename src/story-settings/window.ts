@@ -47,7 +47,7 @@ function mount(route: NonNullable<typeof work>) {
   let redo: HistoryEntry[] = []
   let clipboard = ''
   let hand = false
-  let displayedTags = ''
+  let displayedTags = new Map<string | undefined, { tag?: StoryTag; form: HTMLFormElement }>()
 
   const header = element('header', 'story-header')
   const heading = element('div', 'story-title')
@@ -463,8 +463,11 @@ function mount(route: NonNullable<typeof work>) {
   })
 
   function sidebarTo(mode?: typeof sidebar) {
+    if (mode === 'tags' && mode !== sidebar) {
+      displayedTags.clear()
+      result.replaceChildren()
+    }
     sidebar = mode
-    displayedTags = ''
     left.hidden = !mode
     for (const [key, control] of [['find', find], ['tags', tags], ['trash', trash]] as const) {
       control.setAttribute('aria-pressed', String(mode === key))
@@ -490,12 +493,19 @@ function mount(route: NonNullable<typeof work>) {
     form.append(name, color, save)
     form.onsubmit = (event) => {
       event.preventDefault()
-      const value = name.value.trim()
+      const draftName = name.value
+      const draftColor = color.value
+      const value = draftName.trim()
       if (!value || (tag && !board.scene.tags.some(({ id }) => id === tag.id))) return
-      const next = { id: tag?.id ?? crypto.randomUUID(), name: value, color: color.value }
+      const next = { id: tag?.id ?? crypto.randomUUID(), name: value, color: draftColor }
       const tags = tag ? board.scene.tags.map((row) => row.id === tag.id ? next : row) : [...board.scene.tags, next]
       void commit({ ...board.scene, tags }).then((saved) => {
-        if (saved && panel && 'refresh' in panel) panel.refresh(snapshot?.editions ?? [], board.scene.tags)
+        if (!saved) return
+        if (!tag && name.value === draftName && color.value === draftColor) {
+          name.value = ''
+          color.value = defaultStoryColor
+        }
+        if (panel && 'refresh' in panel) panel.refresh(snapshot?.editions ?? [], board.scene.tags)
       })
     }
     return form
@@ -517,11 +527,20 @@ function mount(route: NonNullable<typeof work>) {
       })
       result.replaceChildren(...(rows.length ? rows : [element('p', 'dialog-help', t('story.noMatch'))]))
     } else if (sidebar === 'tags') {
-      const current = JSON.stringify(board.scene.tags)
-      if (current !== displayedTags) {
-        displayedTags = current
-        result.replaceChildren(tagForm(), ...board.scene.tags.map(tagForm))
+      // Keep an unrelated row's draft and focus when another tag is saved.
+      const rows = new Map([undefined, ...board.scene.tags].map((tag) => {
+        const id = tag?.id
+        const previous = displayedTags.get(id)
+        const form = previous && previous.tag?.name === tag?.name && previous.tag?.color === tag?.color ? previous.form : tagForm(tag)
+        return [id, { tag, form }] as const
+      }))
+      for (const [id, { form }] of displayedTags) if (rows.get(id)?.form !== form) form.remove()
+      let anchor: ChildNode | null = result.firstChild
+      for (const { form } of rows.values()) {
+        if (form !== anchor) result.insertBefore(form, anchor)
+        anchor = form.nextSibling
       }
+      displayedTags = rows
     } else {
       const rows = (snapshot?.trash ?? []).map((entry) => {
         const row = element('div', 'story-trash-row')
