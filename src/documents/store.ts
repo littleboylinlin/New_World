@@ -1,12 +1,15 @@
 import { t } from '../i18n'
-import { ConfirmStateConflictError, computeChapterDeleteFingerprint, computeEditionDeleteFingerprint } from '../confirm-state'
+import { ConfirmStateConflictError, computeChapterDeleteFingerprint, computeEditionDeleteFingerprint, hashDocumentContent } from '../confirm-state'
 import { announced, committed, maxTitleLength, openDatabase, resultOf, trashEntry, writing } from '../library'
-import type { Book, LibraryId, TrashEntry, WrittenBook } from '../library'
+import type { Book, ChapterRevision, LibraryId, TrashEntry, WrittenBook } from '../library'
 import { emptyChapter, maxChapters, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition, EditionBundle, EditionKey } from './model'
 import { validateWorkMetadata } from '../work-metadata'
 import type { WorkMetadata } from '../work-metadata'
 import { recordWriting } from '../writing-stats'
+import { buildDeduplicatedRevision } from './revisions'
+import { keptWritingSnapshots, noteWritingSnapshot, planWritingSnapshot } from './writing-history'
+import type { WritingSnapshot } from './writing-history'
 
 const editionKey = (edition: EditionKey) => [edition.library, edition.bookId, edition.id]
 const chapterKey = (edition: EditionKey, id: string) => [...editionKey(edition), id]
@@ -97,14 +100,26 @@ export async function readChapter(edition: EditionKey, id: string): Promise<Chap
 export const chapterSaves = new EventTarget()
 
 export async function saveChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent) {
-  const saved = await writeChapter(edition, chapter, content)
+  let snapshot: WritingSnapshot | undefined
+  try { snapshot = await planWritingSnapshot(edition, chapter, content) } catch { /* History never holds up a save. */ }
+  let saved: ChapterRecord | undefined
+  if (snapshot) {
+    try {
+      saved = await writeChapter(edition, chapter, content, snapshot)
+      noteWritingSnapshot(edition, chapter.id, snapshot.at)
+    } catch {
+      // Keeping the old text must never cost the save itself (a full disk, say); a real conflict fails again below.
+    }
+  }
+  saved ??= await writeChapter(edition, chapter, content)
   chapterSaves.dispatchEvent(new CustomEvent('save', { detail: { library: edition.library, bookId: edition.bookId } }))
   return saved
 }
 
-async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent) {
+async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent, snapshot?: WritingSnapshot) {
   const db = await openDatabase()
-  const tx = db.transaction(['chapters', 'writingDays'], 'readwrite', { durability: 'strict' })
+  const stores = snapshot ? ['chapters', 'writingDays', 'editions', 'revisions', 'revisionBlobs'] : ['chapters', 'writingDays']
+  const tx = db.transaction(stores, 'readwrite', { durability: 'strict' })
   const chapters = tx.objectStore('chapters')
   return updateRecord(tx, chapters.get(chapterKey(edition, chapter.id)), (stored: ChapterRecord | undefined) => {
     if (!stored) throw new Error(t('store.thisChapterHasBeenRemovedTheCurrentText'))
@@ -113,8 +128,41 @@ async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content
     chapters.put(next)
     const delta = wordCount(content) - wordCount(stored.content)
     if (delta > 0) recordWriting(tx.objectStore('writingDays'), delta)
+    // Only when the stored text is still the one the snapshot was prepared from.
+    if (snapshot && hashDocumentContent(stored.content) === snapshot.payload.blob.hash) keepWritingSnapshot(tx, edition, stored, snapshot)
     return next
   })
+}
+
+/** Adds the text a save replaces to the chapter's history and drops writing snapshots beyond the kept number. */
+function keepWritingSnapshot(tx: IDBTransaction, edition: EditionKey, stored: ChapterRecord, snapshot: WritingSnapshot) {
+  const blobs = tx.objectStore('revisionBlobs')
+  const revisions = tx.objectStore('revisions')
+  const editionReq = tx.objectStore('editions').get(editionKey(edition))
+  const blobReq = blobs.get(snapshot.payload.blob.hash)
+  blobReq.onsuccess = () => {
+    const info: Edition | undefined = editionReq.result
+    if (!info) return
+    if (!blobReq.result) blobs.put(snapshot.payload.blob)
+    const chapterTitle = info.chapters.find((entry) => entry.id === stored.id)?.title ?? stored.id
+    revisions.add(buildDeduplicatedRevision({
+      edition: info, chapter: stored, chapterTitle, source: 'writing', action: snapshot.action, createdAt: snapshot.at,
+    }, snapshot.payload))
+    const rowsReq = revisions.index('byChapter').getAll(chapterKey(edition, stored.id))
+    rowsReq.onsuccess = () => {
+      const extra = (rowsReq.result as ChapterRevision[]).filter((row) => row.source === 'writing')
+        .sort((a, b) => b.createdAt - a.createdAt).slice(keptWritingSnapshots)
+      if (!extra.length) return
+      const gone = new Set(extra.map((row) => row.id))
+      for (const row of extra) revisions.delete(row.id)
+      const unused = new Set(extra.flatMap((row) => row.blobHash ? [row.blobHash] : []))
+      const allReq = revisions.getAll()
+      allReq.onsuccess = () => {
+        for (const row of allReq.result as ChapterRevision[]) if (!gone.has(row.id) && row.blobHash) unused.delete(row.blobHash)
+        for (const hash of unused) blobs.delete(hash)
+      }
+    }
+  }
 }
 
 export async function readBundle(key: EditionKey): Promise<EditionBundle> {

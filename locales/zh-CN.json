@@ -728,6 +728,8 @@
   "revisions.sourceAi": "AI 修改前（{0}）",
   "revisions.sourceAiGeneric": "AI 修改前",
   "revisions.sourceRestore": "恢复前自动备份",
+  "revisions.sourceAutosave": "写作中自动保留",
+  "revisions.sourceLargeChange": "大幅修改前",
   "revisions.words": "{0} 字",
   "revisions.emptyChapterPreview": "（空章节）",
   "revisions.restoreThis": "恢复此版本",

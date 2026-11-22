@@ -101,7 +101,7 @@ function validateIdea(v: ProjectData['ideas'][number]) {
   if (v.usedAt !== undefined) ok(num(v.usedAt), 'idea usedAt')
 }
 function revision(v: ChapterRevision | IdeaRevision) {
-  ok(id(v.id) && num(v.createdAt) && ['ai', 'user-restore'].includes(v.source) && str(v.action) && str(v.contentHash), 'revision')
+  ok(id(v.id) && num(v.createdAt) && ['ai', 'user-restore', 'writing'].includes(v.source) && str(v.action) && str(v.contentHash), 'revision')
   if (v.clientId !== undefined) ok(id(v.clientId), 'client provenance')
   if (v.clientName !== undefined) ok(str(v.clientName), 'client name')
 }

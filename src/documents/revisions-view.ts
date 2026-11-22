@@ -41,6 +41,7 @@ function formatStorageBytes(bytes: number): string {
 
 function revisionSourceLabel(rev: ChapterRevision): string {
   if (rev.source === 'user-restore') return t('revisions.sourceRestore')
+  if (rev.source === 'writing') return rev.action === 'large-change' ? t('revisions.sourceLargeChange') : t('revisions.sourceAutosave')
   return rev.clientName ? t('revisions.sourceAi', [rev.clientName]) : t('revisions.sourceAiGeneric')
 }
 

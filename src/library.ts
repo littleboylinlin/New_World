@@ -60,7 +60,8 @@ export interface TrashEntry {
   position?: { editionId: string; index: number }
 }
 
-export type RevisionSource = 'ai' | 'user-restore'
+/** `writing` keeps the text from before ordinary saves: every ten minutes of writing, and before large changes. */
+export type RevisionSource = 'ai' | 'user-restore' | 'writing'
 
 export interface ChapterRevision {
   id: string
