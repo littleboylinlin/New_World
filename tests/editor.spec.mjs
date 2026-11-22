@@ -1,6 +1,6 @@
 import { startWork, chooseImportType, activeLibrary } from './navigation-helpers.mjs'
 import { open, readFile } from 'node:fs/promises'
-import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
+import { TextReader, TextWriter, Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
 import { chapterAction, chapterHeading, editWorkInformation, editorAction, moveChapter, saveNow, workAction } from './editor-helpers.mjs'
 import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
@@ -731,6 +731,10 @@ test('导出 EPUB 电子书：包含元数据、封面、本地插图、目录�
   await upload(page, [file('海港纪事.epub', zhBytes)])
   await openBook(page, '海港纪事')
   await expect(page.locator('.page-number')).toHaveText('1 / 3')
+  const coverPreview = page.locator('.reading-image img')
+  await expect(coverPreview).toHaveAttribute('alt', '封面')
+  await expect.poll(() => coverPreview.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
   await page.getByRole('button', { name: '下一节', exact: true }).click()
   await expect(page.getByText('第一章的海风吹过码头。')).toBeVisible()
   await convert(page)
@@ -768,6 +772,56 @@ test('导出 EPUB 电子书：包含元数据、封面、本地插图、目录�
   } finally {
     await enZip.close()
   }
+})
+
+test('EPUB 预览：纯图片章节显示图片，无文字也无图片的章节提示没有可预览的正文', async ({ page }) => {
+  const zip = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
+  await zip.add('mimetype', new TextReader('application/epub+zip'), { level: 0, dataDescriptor: false, extendedTimestamp: false })
+  await zip.add('META-INF/container.xml', new TextReader(
+    '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles>'
+    + '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
+    + '</rootfiles></container>',
+  ))
+  await zip.add('OEBPS/content.opf', new TextReader(
+    '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">'
+    + '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:00000000-0000-0000-0000-000000000099</dc:identifier>'
+    + '<dc:title>插画试读</dc:title><dc:language>zh-CN</dc:language></metadata>'
+    + '<manifest>'
+    + '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>'
+    + '<item id="blank" href="blank.xhtml" media-type="application/xhtml+xml"/>'
+    + '<item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>'
+    + '<item id="img" href="images/plate.png" media-type="image/png"/>'
+    + '</manifest><spine><itemref idref="cover"/><itemref idref="blank"/><itemref idref="ch1"/></spine></package>',
+  ))
+  await zip.add('OEBPS/cover.xhtml', new TextReader(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>封面</title></head>'
+    + '<body><figure><img src="images/plate.png" alt="插画封面"/></figure></body></html>',
+  ))
+  await zip.add('OEBPS/blank.xhtml', new TextReader(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>空白页</title></head><body><p>   </p></body></html>',
+  ))
+  await zip.add('OEBPS/ch1.xhtml', new TextReader(
+    '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>正文</title></head><body><p>第三节的正文。</p></body></html>',
+  ))
+  await zip.add('OEBPS/images/plate.png', new Uint8ArrayReader(pixel))
+  const bytes = await zip.close()
+
+  await shelf(page)
+  await upload(page, [file('插画试读.epub', bytes)])
+  await openBook(page, '插画试读')
+  await expect(page.locator('.page-number')).toHaveText('1 / 3')
+  const plate = page.locator('.reading-image img')
+  await expect(plate).toHaveAttribute('alt', '插画封面')
+  await expect.poll(() => plate.evaluate((img) => img.naturalWidth)).toBe(2)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '下一节', exact: true }).click()
+  await expect(page.locator('.page-number')).toHaveText('2 / 3')
+  await expect(page.getByRole('alert')).toContainText('这一部分没有可预览的正文')
+
+  await page.getByRole('button', { name: '下一节', exact: true }).click()
+  await expect(page.locator('.page-number')).toHaveText('3 / 3')
+  await expect(page.getByText('第三节的正文。')).toBeVisible()
 })
 
 test.describe('移动编辑', () => {
