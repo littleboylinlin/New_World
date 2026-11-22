@@ -8,7 +8,7 @@ import { validateWorkMetadata } from '../work-metadata'
 import type { WorkMetadata } from '../work-metadata'
 import { recordWriting } from '../writing-stats'
 import { buildDeduplicatedRevision } from './revisions'
-import { keptWritingSnapshots, noteWritingSnapshot, planWritingSnapshot } from './writing-history'
+import { keptWritingSnapshots, noteWritingSnapshot, noteWritingStart, planWritingSnapshot } from './writing-history'
 import type { WritingSnapshot } from './writing-history'
 
 const editionKey = (edition: EditionKey) => [edition.library, edition.bookId, edition.id]
@@ -100,20 +100,24 @@ export async function readChapter(edition: EditionKey, id: string): Promise<Chap
 export const chapterSaves = new EventTarget()
 
 export async function saveChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent) {
+  const now = Date.now()
   let snapshot: WritingSnapshot | undefined
-  try { snapshot = await planWritingSnapshot(edition, chapter, content) } catch { /* History never holds up a save. */ }
-  let saved: ChapterRecord | undefined
+  try { snapshot = await planWritingSnapshot(edition, chapter, content, now) } catch { /* History never holds up a save. */ }
+  let outcome: { saved: ChapterRecord; kept: boolean } | undefined
   if (snapshot) {
     try {
-      saved = await writeChapter(edition, chapter, content, snapshot)
-      noteWritingSnapshot(edition, chapter.id, snapshot.at)
+      outcome = await writeChapter(edition, chapter, content, snapshot)
+      if (outcome.kept) noteWritingSnapshot(edition, chapter.id, snapshot.at)
     } catch {
       // Keeping the old text must never cost the save itself (a full disk, say); a real conflict fails again below.
     }
   }
-  saved ??= await writeChapter(edition, chapter, content)
-  chapterSaves.dispatchEvent(new CustomEvent('save', { detail: { library: edition.library, bookId: edition.bookId } }))
-  return saved
+  outcome ??= await writeChapter(edition, chapter, content)
+  if (!outcome.kept && !wordCount(chapter.content) && wordCount(content) > 0) noteWritingStart(edition, chapter.id, now)
+  chapterSaves.dispatchEvent(new CustomEvent('save', {
+    detail: { library: edition.library, bookId: edition.bookId, editionId: edition.id, chapterId: chapter.id, snapshot: outcome.kept },
+  }))
+  return outcome.saved
 }
 
 async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content: DocumentContent, snapshot?: WritingSnapshot) {
@@ -121,7 +125,8 @@ async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content
   const stores = snapshot ? ['chapters', 'writingDays', 'editions', 'revisions', 'revisionBlobs'] : ['chapters', 'writingDays']
   const tx = db.transaction(stores, 'readwrite', { durability: 'strict' })
   const chapters = tx.objectStore('chapters')
-  return updateRecord(tx, chapters.get(chapterKey(edition, chapter.id)), (stored: ChapterRecord | undefined) => {
+  let kept = false
+  const saved = await updateRecord(tx, chapters.get(chapterKey(edition, chapter.id)), (stored: ChapterRecord | undefined) => {
     if (!stored) throw new Error(t('store.thisChapterHasBeenRemovedTheCurrentText'))
     if (stored.revision !== chapter.revision) throw new Error(t('store.thisChapterWasUpdatedInAnotherPageSave'))
     const next = { ...stored, content, revision: stored.revision + 1 }
@@ -129,38 +134,52 @@ async function writeChapter(edition: EditionKey, chapter: ChapterRecord, content
     const delta = wordCount(content) - wordCount(stored.content)
     if (delta > 0) recordWriting(tx.objectStore('writingDays'), delta)
     // Only when the stored text is still the one the snapshot was prepared from.
-    if (snapshot && hashDocumentContent(stored.content) === snapshot.payload.blob.hash) keepWritingSnapshot(tx, edition, stored, snapshot)
+    if (snapshot && hashDocumentContent(stored.content) === snapshot.payload.blob.hash) {
+      keepWritingSnapshot(tx, edition, stored, snapshot, () => { kept = true })
+    }
     return next
   })
+  return { saved, kept }
 }
 
 /** Adds the text a save replaces to the chapter's history and drops writing snapshots beyond the kept number. */
-function keepWritingSnapshot(tx: IDBTransaction, edition: EditionKey, stored: ChapterRecord, snapshot: WritingSnapshot) {
+function keepWritingSnapshot(tx: IDBTransaction, edition: EditionKey, stored: ChapterRecord, snapshot: WritingSnapshot, onKept: () => void) {
   const blobs = tx.objectStore('revisionBlobs')
   const revisions = tx.objectStore('revisions')
   const editionReq = tx.objectStore('editions').get(editionKey(edition))
   const blobReq = blobs.get(snapshot.payload.blob.hash)
-  blobReq.onsuccess = () => {
-    const info: Edition | undefined = editionReq.result
-    if (!info) return
-    if (!blobReq.result) blobs.put(snapshot.payload.blob)
-    const chapterTitle = info.chapters.find((entry) => entry.id === stored.id)?.title ?? stored.id
-    revisions.add(buildDeduplicatedRevision({
-      edition: info, chapter: stored, chapterTitle, source: 'writing', action: snapshot.action, createdAt: snapshot.at,
-    }, snapshot.payload))
-    const rowsReq = revisions.index('byChapter').getAll(chapterKey(edition, stored.id))
-    rowsReq.onsuccess = () => {
-      const extra = (rowsReq.result as ChapterRevision[]).filter((row) => row.source === 'writing')
-        .sort((a, b) => b.createdAt - a.createdAt).slice(keptWritingSnapshots)
+  const rowsReq = revisions.index('byChapter').getAll(chapterKey(edition, stored.id))
+  rowsReq.onsuccess = () => {
+    try {
+      const info: Edition | undefined = editionReq.result
+      if (!info) return
+      const existing = rowsReq.result as ChapterRevision[]
+      if (existing.some((row) => row.chapterRevision === stored.revision && row.contentHash === snapshot.payload.blob.hash)) return
+      if (!blobReq.result) blobs.put(snapshot.payload.blob)
+      const chapterTitle = info.chapters.find((entry) => entry.id === stored.id)?.title ?? stored.id
+      const added = buildDeduplicatedRevision({
+        edition: info, chapter: stored, chapterTitle, source: 'writing', action: snapshot.action, createdAt: snapshot.at,
+      }, snapshot.payload)
+      revisions.add(added)
+      onKept()
+      const extra = [...existing, added].filter((row) => row.source === 'writing')
+        .sort((a, b) => b.createdAt - a.createdAt || (b.chapterRevision ?? 0) - (a.chapterRevision ?? 0))
+        .slice(keptWritingSnapshots)
       if (!extra.length) return
       const gone = new Set(extra.map((row) => row.id))
       for (const row of extra) revisions.delete(row.id)
       const unused = new Set(extra.flatMap((row) => row.blobHash ? [row.blobHash] : []))
       const allReq = revisions.getAll()
       allReq.onsuccess = () => {
-        for (const row of allReq.result as ChapterRevision[]) if (!gone.has(row.id) && row.blobHash) unused.delete(row.blobHash)
-        for (const hash of unused) blobs.delete(hash)
+        try {
+          for (const row of allReq.result as ChapterRevision[]) if (!gone.has(row.id) && row.blobHash) unused.delete(row.blobHash)
+          for (const hash of unused) blobs.delete(hash)
+        } catch {
+          try { tx.abort() } catch { /* Already completed or aborted. */ }
+        }
       }
+    } catch {
+      try { tx.abort() } catch { /* Already completed or aborted. */ }
     }
   }
 }

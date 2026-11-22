@@ -53,3 +53,12 @@ export async function planWritingSnapshot(edition: EditionKey, chapter: ChapterR
 export function noteWritingSnapshot(edition: EditionKey, chapterId: string, at: number) {
   latest.set(keyOf(edition, chapterId), at)
 }
+
+export function noteWritingStart(edition: EditionKey, chapterId: string, at: number) {
+  const key = keyOf(edition, chapterId)
+  if (!latest.has(key)) latest.set(key, at)
+}
+
+export function clearWritingSnapshotClock() {
+  latest.clear()
+}
