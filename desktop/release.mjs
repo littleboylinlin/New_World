@@ -31,11 +31,6 @@ export function installerName(tag, platform, arch) {
   if (platform === 'darwin' && ['arm64', 'x64'].includes(arch)) return `New-World-${tag.slice(1)}-macos-${arch}.dmg`
 }
 
-/** The small Windows installer that downloads the app package while it installs. */
-export const onlineInstallerName = (tag) => isStableTag(tag) ? `New-World-Online-Setup-${tag.slice(1)}-x64.exe` : undefined
-/** The app package the online installer downloads from the mirror. */
-export const windowsPackageName = (tag) => isStableTag(tag) ? `New-World-${tag.slice(1)}-x64.nsis.7z` : undefined
-
 function readInstaller(tag, assets, platform, arch) {
   const name = installerName(tag, platform, arch)
   if (!name || !Array.isArray(assets)) return
