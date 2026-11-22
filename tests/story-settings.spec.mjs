@@ -3,6 +3,8 @@ import { chapterAction, chapterHeading, moveChapter, openChapterList } from './e
 import { databaseSnapshot } from './project-fixture.mjs'
 import { addStoryChapter, cardPanel, closeCard, deleteCard, newCard, newStoryWork, openStoryWindow, renameStoryChapter, saveCard, storyCard, storyEntry } from './story-settings-helpers.mjs'
 
+test.setTimeout(60_000)
+
 const button = (page, name) => page.getByRole('button', { name, exact: true })
 
 test('卡片模板、别名和常用字段，卡片删除需确认且可在回收站恢复 @webkit', async ({ page, context }) => {

@@ -31,7 +31,6 @@ async function seedCards(page) {
   await page.goto('/#/writing')
   await newStoryWork(page, title)
   await addStoryChapter(page, '灯塔')
-  const editorUrl = page.url()
   const story = await openStoryWindow(page)
   await newCard(story, '雾港', 'location')
   await newCard(story, '守灯人')
@@ -52,7 +51,7 @@ async function seedCards(page) {
   await storyCard(story, '雾港').click()
   await deleteCard(story)
   await expect(storyCard(story, '雾港')).toHaveCount(0)
-  return { story, editorUrl, bookId: new URL(story.url()).hash.split('/').at(-1) }
+  return { story, bookId: new URL(story.url()).hash.split('/').at(-1) }
 }
 
 async function downloadProject(page, workTitle, path) {
@@ -137,7 +136,7 @@ test('全库备份往返保留活动卡片、卡片回收记录和已删除作�
 })
 
 test('工程保留本书卡片和回收记录，副本重映射版本、章节和卡片 ID，兼容旧工程', async ({ page, browser }, info) => {
-  const { story, editorUrl, bookId } = await seedCards(page)
+  const { story, bookId } = await seedCards(page)
   const before = await page.evaluate(databaseSnapshot)
   const original = before.storyCards.find((card) => card.bookId === bookId)
   await page.goto('/#/writing')
@@ -176,8 +175,8 @@ test('工程保留本书卡片和回收记录，副本重映射版本、章节�
     expect(copy.states).toEqual([{ editionId: edition.id, chapterId: edition.chapters[1].id, text: '独自值夜' }])
     expect(copy.states[0].chapterId).not.toBe(original.states[0].chapterId)
     expect(copy.details).toBe(original.details)
-    await receiver.goto(editorUrl.replace(bookId, copy.bookId).replace(original.chapters[0].editionId, edition.id))
-    const copiedStory = await openStoryWindow(receiver)
+    const copiedStory = await fresh.newPage()
+    await copiedStory.goto(new URL(`#/story-settings/${copy.library}/${copy.bookId}`, receiver.url()).href)
     await button(copiedStory, '回收站').click()
     await button(copiedStory.locator('.story-trash-card'), '恢复').click()
     await button(copiedStory, '全部卡片').click()
