@@ -3,7 +3,7 @@ import type { WorkMetadata } from '../work-metadata'
 import { element } from '../ui'
 import { t } from '../i18n'
 
-export interface WorkExportSource { title: string; metadata?: WorkMetadata }
+export interface WorkExportSource { title: string; metadata?: WorkMetadata; cover?: Blob }
 export interface WorkExportSelection { title: boolean; author: boolean; synopsis: boolean }
 export interface ExportWorkInfo { title?: string; subtitle?: string; author?: string; synopsis?: string }
 

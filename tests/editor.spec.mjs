@@ -2,7 +2,7 @@ import { startWork, chooseImportType, activeLibrary } from './navigation-helpers
 import { open, readFile } from 'node:fs/promises'
 import { TextWriter, Uint8ArrayReader, ZipReader } from '@zip.js/zip.js'
 import { chromium, expect, test, withoutRelease } from './app-test.mjs'
-import { chapterAction, chapterHeading, editorAction, moveChapter, saveNow, workAction } from './editor-helpers.mjs'
+import { chapterAction, chapterHeading, editWorkInformation, editorAction, moveChapter, saveNow, workAction } from './editor-helpers.mjs'
 import { docx, epub, file, odt, passwordPdf, pdf, pixel, richDocx } from './fixtures.mjs'
 
 const textArea = (page) => page.getByRole('textbox', { name: '章节正文' })
@@ -644,6 +644,130 @@ test('按章节勾选导出编辑稿', async ({ page }, testInfo) => {
   expect(picked).toContain('第一封信从雾里来。')
   expect(picked).toContain('第三封信没有署名。')
   expect(picked).not.toContain('第二封信落在窗台。')
+})
+
+test('导出 EPUB 电子书：包含元数据、封面、本地插图、目录与兼容旧阅读器的 toc.ncx，并支持无封面英文作品', async ({ page }, testInfo) => {
+  await shelf(page)
+  await newNovel(page, '海港纪事')
+  await editWorkInformation(page)
+  const info = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
+  await info.getByLabel('作者', { exact: true }).fill('林海')
+  await info.getByLabel('作品简介', { exact: true }).fill('雾里的第一封来信。')
+  await info.getByRole('button', { name: '保存作品信息', exact: true }).click()
+  await expect(info).toBeHidden()
+
+  await textArea(page).fill('第一章的海风吹过码头。')
+  const illustrationChooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: '插图', exact: true }).click()
+  await (await illustrationChooser).setFiles({ name: 'harbor.png', mimeType: 'image/png', buffer: pixel })
+  await expect(textArea(page).locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/)
+  await manualSave(page)
+
+  await page.getByRole('button', { name: '新建章节' }).click()
+  await page.getByRole('textbox', { name: '章节名' }).fill('第二章')
+  await page.getByRole('button', { name: '创建章节' }).click()
+  await expect(chapterHeading(page)).toHaveText('第二章')
+  await textArea(page).fill('第二章的灯塔亮了。')
+  await manualSave(page)
+
+  await shelf(page)
+  const coverChooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: '「海港纪事」的操作' }).click()
+  await page.getByRole('menuitem', { name: '更换封面…' }).click()
+  await (await coverChooser).setFiles({ name: 'cover.png', mimeType: 'image/png', buffer: pixel })
+  await expect(page.getByRole('list', { name: '全部作品' }).locator('.book-cover img')).toBeVisible()
+  await page.getByRole('link', { name: '查看 海港纪事', exact: true }).click()
+  await expect(textArea(page)).toBeVisible()
+
+  await editorAction(page, '导出')
+  const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
+  await dialog.getByRole('radio', { name: 'EPUB', exact: true }).check()
+  await expect(dialog.getByLabel('导出样式')).toBeDisabled()
+  await expect(dialog.locator('.export-style-hint')).toBeVisible()
+  const [zhDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: '开始导出', exact: true }).click(),
+  ])
+  expect(zhDownload.suggestedFilename()).toMatch(/\.epub$/)
+  const zhEpubPath = testInfo.outputPath('harbor.epub')
+  await zhDownload.saveAs(zhEpubPath)
+  const zhBytes = await readFile(zhEpubPath)
+
+  const zhZip = new ZipReader(new Uint8ArrayReader(zhBytes))
+  try {
+    const entries = await zhZip.getEntries()
+    expect(entries[0].filename).toBe('mimetype')
+    expect(entries[0].compressionMethod).toBe(0)
+    expect(await entries[0].getData(new TextWriter())).toBe('application/epub+zip')
+
+    const entryMap = new Map(entries.map((entry) => [entry.filename, entry]))
+    expect(entryMap.has('META-INF/container.xml')).toBe(true)
+    const opf = await entryMap.get('OEBPS/content.opf').getData(new TextWriter())
+    const nav = await entryMap.get('OEBPS/nav.xhtml').getData(new TextWriter())
+    const ncx = await entryMap.get('OEBPS/toc.ncx').getData(new TextWriter())
+    const ch1 = await entryMap.get('OEBPS/chapters/chapter-001.xhtml').getData(new TextWriter())
+    const ch2 = await entryMap.get('OEBPS/chapters/chapter-002.xhtml').getData(new TextWriter())
+
+    expect(opf).toContain('<dc:title>海港纪事</dc:title>')
+    expect(opf).toContain('<dc:creator>林海</dc:creator>')
+    expect(opf).toContain('<dc:language>zh-CN</dc:language>')
+    expect(opf).toContain('properties="cover-image"')
+    expect(entryMap.has('OEBPS/cover.xhtml')).toBe(true)
+    expect(entryMap.has('OEBPS/images/cover.png')).toBe(true)
+    expect(entryMap.has('OEBPS/images/image-001.png')).toBe(true)
+    expect(nav).toContain('chapters/chapter-001.xhtml')
+    expect(nav).toContain('chapters/chapter-002.xhtml')
+    expect(ncx).toContain('playOrder="1"')
+    expect(ncx).toContain('playOrder="2"')
+    expect(ch1).toContain('第一章的海风吹过码头。')
+    expect(ch1).toContain('../images/image-001.png')
+    expect(ch2).toContain('第二章的灯塔亮了。')
+  } finally {
+    await zhZip.close()
+  }
+
+  // Round-trip: New World itself can preview and convert the exported EPUB back into chapters.
+  await shelf(page, 'reference')
+  await upload(page, [file('海港纪事.epub', zhBytes)])
+  await openBook(page, '海港纪事')
+  await expect(page.locator('.page-number')).toHaveText('1 / 3')
+  await page.getByRole('button', { name: '下一节', exact: true }).click()
+  await expect(page.getByText('第一章的海风吹过码头。')).toBeVisible()
+  await convert(page)
+  await page.getByRole('button', { name: '第一章', exact: true }).click()
+  await expect(textArea(page)).toContainText('第一章的海风吹过码头。')
+  await expect(textArea(page).getByRole('img', { name: 'harbor.png' })).toHaveAttribute('src', /^data:image\/png;base64,/)
+
+  // English work without cover or author exports cleanly as well.
+  await shelf(page)
+  await newNovel(page, 'Harbor Notes')
+  await textArea(page).fill('First lantern along the quiet pier.')
+  await manualSave(page)
+  await editorAction(page, '导出')
+  await dialog.getByRole('radio', { name: 'EPUB', exact: true }).check()
+  const [enDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: '开始导出', exact: true }).click(),
+  ])
+  const enEpubPath = testInfo.outputPath('harbor-notes.epub')
+  await enDownload.saveAs(enEpubPath)
+  const enZip = new ZipReader(new Uint8ArrayReader(await readFile(enEpubPath)))
+  try {
+    const entries = await enZip.getEntries()
+    expect(entries[0].filename).toBe('mimetype')
+    expect(entries[0].compressionMethod).toBe(0)
+    const entryMap = new Map(entries.map((entry) => [entry.filename, entry]))
+    const opf = await entryMap.get('OEBPS/content.opf').getData(new TextWriter())
+    const ch1 = await entryMap.get('OEBPS/chapters/chapter-001.xhtml').getData(new TextWriter())
+    expect(opf).toContain('<dc:title>Harbor Notes</dc:title>')
+    expect(opf).toContain('<dc:language>en</dc:language>')
+    expect(opf).not.toContain('<dc:creator>')
+    expect(opf).not.toContain('cover-image')
+    expect(entryMap.has('OEBPS/cover.xhtml')).toBe(false)
+    expect(ch1).toContain('First lantern along the quiet pier.')
+  } finally {
+    await enZip.close()
+  }
 })
 
 test.describe('移动编辑', () => {

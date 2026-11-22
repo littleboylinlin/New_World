@@ -8,7 +8,7 @@ import { toMarkup } from './schema'
 import paperCSS from './export-paper.css?raw'
 import './export-paper.css'
 import { workInfoSection, workInfoText } from './work-export'
-import type { ExportWorkInfo } from './work-export'
+import type { ExportWorkInfo, WorkExportSource } from './work-export'
 
 export const outputFormats = {
   txt: 'TXT',
@@ -16,6 +16,7 @@ export const outputFormats = {
   html: 'HTML',
   docx: 'DOCX',
   pdf: 'PDF',
+  epub: 'EPUB',
 } as const
 
 export type OutputFormat = keyof typeof outputFormats
@@ -23,6 +24,10 @@ type TextFormat = 'txt' | 'md'
 
 export function isTextFormat(format: OutputFormat): format is TextFormat {
   return format === 'txt' || format === 'md'
+}
+
+export function usesExportStyle(format: OutputFormat): boolean {
+  return format === 'html' || format === 'docx' || format === 'pdf'
 }
 
 function article(chapters: ChapterInput[], preset?: ExportPreset, information?: ExportWorkInfo) {
@@ -106,7 +111,14 @@ async function printEdition(title: string, chapters: ChapterInput[], preset: Exp
   }
 }
 
-export async function exportEdition(format: OutputFormat, title: string, chapters: ChapterInput[], preset: ExportPreset = exportStyles.standard, information?: ExportWorkInfo) {
+export async function exportEdition(
+  format: OutputFormat,
+  title: string,
+  chapters: ChapterInput[],
+  preset: ExportPreset = exportStyles.standard,
+  information?: ExportWorkInfo,
+  work?: WorkExportSource,
+) {
   const filename = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 130).trim() || t('export.newWorldManuscript')
   if (format === 'pdf') {
     await printEdition(filename, chapters, preset, information)
@@ -116,6 +128,26 @@ export async function exportEdition(format: OutputFormat, title: string, chapter
   if (format === 'docx') {
     const { wordExport } = await import('./docx-export')
     output = await wordExport(title, chapters, preset, information)
+  } else if (format === 'epub') {
+    const { epubExport } = await import('./epub-export')
+    const explicitLanguage = typeof work?.metadata?.language === 'string' ? work.metadata.language : undefined
+    output = await epubExport({
+      title: work?.title || title,
+      author: information?.author ?? work?.metadata?.author,
+      description: information?.synopsis ?? work?.metadata?.synopsis,
+      language: explicitLanguage,
+      fallbackLanguage: locale,
+      chapters,
+      cover: work?.cover instanceof Blob && work.cover.size ? work.cover : undefined,
+      information,
+      labels: {
+        toc: t('export.epubToc'),
+        cover: t('export.epubCover'),
+        author: t('work.author'),
+        synopsis: t('work.synopsis'),
+        imageFallback: t('export.image144'),
+      },
+    })
   } else if (isTextFormat(format)) {
     const type = format === 'txt' ? 'text/plain;charset=utf-8' : 'text/markdown;charset=utf-8'
     output = new Blob([await textExport(format, chapters, information)], { type })
