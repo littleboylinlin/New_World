@@ -18,6 +18,7 @@ const paths = {
   sidebar: 'M3 4h18v16H3zM9 4v16',
   menu: 'M3 6h18M3 12h18M3 18h18',
   arrow: 'M4 12h15m-6-6 6 6-6 6',
+  connect: 'M5 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM19 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM7 17 17 7',
   back: 'M20 12H5m6-6-6 6 6 6',
   plus: 'M12 5v14M5 12h14',
   book: 'M12 6a9 9 0 0 0-8-2v14a9 9 0 0 1 8 2 9 9 0 0 1 8-2V4a9 9 0 0 0-8 2Zm0 0v14',

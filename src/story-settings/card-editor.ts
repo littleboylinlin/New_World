@@ -25,7 +25,7 @@ function textarea(value: string, rows: number) {
   return field
 }
 
-function optionsList(label: string, values: readonly string[], value: string, prefix: string) {
+export function optionsList(label: string, values: readonly string[], value: string, prefix: string) {
   const field = element('select', 'title-input')
   field.setAttribute('aria-label', label)
   for (const item of values) field.add(new Option(t(prefix + item), item))

@@ -1,6 +1,7 @@
 import { t } from '../i18n'
 import { button, element } from '../ui'
-import { bounds, clamp, contains, fractionOf, nearestPort, pointAt, port, selectedNodes, storySegments, worldPoint, zoomAt } from './geometry'
+import { storyCanvasOverlays } from './canvas-overlays'
+import { bounds, clamp, contains, fractionOf, nearestPort, pointAt, port, selectedNodes, storySegments, visibleLineCenter, worldPoint, zoomAt } from './geometry'
 import type { Segment } from './geometry'
 import { defaultStoryColor, storySides } from './model'
 import type { EdgeEndpoint, NodeEndpoint, Point, Rect, StoryEdge, StoryNode, StoryScene, StorySide, StoryView } from './model'
@@ -9,8 +10,10 @@ interface CanvasOptions {
   select: (selection: ReadonlySet<string>) => void
   edit: (id: string) => void
   create: (point: Point) => void
-  startLabelEdit: () => boolean
-  change: (scene: StoryScene, select?: string) => void
+  prepareLink: () => boolean
+  linkModeChanged: (active: boolean) => void
+  removeEdge: (id: string) => void
+  change: (scene: StoryScene, relation?: { id: string; inspect: boolean }) => void
   viewChanged: (view: StoryView) => void
 }
 
@@ -30,13 +33,22 @@ function arrow(from: Point, to: Point, color: string) {
   })
 }
 
+type LinkSource = { nodeId: string; side?: StorySide }
+type LinkDrag = { kind: 'edge'; start: Point; from: LinkSource }
+type Drop = { highlight?: Element } & (
+  { point: Point; endpoint?: NodeEndpoint | EdgeEndpoint } | { error: 'linkSelf' | 'linkGroup' | 'linkOutside' })
+type Tap = 'blank' | 'link' | { edge: string; additive: boolean }
 type Drag =
-  | { kind: 'pan'; start: Point; view: StoryView }
+  | { kind: 'pan'; start: Point; view: StoryView; tap?: Tap; stationary?: boolean }
   | { kind: 'pinch'; view: StoryView; center: Point; distance: number }
   | { kind: 'box'; start: Point; base: Set<string> }
   | { kind: 'move'; start: Point; nodes: StoryNode[] }
   | { kind: 'size'; start: Point; node: StoryNode }
-  | { kind: 'edge'; from: NodeEndpoint }
+  | LinkDrag
+
+const touchTarget = 44
+const touchSlop = 9
+const doubleTapDelay = 400
 
 export function storyCanvas(options: CanvasOptions) {
   const surface = element('div', 'story-canvas')
@@ -48,26 +60,53 @@ export function storyCanvas(options: CanvasOptions) {
   const edgesLayer = svg('svg', { class: 'story-edge-layer', width: 1, height: 1 })
   const nodesLayer = element('div', 'story-node-layer')
   const marquee = element('div', 'story-marquee')
-  const hint = element('p', 'story-canvas-hint', t('story.emptyCanvas'))
+  const hint = element('p', 'story-canvas-hint')
+  const linkHint = element('p', 'story-link-hint')
+  linkHint.setAttribute('role', 'status')
+  const preview = svg('line', { class: 'story-edge-preview' })
+  preview.style.display = 'none'
+  edgesLayer.append(preview)
   marquee.hidden = true
   world.append(groups, edgesLayer, nodesLayer)
-  surface.append(world, marquee, hint)
+  surface.append(world, marquee, hint, linkHint)
 
   let scene: StoryScene = { nodes: [], edges: [], tags: [] }
   let view: StoryView = { x: 0, y: 0, zoom: 1 }
   let selection = new Set<string>()
   const nodes = new Map<string, HTMLElement>()
+  const edgeGroups = new Map<string, SVGGElement>()
+  let segments = storySegments(scene)
   const touches = new Map<number, Point>()
+  const coarse = matchMedia('(any-pointer: coarse)')
   let drag: Drag | undefined
   let pointer: number | undefined
   let moved = false
   let space = false
   let hand = false
   let ghost = new Map<string, Rect>()
-  let end: Point | undefined
   let zoomTimer = 0
   let usingNativeGesture = false
-  let labelInput: HTMLInputElement | undefined
+  let linkMode: { from?: LinkSource } | undefined
+  let linkPointer: Point | undefined
+  let dropHighlight: Element | undefined
+  let dropMessage = ''
+  let feedback = ''
+  let feedbackTimer = 0
+  let newEdge: string | undefined
+  let flashTimer = 0
+  let panFrame = 0
+  let previousFrame = 0
+  let scrolledForLink = false
+  let pressTimer = 0
+  let lastTouchUp = -Infinity
+  let lastBlankTap: { point: Point; time: number } | undefined
+  const overlays = storyCanvasOverlays(surface, {
+    connect: (nodeId) => enterLinkMode({ nodeId }),
+    prepareEdit: options.prepareLink,
+    name: editLabel,
+    change: patchEdge,
+    remove: options.removeEdge,
+  })
 
   const screen = (event: { clientX: number; clientY: number }): Point => {
     const box = surface.getBoundingClientRect()
@@ -81,16 +120,79 @@ export function storyCanvas(options: CanvasOptions) {
   }
   const getEdgeId = (target: Element | null) => target?.closest('[data-edge-id]')?.getAttribute('data-edge-id') ?? ''
   const additive = (event: PointerEvent) => event.shiftKey || event.metaKey || event.ctrlKey
+  const toScreen = (point: Point): Point => ({ x: point.x * view.zoom + view.x, y: point.y * view.zoom + view.y })
+  const screenRect = (rect: Rect): Rect => ({ ...toScreen(rect), width: rect.width * view.zoom, height: rect.height * view.zoom })
+  const onScreen = (rect: Rect) => rect.x + rect.width > 0 && rect.y + rect.height > 0 && rect.x < surface.clientWidth && rect.y < surface.clientHeight
+  const isControl = (target: Element | null) => target?.closest('.story-canvas-control')
+  const hit = (point: Point) => {
+    const box = surface.getBoundingClientRect()
+    return document.elementFromPoint(box.left + point.x, box.top + point.y)
+  }
+
+  function edgeCenter(id: string) {
+    const segment = segments.get(id)
+    if (!segment) return
+    return visibleLineCenter({ from: toScreen(segment.from), to: toScreen(segment.to) }, surface.clientWidth, surface.clientHeight)
+  }
+
+  function paintOverlays() {
+    if (selection.size !== 1 || linkMode || drag?.kind === 'edge' || (drag && moved)) { overlays.render(); return }
+    const [id] = selection
+    const card = scene.nodes.find((node) => node.id === id && node.kind === 'card')
+    const edge = scene.edges.find((edge) => edge.id === id)
+    const rect = card && screenRect(ghost.get(id) ?? card)
+    const point = edge && edgeCenter(id)
+    const edited = overlays.editing()
+    overlays.render(rect && onScreen(rect) ? { id, rect } : undefined, edge && point ? { edge, point } : undefined, edited ? edgeCenter(edited) : undefined)
+  }
+
+  function paintPorts() {
+    if (!coarse.matches) return
+    const padding = touchTarget / 2 + 2
+    // Keep the full hit boxes inside the viewport and separated even on small, zoomed-out cards.
+    function axis(start: number, length: number, limit: number) {
+      const last = Math.max(padding, limit - padding)
+      const gap = Math.min(touchTarget + 2, (last - padding) / 2)
+      const middle = clamp(start + length / 2, padding + gap, last - gap)
+      return [clamp(start - padding, padding, middle - gap), middle, clamp(start + length + padding, middle + gap, last)]
+    }
+    for (const id of selection) {
+      const node = scene.nodes.find((item) => item.id === id)
+      const block = nodes.get(id)
+      if (!node || !block || node.kind === 'group') continue
+      const rect = screenRect(ghost.get(id) ?? node)
+      block.toggleAttribute('data-ports-outside', !onScreen(rect))
+      if (!onScreen(rect)) continue
+      const [left, x, right] = axis(rect.x, rect.width, surface.clientWidth)
+      const [top, y, bottom] = axis(rect.y, rect.height, surface.clientHeight)
+      const centers = { left: { x: left, y }, right: { x: right, y }, top: { x, y: top }, bottom: { x, y: bottom } }
+      const offsetX = block.clientLeft, offsetY = block.clientTop
+      for (const anchor of block.querySelectorAll<HTMLButtonElement>('[data-port]')) {
+        const side = anchor.dataset.port as StorySide
+        const point = centers[side]
+        const dot = port(rect, side)
+        anchor.style.setProperty('--touch-port-x', `${(point.x - rect.x) / view.zoom - offsetX}px`)
+        anchor.style.setProperty('--touch-port-y', `${(point.y - rect.y) / view.zoom - offsetY}px`)
+        anchor.style.setProperty('--touch-dot-x', `${clamp(dot.x - point.x, -13, 13)}px`)
+        anchor.style.setProperty('--touch-dot-y', `${clamp(dot.y - point.y, -13, 13)}px`)
+      }
+    }
+  }
 
   function paintView() {
     world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`
     const cell = 24 * view.zoom
     surface.style.backgroundSize = `${cell}px ${cell}px`
     surface.style.backgroundPosition = `${view.x % cell}px ${view.y % cell}px`
+    surface.style.setProperty('--story-inverse-zoom', String(1 / view.zoom))
+    surface.style.setProperty('--story-edge-hit', `${(coarse.matches ? 32 : 16) / view.zoom}px`)
     surface.dataset.zoom = String(view.zoom)
+    paintPorts()
+    paintOverlays()
   }
 
   function setView(next: StoryView) {
+    lastBlankTap = undefined
     view = { zoom: next.zoom, x: clamp(next.x, -100_000_000, 100_000_000), y: clamp(next.y, -100_000_000, 100_000_000) }
     paintView()
   }
@@ -107,14 +209,17 @@ export function storyCanvas(options: CanvasOptions) {
   }
 
   function paintEdges() {
-    const segments = storySegments(scene, (node) => ghost.get(node.id) ?? node)
+    segments = storySegments(scene, (node) => ghost.get(node.id) ?? node)
+    edgeGroups.clear()
     const items: SVGElement[] = []
     for (const edge of scene.edges) {
       const segment = segments.get(edge.id)
       if (!segment) continue
       const group = svg('g', { 'data-edge-id': edge.id, class: selection.has(edge.id) ? 'story-edge selected' : 'story-edge' })
+      group.classList.toggle('story-edge-new', edge.id === newEdge)
+      edgeGroups.set(edge.id, group)
       const color = edge.color
-      group.append(line(segment, { class: 'story-hit', stroke: 'transparent', 'stroke-width': 16 / view.zoom }))
+      group.append(line(segment, { class: 'story-hit', stroke: 'transparent' }))
       group.append(line(segment, { class: 'story-line', stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round',
         'stroke-dasharray': edge.stroke === 'dash' ? '9 6' : edge.stroke === 'dot' ? '1 5' : 'none' }))
       const { from, to } = segment
@@ -129,11 +234,7 @@ export function storyCanvas(options: CanvasOptions) {
       group.append(label)
       items.push(group)
     }
-    if (drag?.kind === 'edge' && end) {
-      const source = scene.nodes.find((node) => node.id === (drag as Extract<Drag, { kind: 'edge' }>).from.nodeId)
-      if (source) items.push(line({ from: port(source, drag.from.side), to: end }, { stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '7 4' }))
-    }
-    edgesLayer.replaceChildren(...items)
+    edgesLayer.replaceChildren(...items, preview)
   }
 
   function paintGeometry() {
@@ -146,6 +247,8 @@ export function storyCanvas(options: CanvasOptions) {
       block.setAttribute('aria-pressed', String(selection.has(node.id)))
     }
     paintEdges()
+    paintPorts()
+    paintOverlays()
   }
 
   function buildNode(node: StoryNode) {
@@ -192,28 +295,183 @@ export function storyCanvas(options: CanvasOptions) {
   function select(ids: Iterable<string>) {
     selection = new Set(ids)
     options.select(selection)
-    for (const [id, node] of nodes) node.setAttribute('aria-pressed', String(selection.has(id)))
-    for (const item of edgesLayer.querySelectorAll('.story-edge')) {
-      item.classList.toggle('selected', selection.has(item.getAttribute('data-edge-id')!))
+    for (const [id, node] of nodes) {
+      node.setAttribute('aria-pressed', String(selection.has(id)))
+      if (!selection.has(id)) node.removeAttribute('data-ports-outside')
     }
+    for (const [id, group] of edgeGroups) group.classList.toggle('selected', selection.has(id))
+    paintPorts()
+    paintOverlays()
+  }
+
+  function paintLinkMode() {
+    const step = drag?.kind === 'edge' ? 'drag' : linkMode ? (linkMode.from ? 'target' : 'source') : ''
+    if (step) surface.dataset.connecting = step
+    else delete surface.dataset.connecting
+    const key = dropMessage || feedback || (step === 'target' ? 'linkPickTarget' : step === 'source' ? 'linkPickSource' : '')
+    const message = key ? t(`story.${key}`) : ''
+    if (linkHint.textContent !== message) linkHint.textContent = message
+    linkHint.classList.toggle('story-link-error', key === 'linkSelf' || key === 'linkGroup' || key === 'linkOutside')
+  }
+
+  function showFeedback(key: string) {
+    clearTimeout(feedbackTimer)
+    feedback = key
+    paintLinkMode()
+    if (key) feedbackTimer = window.setTimeout(() => { feedback = ''; paintLinkMode() }, 2300)
+  }
+
+  function setLinkMode(next?: typeof linkMode) {
+    const changed = Boolean(next) !== Boolean(linkMode)
+    linkMode = next
+    if (changed) options.linkModeChanged(Boolean(next))
+    lastBlankTap = undefined
+    overlays.hideMenu()
+    showFeedback('')
+    paintOverlays()
+  }
+
+  function enterLinkMode(from?: LinkSource) {
+    if (!options.prepareLink()) return
+    setLinkMode({ from })
+    if (from) select([from.nodeId])
+  }
+
+  function targetAt(from: LinkSource, point: Point): Drop {
+    const target = hit(point)
+    if (!surface.contains(target) || isControl(target)) return { error: 'linkOutside' }
+    const position = worldPoint(point, view)
+    const node = getNode(target)
+    if (node) {
+      const highlight = nodes.get(node.id)
+      if (node.id === from.nodeId) return { error: 'linkSelf', highlight }
+      if (node.kind === 'group') return { error: 'linkGroup', highlight }
+      const side = nearestPort(node, position)
+      return { point: port(node, side), endpoint: { nodeId: node.id, side }, highlight }
+    }
+    const edgeId = getEdgeId(target)
+    const segment = segments.get(edgeId)
+    if (segment) {
+      const at = fractionOf(segment, position)
+      return { point: pointAt(segment.from, segment.to, at), endpoint: { edgeId, at }, highlight: edgeGroups.get(edgeId) }
+    }
+    return { point: position }
+  }
+
+  function sourcePort(from: LinkSource, towards: Point): NodeEndpoint | undefined {
+    const node = scene.nodes.find(({ id }) => id === from.nodeId)
+    return node && { nodeId: node.id, side: from.side ?? nearestPort(node, towards) }
+  }
+
+  function completeLink(from: LinkSource, target: Drop, inspect: boolean) {
+    if ('error' in target) { showFeedback(target.error); return }
+    const source = sourcePort(from, target.point)
+    if (!source || !options.prepareLink()) return
+    let to = target.endpoint
+    let nextNodes = scene.nodes
+    if (!to) {
+      const id = crypto.randomUUID()
+      const side = source.side === 'left' ? 'right' : source.side === 'right' ? 'left' : source.side === 'top' ? 'bottom' : 'top'
+      to = { nodeId: id, side }
+      const layout = { x: 0, y: 0, width: 176, height: 84 }
+      const anchor = port(layout, side)
+      nextNodes = [...nextNodes, {
+        ...layout, id, kind: 'text', text: t('story.text'),
+        x: target.point.x - anchor.x, y: target.point.y - anchor.y,
+      }]
+    }
+    const edge: StoryEdge = { id: crypto.randomUUID(), from: source, to, name: '', direction: 'forward', stroke: 'solid', color: defaultStoryColor }
+    setLinkMode()
+    options.change({ ...scene, nodes: nextNodes, edges: [...scene.edges, edge] }, { id: edge.id, inspect })
+  }
+
+  function pickLink(point: Point) {
+    if (linkMode?.from) { completeLink(linkMode.from, targetAt(linkMode.from, point), false); return }
+    const node = getNode(hit(point))
+    if (node?.kind === 'group') showFeedback('linkGroup')
+  }
+
+  function updateLinkPreview(from: LinkSource, point: Point) {
+    const target = targetAt(from, point)
+    const destination = 'point' in target ? target.point : worldPoint(point, view)
+    const source = sourcePort(from, destination)
+    if (!source) return
+    const start = port(scene.nodes.find(({ id }) => id === source.nodeId)!, source.side)
+    if (dropHighlight !== target.highlight) dropHighlight?.classList.remove('story-link-target', 'story-link-invalid')
+    dropHighlight = target.highlight
+    dropHighlight?.classList.toggle('story-link-target', 'point' in target)
+    dropHighlight?.classList.toggle('story-link-invalid', 'error' in target)
+    dropMessage = 'error' in target ? target.error : target.endpoint ? 'linkDropTarget' : 'linkDropText'
+    for (const [key, value] of Object.entries({ x1: start.x, y1: start.y, x2: destination.x, y2: destination.y })) {
+      preview.setAttribute(key, String(value))
+    }
+    preview.style.display = ''
+    paintLinkMode()
+  }
+
+  function clearLinkPreview() {
+    if (panFrame) cancelAnimationFrame(panFrame)
+    panFrame = previousFrame = 0
+    linkPointer = undefined
+    dropHighlight?.classList.remove('story-link-target', 'story-link-invalid')
+    dropHighlight = undefined
+    dropMessage = ''
+    preview.style.display = 'none'
+    if (scrolledForLink) saveView()
+    scrolledForLink = false
+  }
+
+  function linkScrollSpeed(point: Point) {
+    const axis = (value: number, span: number) => {
+      const margin = Math.min(46, span / 4)
+      if (!margin || value < -margin || value > span + margin) return 0
+      return clamp((margin - value) / margin, 0, 1) - clamp((value - span + margin) / margin, 0, 1)
+    }
+    return { x: axis(point.x, surface.clientWidth), y: axis(point.y, surface.clientHeight) }
+  }
+
+  function scrollForLink(time: number) {
+    panFrame = 0
+    if (drag?.kind !== 'edge' || !linkPointer) return
+    const speed = linkScrollSpeed(linkPointer)
+    if (!speed.x && !speed.y) { previousFrame = 0; return }
+    const distance = .85 * (previousFrame ? Math.min(32, time - previousFrame) : 16)
+    previousFrame = time
+    const before = view
+    setView({ ...view, x: view.x + speed.x * distance, y: view.y + speed.y * distance })
+    scrolledForLink ||= before.x !== view.x || before.y !== view.y
+    updateLinkPreview(drag.from, linkPointer)
+    if (before.x !== view.x || before.y !== view.y) panFrame = requestAnimationFrame(scrollForLink)
+  }
+
+  function connected(id: string) {
+    if (newEdge) edgeGroups.get(newEdge)?.classList.remove('story-edge-new')
+    newEdge = id
+    edgeGroups.get(id)?.classList.add('story-edge-new')
+    clearTimeout(flashTimer)
+    flashTimer = window.setTimeout(() => { edgeGroups.get(id)?.classList.remove('story-edge-new'); newEdge = undefined }, 500)
+    showFeedback('linkSuccess')
   }
 
   function cancelDrag() {
     drag = undefined
     pointer = undefined
+    moved = false
     ghost.clear()
-    end = undefined
     touches.clear()
+    clearTimeout(pressTimer)
+    clearLinkPreview()
     marquee.hidden = true
     delete surface.dataset.gesture
+    paintLinkMode()
+    paintOverlays()
   }
 
   function setScene(next: StoryScene) {
-    const previous = labelInput
-    labelInput = undefined
-    previous?.remove()
+    overlays.clearEditor()
     cancelDrag()
     scene = next
+    if (linkMode?.from && !scene.nodes.some(({ id }) => id === linkMode?.from?.nodeId)) setLinkMode({})
     nodes.clear()
     groups.replaceChildren()
     nodesLayer.replaceChildren()
@@ -234,41 +492,52 @@ export function storyCanvas(options: CanvasOptions) {
   }
 
   surface.addEventListener('pointerdown', (event) => {
-    if (!(event.target instanceof Element) || event.target === labelInput || ![0, 1, 2].includes(event.button)) return
+    if (!(event.target instanceof Element) || ![0, 1, 2].includes(event.button)) return
+    if (isControl(event.target) && !(event.pointerType === 'touch' && touches.size)) {
+      lastBlankTap = undefined
+      return
+    }
     const start = screen(event)
-    if (event.pointerType === 'touch') {
+    if (event.pointerType === 'touch' && (pointer === undefined || touches.size)) {
       touches.set(event.pointerId, start)
       if (touches.size > 1) {
         surface.setPointerCapture(event.pointerId)
+        event.preventDefault()
+        clearTimeout(pressTimer)
+        clearLinkPreview()
+        overlays.hideMenu()
+        lastBlankTap = undefined
         drag = { kind: 'pinch', view, ...pinchPoints() }
+        moved = true
         ghost.clear()
         paintGeometry()
         marquee.hidden = true
         surface.dataset.gesture = 'pan'
+        paintLinkMode()
         return
       }
     }
     if (pointer !== undefined) return
+    overlays.hideMenu()
+    showFeedback('')
     const target = event.target
     const node = getNode(target)
     const edge = getEdgeId(target)
     const side = target.closest<HTMLButtonElement>('[data-port]')?.dataset.port as StorySide | undefined
     const panning = space || hand || event.button !== 0
-    if (edge && !node && !panning) {
-      const next = new Set(additive(event) ? selection : [])
-      if (next.has(edge)) next.delete(edge)
-      else next.add(edge)
-      select(next)
-      surface.focus({ preventScroll: true })
-      return
-    }
     moved = false
     pointer = event.pointerId
-    // Apply pointer capture to the viewport so an edge can be dropped outside its source card.
+    // Capture on the viewport so gestures can cross objects or the board boundary.
     surface.setPointerCapture(pointer)
     surface.focus({ preventScroll: true })
+
     if (panning) drag = { kind: 'pan', view, start }
-    else if (node && side) drag = { kind: 'edge', from: { nodeId: node.id, side } }
+    else if (linkMode) {
+      const from = linkMode.from
+      const source = from ? (node?.id === from.nodeId ? from : undefined)
+        : node && node.kind !== 'group' ? { nodeId: node.id, side } : undefined
+      drag = source ? { kind: 'edge', start, from: source } : { kind: 'pan', view, start, tap: 'link' }
+    } else if (node && side) drag = { kind: 'edge', start, from: { nodeId: node.id, side } }
     else if (node && target.closest('.story-resize')) drag = { kind: 'size', start, node }
     else if (node) {
       if (additive(event)) {
@@ -278,13 +547,26 @@ export function storyCanvas(options: CanvasOptions) {
         select(next)
       } else if (!selection.has(node.id)) select([node.id])
       drag = { kind: 'move', start, nodes: selectedNodes(scene.nodes, selection) }
-    } else if (event.pointerType === 'touch') drag = { kind: 'pan', view, start }
+      if (node.kind === 'card' && event.pointerType === 'touch') {
+        pressTimer = window.setTimeout(() => {
+          if (drag?.kind !== 'move' || moved) return
+          drag = undefined
+          select([node.id])
+          overlays.openMenu(node.id, start)
+        }, 500)
+      }
+    } else if (edge) {
+      drag = { kind: 'pan', start, view, tap: { edge, additive: additive(event) }, stationary: event.pointerType !== 'touch' }
+    } else if (event.pointerType === 'touch') drag = { kind: 'pan', view, start, tap: 'blank' }
     else {
       const base = additive(event) ? new Set(selection) : new Set<string>()
       select(base)
       drag = { kind: 'box', start, base }
     }
-    surface.dataset.gesture = drag?.kind ?? ''
+    if (drag.kind !== 'pan' || drag.tap !== 'blank') lastBlankTap = undefined
+    surface.dataset.gesture = drag.kind
+    paintLinkMode()
+    if (drag.kind === 'edge') paintOverlays()
     event.preventDefault()
   })
 
@@ -301,17 +583,20 @@ export function storyCanvas(options: CanvasOptions) {
       return
     }
     if (event.pointerId !== pointer) return
-    if (drag.kind === 'edge') {
-      end = worldPoint(point, view)
-      moved = true
-      paintEdges()
-      return
-    }
     const dx = point.x - drag.start.x, dy = point.y - drag.start.y
-    if (!moved && Math.hypot(dx, dy) < 3) return
-    moved = true
-    if (drag.kind === 'pan') {
-      setView({ ...drag.view, x: drag.view.x + dx, y: drag.view.y + dy })
+    if (!moved && Math.hypot(dx, dy) < (event.pointerType === 'touch' ? touchSlop : 3)) return
+    if (!moved) {
+      moved = true
+      clearTimeout(pressTimer)
+      lastBlankTap = undefined
+    }
+    if (drag.kind === 'edge') {
+      linkPointer = point
+      paintOverlays()
+      updateLinkPreview(drag.from, point)
+      if (!panFrame) panFrame = requestAnimationFrame(scrollForLink)
+    } else if (drag.kind === 'pan') {
+      if (!drag.stationary) setView({ ...drag.view, x: drag.view.x + dx, y: drag.view.y + dy })
     } else if (drag.kind === 'move') {
       for (const node of drag.nodes) ghost.set(node.id, { ...node, x: node.x + dx / view.zoom, y: node.y + dy / view.zoom })
       paintGeometry()
@@ -329,34 +614,27 @@ export function storyCanvas(options: CanvasOptions) {
     }
   })
 
-  function connect(from: NodeEndpoint, event: PointerEvent) {
-    const target = document.elementFromPoint(event.clientX, event.clientY)
-    if (!surface.contains(target)) return
-    const node = getNode(target)
-    const edgeId = getEdgeId(target)
-    const point = worldPoint(screen(event), view)
-    let to: NodeEndpoint | EdgeEndpoint
-    let nextNodes = scene.nodes
-    if (node) {
-      if (node.id === from.nodeId || node.kind === 'group') return
-      const anchor = target?.closest<HTMLButtonElement>('[data-port]')?.dataset.port as StorySide | undefined
-      to = { nodeId: node.id, side: anchor ?? nearestPort(node, point) }
-    } else if (edgeId) {
-      const segment = storySegments(scene).get(edgeId)
-      if (!segment) return
-      to = { edgeId, at: fractionOf(segment, point) }
-    } else {
-      const id = crypto.randomUUID()
-      nextNodes = [...nextNodes, { ...point, id, kind: 'text', width: 176, height: 84, text: t('story.text') }]
-      to = { nodeId: id, side: 'left' }
-    }
-    const edge: StoryEdge = { id: crypto.randomUUID(), from, to, name: '', direction: 'forward', stroke: 'solid', color: defaultStoryColor }
-    options.change({ ...scene, nodes: nextNodes, edges: [...scene.edges, edge] }, edge.id)
+  function tapBlank(point: Point) {
+    select([])
+    const time = performance.now()
+    const first = lastBlankTap
+    if (first && time - first.time <= doubleTapDelay && Math.hypot(first.point.x - point.x, first.point.y - point.y) <= 28) {
+      lastBlankTap = undefined
+      options.create(worldPoint(point, view))
+    } else lastBlankTap = { point, time }
+  }
+
+  function tapEdge(id: string, additive: boolean) {
+    const next = new Set(additive ? selection : [])
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    select(next)
   }
 
   surface.addEventListener('pointerup', (event) => {
-    touches.delete(event.pointerId)
-    if (drag?.kind === 'pinch') {
+    const touch = touches.delete(event.pointerId)
+    if (touch) lastTouchUp = performance.now()
+    if (drag?.kind === 'pinch' && touch) {
       saveView()
       if (touches.size === 1) {
         const [remaining, start] = [...touches][0]
@@ -364,79 +642,82 @@ export function storyCanvas(options: CanvasOptions) {
         drag = { kind: 'pan', view, start }
         moved = false
       } else if (!touches.size) cancelDrag()
+      else {
+        pointer = touches.keys().next().value
+        drag = { kind: 'pinch', view, ...pinchPoints() }
+      }
       return
     }
     if (event.pointerId !== pointer) return
     const completed = drag
+    const didMove = moved
     const adjusted = ghost
+    const point = screen(event)
+    const drop = completed?.kind === 'edge' && didMove ? targetAt(completed.from, point) : undefined
     ghost = new Map()
     cancelDrag()
-    if (completed && moved) {
-      if (completed.kind === 'pan') saveView()
-      if (completed.kind === 'move' || completed.kind === 'size') {
-        options.change({ ...scene, nodes: scene.nodes.map((node) => adjusted.has(node.id) ? { ...node, ...adjusted.get(node.id)! } : node) })
+    if (!completed) return
+    if (completed.kind === 'edge') {
+      if (drop) completeLink(completed.from, drop, !linkMode && !touch)
+      else if (linkMode?.from) pickLink(point)
+      else enterLinkMode(completed.from)
+    } else if (completed.kind === 'pan') {
+      if (didMove && !completed.stationary) saveView()
+      else if (!didMove) {
+        if (completed.tap === 'blank') tapBlank(point)
+        else if (completed.tap === 'link') pickLink(point)
+        else if (completed.tap) tapEdge(completed.tap.edge, completed.tap.additive)
       }
-      if (completed.kind === 'edge') connect(completed.from, event)
+    } else if (didMove && (completed.kind === 'move' || completed.kind === 'size')) {
+      options.change({ ...scene, nodes: scene.nodes.map((node) => adjusted.has(node.id) ? { ...node, ...adjusted.get(node.id)! } : node) })
       paintGeometry()
     }
   })
-  surface.addEventListener('pointercancel', () => {
+
+  function cancelGesture() {
     if (drag?.kind === 'pan' || drag?.kind === 'pinch') saveView()
+    lastBlankTap = undefined
     cancelDrag()
     paintGeometry()
-  })
+  }
+  function lostPointer(event: PointerEvent) {
+    if (event.pointerId === pointer || touches.has(event.pointerId)) cancelGesture()
+  }
+  surface.addEventListener('pointercancel', lostPointer)
+  surface.addEventListener('lostpointercapture', lostPointer)
   surface.addEventListener('contextmenu', (event) => event.preventDefault())
+
+  function patchEdge(id: string, change: Partial<Pick<StoryEdge, 'name' | 'direction' | 'stroke'>>) {
+    options.change({ ...scene, edges: scene.edges.map((edge) => edge.id === id ? { ...edge, ...change } : edge) })
+  }
+
   function editLabel(id: string) {
     const edge = scene.edges.find((item) => item.id === id)
-    const segment = storySegments(scene).get(id)
-    if (!edge || !segment || !options.startLabelEdit()) return
-    const point = pointAt(segment.from, segment.to, .5)
-    const field = element('input', 'title-input story-inline-label')
-    field.setAttribute('aria-label', t('story.relationName'))
-    field.value = edge.name
-    field.style.left = `${point.x * view.zoom + view.x}px`
-    field.style.top = `${point.y * view.zoom + view.y - 9}px`
-    labelInput = field
-    surface.append(field)
-    const finish = (save: boolean) => {
-      if (field !== labelInput) return
-      labelInput = undefined
-      field.remove()
-      const name = field.value.trim()
-      if (save && name !== edge.name) {
-        options.change({ ...scene, edges: scene.edges.map((item) => item.id === id ? { ...item, name } : item) })
-      }
-    }
-    field.addEventListener('blur', () => finish(true), { once: true })
-    field.addEventListener('keydown', (event) => {
-      if (event.isComposing) return
-      if (event.key !== 'Enter' && event.key !== 'Escape') return
-      event.preventDefault()
-      event.stopPropagation()
-      finish(event.key === 'Enter')
-      surface.focus({ preventScroll: true })
-    })
-    field.focus({ preventScroll: true })
-    field.select()
+    if (!edge || !options.prepareLink()) return
+    const point = edgeCenter(id)
+    if (!point) return
+    select([id])
+    overlays.editName(edge, point)
   }
 
   surface.addEventListener('dblclick', (event) => {
-    if (!(event.target instanceof Element) || event.target === labelInput || hand || space) return
-    const target = document.elementFromPoint(event.clientX, event.clientY)
+    if (!(event.target instanceof Element) || isControl(event.target) || linkMode || hand || space || performance.now() - lastTouchUp < doubleTapDelay) return
+    const point = screen(event)
+    const target = hit(point)
     const node = getNode(target)
     const edge = getEdgeId(target)
     if (node) options.edit(node.id)
     else if (edge) editLabel(edge)
-    else options.create(worldPoint(screen(event), view))
+    else options.create(worldPoint(point, view))
     event.preventDefault()
   })
   surface.addEventListener('keydown', (event) => {
-    if (event.target === labelInput) return
+    if (!(event.target instanceof Element) || isControl(event.target)) return
     if (event.code === 'Space') {
       space = true
       surface.classList.add('story-panning')
       event.preventDefault()
-    } else if (event.key === 'Enter' && event.target instanceof Element) {
+    } else if (event.key === 'Enter') {
       const id = getNode(event.target)?.id ?? [...selection][0]
       if (id) options.edit(id)
     }
@@ -449,17 +730,18 @@ export function storyCanvas(options: CanvasOptions) {
   window.addEventListener('blur', () => {
     space = false
     surface.classList.toggle('story-panning', hand)
+    if (pointer !== undefined) cancelGesture()
   })
   surface.addEventListener('wheel', (event) => {
+    if (event.target instanceof Element && isControl(event.target)) return
     event.preventDefault()
-    if (usingNativeGesture || drag || labelInput) return
+    if (usingNativeGesture || drag || overlays.editing()) return
     // Physical wheels usually produce stepped deltas. Precision touchpads pan with two fingers and pinch to zoom.
     const touchpad = event.deltaMode === 0 && (Math.abs(event.deltaY) < 45 || Math.abs(event.deltaX) > 0)
     if (event.ctrlKey || event.metaKey || (!touchpad && !event.shiftKey)) {
       const dy = event.deltaY * (event.deltaMode ? 14 : 1)
       setView(zoomAt(view, screen(event), view.zoom * Math.exp(-dy * .0018)))
     } else setView({ ...view, x: view.x - (event.deltaX || (event.shiftKey ? event.deltaY : 0)), y: view.y - (event.shiftKey ? 0 : event.deltaY) })
-    paintEdges()
     queueView()
   }, { passive: false })
 
@@ -467,18 +749,20 @@ export function storyCanvas(options: CanvasOptions) {
   let gestureView = view
   surface.addEventListener('gesturestart', (event) => {
     event.preventDefault()
+    if (touches.size) return
     usingNativeGesture = true
     gestureView = view
   })
   surface.addEventListener('gesturechange', (event) => {
     event.preventDefault()
+    if (!usingNativeGesture || touches.size) return
     const gesture = event as MouseEvent & { scale: number }
     setView(zoomAt(gestureView, screen(gesture), gestureView.zoom * gesture.scale))
-    paintEdges()
     queueView()
   })
   surface.addEventListener('gestureend', (event) => {
     event.preventDefault()
+    if (!usingNativeGesture) return
     usingNativeGesture = false
     saveView()
   })
@@ -491,15 +775,32 @@ export function storyCanvas(options: CanvasOptions) {
       const zoom = clamp(Math.min((surface.clientWidth - 100) / rect.width, (surface.clientHeight - 100) / rect.height), .15, 1.15)
       setView({ zoom, x: mid.x - (rect.x + rect.width / 2) * zoom, y: mid.y - (rect.y + rect.height / 2) * zoom })
     }
-    paintEdges()
     saveView()
   }
 
-  paintView()
+  function updatePointerAppearance() {
+    hint.textContent = t(coarse.matches ? 'story.emptyTouchCanvas' : 'story.emptyCanvas')
+    paintView()
+  }
+  coarse.addEventListener('change', updatePointerAppearance)
+  new ResizeObserver(() => { paintPorts(); paintOverlays() }).observe(surface)
+  updatePointerAppearance()
   return {
-    surface, center, setScene, select, fit, editingLabel: () => Boolean(labelInput),
-    showView(next: StoryView) { setView(next); paintEdges() },
-    zoom(factor: number) { setView(zoomAt(view, atCenter(), view.zoom * factor)); paintEdges(); saveView() },
-    hand(on: boolean) { hand = on; surface.classList.toggle('story-panning', hand || space) },
+    surface, center, setScene, select, fit, connected, editingLabel: () => Boolean(overlays.editing()),
+    showView: setView,
+    zoom(factor: number) { setView(zoomAt(view, atCenter(), view.zoom * factor)); saveView() },
+    hand(on: boolean) {
+      hand = on
+      if (on && linkMode) setLinkMode()
+      surface.classList.toggle('story-panning', hand || space)
+    },
+    toggleLink() { if (linkMode) setLinkMode(); else enterLinkMode() },
+    dismiss() {
+      if (overlays.hideMenu(true)) return true
+      if (!linkMode && drag?.kind !== 'edge') return false
+      if (drag) cancelGesture()
+      setLinkMode()
+      return true
+    },
   }
 }

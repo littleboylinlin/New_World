@@ -54,6 +54,21 @@ export function nearestPort(node: Rect, point: Point) {
 }
 
 export interface Segment { from: Point; to: Point }
+
+export function visibleLineCenter({ from, to }: Segment, width: number, height: number) {
+  let start = 0, end = 1
+  for (const [a, b, limit] of [[from.x, to.x, width], [from.y, to.y, height]]) {
+    if (a === b) {
+      if (a < 0 || a > limit) return
+      continue
+    }
+    const first = -a / (b - a), last = (limit - a) / (b - a)
+    start = Math.max(start, Math.min(first, last))
+    end = Math.min(end, Math.max(first, last))
+  }
+  if (start <= end) return pointAt(from, to, (start + end) / 2)
+}
+
 export function fractionOf({ from, to }: Segment, point: Point) {
   const dx = to.x - from.x, dy = to.y - from.y
   return clamp(((point.x - from.x) * dx + (point.y - from.y) * dy) / (dx * dx + dy * dy || 1), 0, 1)

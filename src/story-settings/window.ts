@@ -88,16 +88,25 @@ function mount(route: NonNullable<typeof work>) {
   const canvas = storyCanvas({
     select(next) { selection = next; paintControls() },
     create: (point) => newCard(point),
-    startLabelEdit() {
+    prepareLink() {
       if (!snapshot?.book || writing || !finishPanel()) return false
       closePanel()
+      if (!left.hidden && innerWidth <= 800) sidebarTo()
       return true
     },
+    linkModeChanged(active) {
+      connect.setAttribute('aria-pressed', String(active))
+      if (active) setHand(false)
+    },
+    removeEdge: (id) => deleteSelection([id]),
     edit: (id) => edit(id),
-    change(scene, id) {
+    change(scene, relation) {
       if (!snapshot?.book) return
       void commit(scene).then((saved) => {
-        if (saved && id) { canvas.select([id]); edit(id) }
+        if (!saved || !relation) return
+        canvas.select([relation.id])
+        if (relation.inspect) edit(relation.id)
+        canvas.connected(relation.id)
       })
     },
     viewChanged(view) {
@@ -123,6 +132,8 @@ function mount(route: NonNullable<typeof work>) {
   const create = action('newCard', 'plus', () => newCard(spawn()), true)
   create.classList.remove('button-quiet')
   create.classList.add('button-primary')
+  const connect = action('linkMode', 'connect', () => canvas.toggleLink(), true)
+  connect.setAttribute('aria-pressed', 'false')
   const text = action('text', 'format', () => addObject({ kind: 'text', id: crypto.randomUUID(), ...spawn(), width: 180, height: 92, text: t('story.text') }))
   const group = action('group', 'panel', createGroup)
   const image = action('image', 'image', () => imageFile.click())
@@ -135,11 +146,12 @@ function mount(route: NonNullable<typeof work>) {
     imageFile.value = ''
     if (file) void addImage(file, file.name).catch(report)
   }
-  const pan = action('pan', 'swap', () => {
-    hand = !hand
+  function setHand(on: boolean) {
+    hand = on
     canvas.hand(hand)
     pan.setAttribute('aria-pressed', String(hand))
-  })
+  }
+  const pan = action('pan', 'swap', () => setHand(!hand))
   pan.setAttribute('aria-pressed', 'false')
   const editSelection = action('edit', 'edit', () => { if (selection.size === 1) edit([...selection][0]) })
   const remove = action('delete', 'trash', () => deleteSelection())
@@ -152,7 +164,7 @@ function mount(route: NonNullable<typeof work>) {
     group.append(...controls)
     return group
   }
-  bar.append(toolGroup(create, text, group, image), toolGroup(pan, editSelection, remove, copy, paste),
+  bar.append(toolGroup(create, connect), toolGroup(text, group, image), toolGroup(pan, editSelection, remove, copy, paste),
     toolGroup(undoButton, redoButton), toolGroup(find, tags, trash))
   const zoom = element('output', 'story-zoom-value', '100%')
   const viewTools = element('div', 'story-view-tools')
@@ -164,7 +176,7 @@ function mount(route: NonNullable<typeof work>) {
 
   function paintControls() {
     const unavailable = !snapshot?.book || writing
-    for (const control of [create, text, group, image, paste, tags, trash, find]) control.disabled = unavailable
+    for (const control of [create, connect, text, group, image, paste, tags, trash, find]) control.disabled = unavailable
     for (const control of [remove, copy]) control.disabled = unavailable || !selection.size
     editSelection.disabled = unavailable || selection.size !== 1
     undoButton.disabled = unavailable || !undo.length
@@ -288,6 +300,7 @@ function mount(route: NonNullable<typeof work>) {
 
   function newCard(point: Point) {
     if (!snapshot?.book || writing || !finishPanel()) return
+    canvas.dismiss()
     if (!left.hidden && innerWidth < 800) sidebarTo()
     cardPanel(point, blankStoryCard(activeChapter()), crypto.randomUUID())
   }
@@ -421,7 +434,12 @@ function mount(route: NonNullable<typeof work>) {
   }, { signal })
   window.addEventListener('keydown', (event) => {
     if (event.isComposing || document.querySelector('dialog[open]')) return
-    if (event.key === 'Escape') { if (panel) closePanel(); else canvas.select([]); return }
+    if (event.key === 'Escape') {
+      if (canvas.dismiss()) event.preventDefault()
+      else if (panel) closePanel()
+      else canvas.select([])
+      return
+    }
     if (textControl(event.target)) return
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault()
