@@ -261,7 +261,7 @@ Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再
 | `kind: "group"` | `name`。拖动分组框时，其内部完整落在框内的元素随框一起移动 |
 | `kind: "image"` | `name, src`。`src` 为本地嵌入的 PNG、JPEG、GIF 或 WebP 数据，单张最多 4 MiB |
 | 标签 | `id, name, color`，颜色为六位十六进制色值 |
-| 连线 | `id, from, to, name, direction, stroke, color`。节点端点使用 `{ nodeId, side }`。线上的端点使用 `{ edgeId, at }`，`at` 为从源端起算的线段比例。方向可为 `forward`、`back`、`both` 或 `none`。线型可为 `solid`、`dash` 或 `dot` |
+| 连线（箭头） | `id, from, to, name, direction, stroke, color, bend`。端点有三种：绑定到卡片、文字或图片的 `{ nodeId }`，画在该对象朝向另一端的边缘上，对象移动或改变大小时跟随；绑定到另一条线的 `{ edgeId, at }`，`at` 为从那条线起点算起的曲线参数（0 到 1）；悬空的 `{ x, y }`，为画布坐标。分组框不能作为端点，两端不能绑定到同一个对象，线与线之间不能循环依赖。`bend` 是曲线中点偏离两端连线的距离（画布单位，正值在起点到终点方向的左手边），为 0 时是直线。方向可为 `forward`、`back`、`both` 或 `none`。线型可为 `solid`、`dash` 或 `dot` |
 
 章节链接为 `{ editionId, chapterId }`，章节状态在此基础上含有 `text`。状态按照同一编辑版本的目录顺序，从锚点所在章节生效。章名变化与章节重排使用同一章节 ID。
 
