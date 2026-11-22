@@ -128,10 +128,8 @@ export function taskScheduleControls(initial: Partial<Task>, onChange?: () => vo
     weekdays.append(pill)
     dayChecks.set(day, box)
   }
-  const legacyNote = element('p', 'task-legacy-note', key('repeatLegacyHint'))
   const syncRepeat = () => {
     weekdays.hidden = repeatSelect.value !== 'week'
-    legacyNote.hidden = repeatSelect.value !== legacyValue
   }
   repeatSelect.addEventListener('change', () => {
     if (repeatSelect.value && !dateInput.value) {
@@ -141,7 +139,7 @@ export function taskScheduleControls(initial: Partial<Task>, onChange?: () => vo
     syncRepeat()
     onChange?.()
   })
-  repeatRow.append(repeatSelect, weekdays, legacyNote)
+  repeatRow.append(repeatSelect, weekdays)
 
   syncPills()
   syncRepeat()

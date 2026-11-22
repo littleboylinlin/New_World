@@ -1,8 +1,10 @@
 import { ai } from '../ai-provider'
 import type { ConfigState, Feature, SavedProfile } from '../ai-provider'
 import { t } from '../i18n'
-import { button, element } from '../ui'
+import { confirmDialog } from '../dialogs'
 import { profileFor } from './features'
+
+export { confirmDialog }
 
 const consentKey = 'new-world:ai-consent'
 export const aiSettingsHash = '#/settings/ai'
@@ -39,31 +41,6 @@ function remember(profile: SavedProfile) {
   try { localStorage.setItem(consentKey, JSON.stringify({ ...consents(), [profile.id]: originOf(profile) })) } catch { /* Asked again next time. */ }
 }
 
-export function confirmDialog(title: string, lines: string[], action: string, danger = false): Promise<boolean> {
-  return new Promise((resolve) => {
-    const dialog = element('dialog', 'manage-dialog ai-access-dialog')
-    const form = element('form', 'manage-form')
-    form.method = 'dialog'
-    const heading = element('h2', '', title)
-    heading.id = `ai-access-${crypto.randomUUID()}`
-    dialog.setAttribute('aria-labelledby', heading.id)
-    form.append(heading, ...lines.map((line, index) => element('p', index ? 'dialog-help ai-access-note' : 'dialog-help', line)))
-    const controls = element('div', 'dialog-controls')
-    const cancel = button(t('common.cancel'), 'button button-quiet')
-    const confirm = button(action, danger ? 'button button-danger' : 'button button-primary')
-    controls.append(cancel, confirm)
-    form.append(controls)
-    dialog.append(form)
-    document.body.append(dialog)
-    let answer = false
-    cancel.addEventListener('click', () => dialog.close())
-    confirm.addEventListener('click', () => { answer = true; dialog.close() })
-    dialog.addEventListener('close', () => { dialog.remove(); resolve(answer) }, { once: true })
-    dialog.showModal()
-    confirm.focus()
-  })
-}
-
 /**
  * Call before an AI feature sends the user's text. Without a profile it offers the settings page;
  * the first time a profile is used (or after its address changes) it says where the text goes.
@@ -86,11 +63,12 @@ export async function requireAi(feature: Feature): Promise<SavedProfile | null> 
   if (hasConsent(profile)) return profile
   let host = profile.config.baseUrl
   try { host = new URL(profile.config.baseUrl).host } catch { /* Shown as typed. */ }
+  const skip = { label: t('aiAccess.dontAskAgain'), checked: true }
   const agreed = await confirmDialog(t('aiAccess.consentTitle'), [
     t('aiAccess.consentCopy', [host, profile.config.name]),
     t('aiAccess.consentRelay'),
-  ], t('aiAccess.consentAction'))
+  ], t('aiAccess.consentAction'), false, skip)
   if (!agreed) return null
-  remember(profile)
+  if (skip.checked) remember(profile)
   return profile
 }

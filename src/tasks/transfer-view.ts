@@ -44,7 +44,7 @@ export function taskTransferControls() {
               data.taskAttachments.length,
               conflicts,
             ]),
-            fields: [element('p', 'dialog-help', t('tasks.importTaskHint')), mode.wrapper],
+            fields: [mode.wrapper],
           },
           async () => {
             await importTasks(data, mode.input.value as 'preserve' | 'copy' | 'skip')

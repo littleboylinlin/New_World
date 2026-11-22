@@ -50,8 +50,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
 
   const header = element('div', 'page-heading')
   const heading = element('div', 'page-heading-copy')
-  heading.append(element('h1', '', t('trash.title')),
-    element('p', 'page-heading-desc', t('trash.keptUntilDeletedPermanently')))
+  heading.append(element('h1', '', t('trash.title')))
   const clear = button(t('trash.emptyTrash'), 'button button-quiet remove-button', 'trash')
   header.append(heading, clear)
   const message = element('div', 'version-message')

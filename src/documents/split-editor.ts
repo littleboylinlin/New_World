@@ -424,9 +424,8 @@ export function mountSplitEditor(options: SplitEditorOptions) {
   filter.type = 'search'
   filter.placeholder = t('compare.filter')
   filter.setAttribute('aria-label', t('compare.filter'))
-  const hint = element('p', 'dialog-help compare-hint', t('compare.hint'))
   const list = element('div', 'compare-list')
-  panel.append(filter, hint, list)
+  panel.append(filter, list)
   // Repainting while an input method is still composing would end the word early.
   filter.addEventListener('input', (event) => { if (!(event as InputEvent).isComposing) paintPanel() })
   filter.addEventListener('compositionend', () => paintPanel())

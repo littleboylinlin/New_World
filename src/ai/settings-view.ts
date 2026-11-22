@@ -2,6 +2,7 @@ import { t } from '../i18n'
 import { listBooks } from '../library'
 import type { Book } from '../library'
 import { button, element } from '../ui'
+import { confirmDialog } from '../dialogs'
 
 const ALL_PERMS: ('create' | 'read' | 'update' | 'delete')[] = ['create', 'read', 'update', 'delete']
 
@@ -167,7 +168,8 @@ export function mountAiSettings(container: HTMLElement): () => Promise<void> {
       })
     })
     const removeBtn = button(t('ai.deleteClient'), 'button button-quiet button-small ai-danger-text')
-    removeBtn.addEventListener('click', () => {
+    removeBtn.addEventListener('click', async () => {
+      if (!await confirmDialog(t('ai.deleteClientTitle', [client.name]), [t('ai.deleteClientCopy')], t('ai.deleteClient'), true)) return
       void runMutation(async () => {
         currentState = await desktop!.deleteAiClient!(client.id)
         if (revealedToken?.clientId === client.id) revealedToken = null

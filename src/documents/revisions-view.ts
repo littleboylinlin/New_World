@@ -57,7 +57,6 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
   closeIcon.setAttribute('aria-label', t('common.close'))
   head.append(heading, closeIcon)
 
-  const hint = element('p', 'dialog-help', t('revisions.hint'))
   const statsRow = element('div', 'revision-storage-row')
   const statsText = element('span', 'revision-storage-summary')
   const pruneBtn = button(t('revisions.pruneOld'), 'button button-quiet button-small', 'trash')
@@ -97,7 +96,7 @@ export async function showRevisionsDialog(options: RevisionsDialogOptions): Prom
   restoreBtn.disabled = true
   controls.append(cancelBtn, restoreBtn)
 
-  dialog.append(head, hint, statsRow, capacityWarn, errBox, body, controls)
+  dialog.append(head, statsRow, capacityWarn, errBox, body, controls)
   document.body.append(dialog)
 
   const close = () => {

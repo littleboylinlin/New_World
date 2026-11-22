@@ -1092,6 +1092,7 @@ test('AI 接入与权限：桌面端启用本地接口、写入作品并在人�
     // Reset AI config so shared profile starts disabled again
     await openSettingsCategory(page, 'ai')
     await section.locator('.ai-client-card').filter({ hasText: 'DesktopAgent' }).getByRole('button', { name: '撤销配置' }).click()
+    await page.getByRole('dialog', { name: /撤销配置/ }).getByRole('button', { name: '撤销配置' }).click()
     await expect(section.locator('.ai-client-card')).toHaveCount(0)
     await section.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
@@ -1229,6 +1230,7 @@ test('10. AI 历史版本与回收站保护：Windows 桌面端重启后仍可�
     // Clean up AI config so profile returns to default disabled state
     const resetSection = await openSettingsCategory(page, 'ai')
     await resetSection.locator('.ai-client-card').filter({ hasText: 'RecoveryDesktopAI' }).getByRole('button', { name: '撤销配置' }).click()
+    await page.getByRole('dialog', { name: /撤销配置/ }).getByRole('button', { name: '撤销配置' }).click()
     await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')
   } finally { await stop(app) }

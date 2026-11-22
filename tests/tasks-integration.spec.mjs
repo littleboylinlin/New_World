@@ -245,7 +245,6 @@ test('章节位置联动、旧评论/附件只读展示与下载、复制、灵�
   await cardBook.locator('.book-menu-toggle').click()
   await page.getByRole('menuitem', { name: '删除', exact: true }).click()
   dialog = page.getByRole('dialog', { name: '删除作品？', exact: true })
-  await expect(dialog).toContainText('关联任务和完成历史会保留')
   await dialog.getByRole('button', { name: '确认删除', exact: true }).click()
   await expect(dialog).toBeHidden()
   expect((await snapshot(page)).tasks).toHaveLength(count)

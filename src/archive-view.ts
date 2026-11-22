@@ -4,6 +4,7 @@ import type { Book } from './library'
 import { bookPath, button, element, icon, libraries, link, notice } from './ui'
 import { stagger } from './motion'
 import { offerUndo } from './undo'
+import { confirmDialog } from './dialogs'
 
 function archivedRow(book: Book, report: (message: string, error?: boolean) => void) {
   const row = element('li', 'book-row archive-row')
@@ -30,6 +31,7 @@ function archivedRow(book: Book, report: (message: string, error?: boolean) => v
     }
   })
   remove.addEventListener('click', async () => {
+    if (!await confirmDialog(t('shelf.deleteThisWork'), [book.title], t('shelf.confirmDeletion'), true)) return
     restore.disabled = remove.disabled = true
     try {
       offerUndo(await deleteBook(book.library, book.id))
@@ -49,7 +51,7 @@ export function renderArchive(root: HTMLElement, signal: AbortSignal) {
 
   const header = element('div', 'page-heading')
   const heading = element('div', 'page-heading-copy')
-  heading.append(element('h1', '', t('archive.title')), element('p', 'page-heading-desc', t('archive.intro')))
+  heading.append(element('h1', '', t('archive.title')))
   header.append(heading)
   const message = element('div', 'version-message')
   const content = element('div')

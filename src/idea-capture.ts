@@ -10,7 +10,7 @@ const libraryIds: LibraryId[] = ['original', 'reference']
  * The quick note form: a text box, the work it belongs to, and a button. Enter keeps the idea,
  * Shift + Enter starts a new line and Escape leaves.
  */
-export function captureForm(done?: () => void, cancel?: () => void, instructions = t('ideas.keys')) {
+export function captureForm(done?: () => void, cancel?: () => void) {
   const form = element('form', 'capture-form')
   const text = element('textarea', 'title-input capture-text')
   text.name = 'idea'
@@ -24,14 +24,13 @@ export function captureForm(done?: () => void, cancel?: () => void, instructions
   workLabel.append(work)
   const status = element('p', 'settings-state capture-state')
   status.setAttribute('role', 'status')
-  const hint = element('p', 'dialog-help capture-hint', instructions)
   const close = button(t('common.cancel'), 'button button-quiet')
   const save = button(t('ideas.save'), 'button button-primary', 'plus')
   save.type = 'submit'
   const controls = element('div', 'dialog-controls')
   if (cancel) controls.append(close)
   controls.append(save)
-  form.append(text, workLabel, hint, status, controls)
+  form.append(text, workLabel, status, controls)
 
   // The list of works loads after the form opens; saving waits for it so a quick Enter keeps the work.
   let loading: Promise<void> = Promise.resolve()
@@ -203,7 +202,7 @@ export function mountCaptureSettings(section: HTMLElement) {
   const error = element('p', 'field-error')
   error.setAttribute('role', 'alert')
   error.hidden = true
-  section.append(label, group, status, error, element('p', 'dialog-help', t('ideas.shortcutEditHint')))
+  section.append(label, group, status, error)
   let state: CaptureState | undefined
   let recording = false
   let saving = false

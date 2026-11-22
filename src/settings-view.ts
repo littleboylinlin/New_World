@@ -153,7 +153,7 @@ export function mountSettingsView(
   const languageError = element('p', 'field-error language-error')
   languageError.setAttribute('role', 'alert')
   languageError.hidden = true
-  languageCard.append(languageLabel, element('p', 'dialog-help', t('settings.languageHint')), languageActions, languageState, languageError)
+  languageCard.append(languageLabel, languageActions, languageState, languageError)
 
   const windowCard = createCard(generalBody, t('settings.closeBehavior'), 'window-settings-title')
   const options = element('div', 'settings-options')
@@ -192,7 +192,7 @@ export function mountSettingsView(
     select.addEventListener('change', () => saveSearchEngine(select.value as SearchEngine))
     const field = element('label', 'field-label')
     field.append(select)
-    card.append(field, element('p', 'dialog-help', t('settings.webSearchHint')))
+    card.append(field)
   }
 
   let refreshLogin: (() => Promise<void>) | undefined
@@ -207,7 +207,7 @@ export function mountSettingsView(
     label.append(toggle, t('settings.loginItem'))
     const status = element('p', 'settings-state')
     status.setAttribute('role', 'status')
-    card.append(label, element('p', 'dialog-help', t('settings.loginItemHint')), status)
+    card.append(label, status)
     let request = 0
     let saving = false
     function showLogin(state: LoginItemState) {

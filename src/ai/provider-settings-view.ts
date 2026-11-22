@@ -98,7 +98,6 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
 
   const presetRegion = element('div', 'aip-presets')
   presetRegion.hidden = true
-  presetRegion.append(element('p', 'dialog-help', t('aiProvider.presetHint')))
   const presetGrid = element('div', 'aip-preset-grid')
   for (const preset of ai.listPresets()) {
     const choice = button(preset.config.name, 'button button-quiet button-small aip-preset')
@@ -119,7 +118,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   const empty = element('p', 'dialog-help aip-empty', t('aiProvider.empty'))
 
   root.append(loadError, bar, presetRegion, empty, editorRegion, status)
-  card.append(element('p', 'dialog-help', t('aiProvider.intro')), root)
+  card.append(root)
 
   // ——— Feature assignment ———
   const routingBody = element('div', 'aip-routing')
@@ -128,13 +127,13 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
   // The book summary keeps each chapter's summary until that chapter changes; this forgets them all.
   const cacheRow = element('div', 'settings-actions aip-cache')
   const clearCache = button(t('aiProvider.clearSummaryCache'), 'button button-quiet button-small')
-  cacheRow.append(clearCache, element('span', 'aip-hint', t('aiProvider.clearSummaryCacheHint')))
+  cacheRow.append(clearCache)
   clearCache.addEventListener('click', async () => {
     if (!await confirmDialog(t('aiProvider.clearSummaryCacheTitle'), [t('aiProvider.clearSummaryCacheCopy')], t('aiProvider.clearSummaryCache'), true)) return
     const result = await safely(() => ai.clearSummaryCache())
     routingStatus.textContent = result.ok ? t('aiProvider.summaryCacheCleared') : errorLines(result.error).join(' ')
   })
-  routingCard.append(element('p', 'dialog-help', t('aiProvider.routingHint')), routingBody, cacheRow, routingStatus)
+  routingCard.append(routingBody, cacheRow, routingStatus)
 
   function say(message: string) {
     status.textContent = message
@@ -321,7 +320,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       if (config.auth.kind === 'header') config.auth.prefix = value || undefined
     })
     const authNameField = field(t('aiProvider.authName'), authName)
-    const authPrefixField = field(t('aiProvider.authPrefix'), authPrefix, t('aiProvider.authPrefixHint'))
+    const authPrefixField = field(t('aiProvider.authPrefix'), authPrefix)
     const auth = selectInput(authKinds.map((kind) => ({ value: kind, label: t(`aiProvider.auth.${kind}`) })), config.auth.kind, (kind) => {
       const previousName = authName.value.trim()
       config.auth = kind === 'header' ? { kind, name: previousName || 'Authorization', prefix: authPrefix.value || undefined }
@@ -378,7 +377,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     const modelLabel = element('label', 'aip-label', t('aiProvider.model'))
     model.id = uid('model')
     modelLabel.htmlFor = model.id
-    modelField.append(modelLabel, modelRow, element('span', 'aip-hint', t('aiProvider.modelHint')))
+    modelField.append(modelLabel, modelRow)
     const modelPicker = element('div', 'aip-model-picker')
     modelPicker.hidden = true
     const modelSelect = element('select', 'editor-select')
@@ -473,17 +472,17 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
     const generatePathInput = pathInput('generate')
     const streamPathInput = pathInput('stream')
     const modelsPathInput = pathInput('models')
-    const generatePathField = field(t('aiProvider.pathGenerate'), generatePathInput, t('aiProvider.pathHint'))
-    const streamPathField = field(t('aiProvider.pathStream'), streamPathInput, t('aiProvider.pathStreamHint'))
+    const generatePathField = field(t('aiProvider.pathGenerate'), generatePathInput)
+    const streamPathField = field(t('aiProvider.pathStream'), streamPathInput)
     const modelsPathField = field(t('aiProvider.pathModels'), modelsPathInput)
-    const maxOutputField = field(t('aiProvider.maxOutput'), maxOutput, t('aiProvider.maxOutputHint'))
-    const contextTokensField = field(t('aiProvider.contextTokens'), contextTokens, t('aiProvider.contextTokensHint'))
+    const maxOutputField = field(t('aiProvider.maxOutput'), maxOutput)
+    const contextTokensField = field(t('aiProvider.contextTokens'), contextTokens)
     const temperatureField = field(t('aiProvider.temperature'), temperature)
     const topPField = field(t('aiProvider.topP'), topP)
     const reasoningField = field(t('aiProvider.reasoningEffort'), reasoning)
     const thinkingField = field(t('aiProvider.thinkingBudget'), thinking)
-    const timeoutField = field(t('aiProvider.timeout'), timeout, t('aiProvider.timeoutHint'))
-    const retriesField = field(t('aiProvider.retries'), retries, t('aiProvider.retriesHint'))
+    const timeoutField = field(t('aiProvider.timeout'), timeout)
+    const retriesField = field(t('aiProvider.retries'), retries)
     const headerRows = element('div', 'aip-headers')
     const addHeader = button(t('aiProvider.addHeader'), 'button button-quiet button-small', 'plus')
     config.headers ??= []
@@ -557,8 +556,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       headerRows.querySelector<HTMLInputElement>('.aip-header-row:last-child input')?.focus()
     })
     const headersField = element('div', 'field-label aip-field')
-    headersField.append(element('span', 'aip-label', t('aiProvider.headers')), headerRows, addHeader,
-      element('span', 'aip-hint', t('aiProvider.headersHint')))
+    headersField.append(element('span', 'aip-label', t('aiProvider.headers')), headerRows, addHeader)
 
     const extra = element('textarea', 'title-input aip-json')
     extra.rows = 4
@@ -586,7 +584,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
       changed()
       refreshOutput()
     })
-    const extraField = field(t('aiProvider.extraBody'), extra, t('aiProvider.extraBodyHint'))
+    const extraField = field(t('aiProvider.extraBody'), extra)
     extraField.append(extraError)
 
     // Actions and the connection test
@@ -1105,7 +1103,7 @@ export function mountProviderSettings(card: HTMLElement, routingCard: HTMLElemen
         const value = select.value === 'off' ? null : select.value || undefined
         void saveRouting(assignFeature(routing, group.feature as Feature, value))
       })
-      grid.append(field(t(group.label), select, group.members.length ? t(`${group.label}Hint`) : undefined))
+      grid.append(field(t(group.label), select))
     }
     routingBody.append(grid)
   }

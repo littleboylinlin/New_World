@@ -66,3 +66,41 @@ export function nameField(label: string, value = '') {
   field.append(input)
   return field
 }
+
+/** A yes/no dialog. A checkbox, when given, starts at `checked` and reports the user's choice back through it. */
+export function confirmDialog(title: string, lines: string[], action: string, danger = false, checkbox?: { label: string, checked: boolean }): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = element('dialog', 'manage-dialog ai-access-dialog')
+    const form = element('form', 'manage-form')
+    form.method = 'dialog'
+    const heading = element('h2', '', title)
+    heading.id = `confirm-${crypto.randomUUID()}`
+    dialog.setAttribute('aria-labelledby', heading.id)
+    form.append(heading, ...lines.map((line, index) => element('p', index ? 'dialog-help ai-access-note' : 'dialog-help', line)))
+    const box = element('input')
+    if (checkbox) {
+      const row = element('label', 'confirm-check')
+      box.type = 'checkbox'
+      box.checked = checkbox.checked
+      row.append(box, element('span', '', checkbox.label))
+      form.append(row)
+    }
+    const controls = element('div', 'dialog-controls')
+    const cancel = button(t('common.cancel'), 'button button-quiet')
+    const confirm = button(action, danger ? 'button button-danger' : 'button button-primary')
+    controls.append(cancel, confirm)
+    form.append(controls)
+    dialog.append(form)
+    document.body.append(dialog)
+    let answer = false
+    cancel.addEventListener('click', () => dialog.close())
+    confirm.addEventListener('click', () => { answer = true; dialog.close() })
+    dialog.addEventListener('close', () => {
+      if (checkbox) checkbox.checked = box.checked
+      dialog.remove()
+      resolve(answer)
+    }, { once: true })
+    dialog.showModal()
+    confirm.focus()
+  })
+}

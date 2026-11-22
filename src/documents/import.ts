@@ -112,7 +112,7 @@ async function convertText(format: 'txt' | 'md' | 'html', blob: Blob, encoding?:
   if (blob.size > maxTextPreviewSize) throw new Error(t('import.theTextExceedsThe16MibConversionLimit'))
   const { text } = decodeText(new Uint8Array(await blob.arrayBuffer()), encoding)
   if (format === 'txt') return { chapters: textChapters(text), notes: [] }
-  const notes = format === 'html' ? [t('import.preservesSupportedDocumentStructureCommonTextStylesAnd')] : []
+  const notes: string[] = []
   if (format === 'html') return { chapters: htmlChapters(text, notes), notes }
   const { default: MarkdownIt } = await import('markdown-it')
   const markup = new MarkdownIt({ html: true }).render(text)
@@ -124,7 +124,7 @@ async function convertEpub(blob: Blob, signal: AbortSignal): Promise<Conversion>
   const book = await openEpub(blob, signal)
   if (book.length > maxChapters) throw new Error(t('import.thisEpubExceedsTheConversionLimitOfSections', [maxChapters]))
   const chapters: ChapterInput[] = []
-  const notes = [t('import.convertsTextCommonStylesAndEmbeddedImagesIn')]
+  const notes: string[] = []
   const budget = imageBudget()
   const cached = new Map<string, string | undefined>()
   let loaded = 0
@@ -173,7 +173,7 @@ async function convertPdf(blob: Blob, signal: AbortSignal): Promise<Conversion> 
       else skipped++
     }
     if (!chapters.length) throw new Error(t('import.thisPdfHasNoExtractableTextScannedDocuments'))
-    const notes = [t('import.textIsExtractedPageByPageThePdf')]
+    const notes: string[] = []
     if (skipped) notes.push(t('import.pageSHaveNoExtractableTextAndCan', [skipped]))
     return { chapters, notes }
   } finally {
