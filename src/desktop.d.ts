@@ -106,6 +106,7 @@ interface Window {
     setRecentWorks?: (works: { title: string; hash: string }[]) => Promise<void>
     /** Opens a separate window that shows one reading route (#/compare/…) and nothing else. */
     openReadingWindow?: (hash: string) => Promise<void>
+    openStorySettings?: (hash: string) => Promise<void>
     /** Private web panes (main window only); see desktop/web-pane.cjs. */
     web?: (action: WebPaneAction, id: string, ...args: unknown[]) => Promise<any>
     onWebState?: (listener: (state: WebPaneState) => void) => void

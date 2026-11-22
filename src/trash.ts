@@ -2,6 +2,7 @@ import { t } from './i18n'
 import { maxChapters } from './documents/model'
 import type { Edition } from './documents/model'
 import { announceIdeas } from './ideas'
+import { announceStoryChange } from './story-settings/changes'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
 import type { Book, TrashEntry } from './library'
 
@@ -39,6 +40,7 @@ export async function restoreTrash(id: string) {
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
   const ideas = tx.objectStore('ideas')
+  const cards = tx.objectStore('storyCards')
   const trash = tx.objectStore('trash')
   const { step, done } = writing<{ entry: TrashEntry; edition?: Edition }>(tx)
   const request = trash.get(id)
@@ -58,10 +60,21 @@ export async function restoreTrash(id: string) {
       for (const file of entry.files) files.add(file)
       for (const edition of entry.editions) editions.add(edition)
       for (const chapter of entry.chapters) chapters.add(chapter)
+      for (const card of entry.storyCards ?? []) cards.add(card)
       return { entry }
     }
 
     const owner = books.get(key)
+    if (entry.kind === 'storyCard') {
+      owner.onsuccess = step(() => {
+        if (!owner.result || owner.result.workId) throw new Error(t('trash.theParentWorkIsNoLongerInThe'))
+        const card = entry.storyCards?.[0]
+        if (!card) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
+        cards.add({ ...card, revision: crypto.randomUUID() })
+        return { entry }
+      })
+      return { entry }
+    }
     if (entry.kind === 'original') {
       owner.onsuccess = step(() => {
         const work: Book | undefined = owner.result
@@ -113,7 +126,11 @@ export async function restoreTrash(id: string) {
   try {
     const restored = await done()
     if (restored.entry.kind === 'idea') announceIdeas()
-    else libraryChanges.dispatchEvent(new Event('update'))
+    else {
+      const { library, bookId, kind } = restored.entry
+      if (kind !== 'storyCard') libraryChanges.dispatchEvent(new Event('update'))
+      if (kind !== 'original') announceStoryChange({ library, bookId })
+    }
     return restored
   } catch (error) {
     // Ids are unique, so a constraint can only come from an identical original imported after the deletion.
@@ -156,13 +173,11 @@ export async function emptyTrash(id?: string) {
   const ideaRevsReq = ideaRevsStore.getAll()
 
   let stepError: unknown
+  let cardsRemoved = false
   ideaRevsReq.onsuccess = () => {
     try {
-      const allTrash = trashReq.result as Array<{
-        id: string
-        chapters?: Array<{ library: string; bookId: string; editionId: string; id: string }>
-        ideas?: Array<{ id: string }>
-      }>
+      const allTrash: TrashEntry[] = trashReq.result
+      cardsRemoved = allTrash.some((entry) => entry.kind === 'storyCard' && (!id || id === entry.id))
       const remainingTrash = id ? allTrash.filter((entry) => entry.id !== id) : []
       if (id) trashStore.delete(id)
       else trashStore.clear()
@@ -236,4 +251,5 @@ export async function emptyTrash(id?: string) {
     throw stepError ?? error
   }
   libraryChanges.dispatchEvent(new Event('update'))
+  if (cardsRemoved) announceStoryChange()
 }

@@ -21,6 +21,7 @@ const paths = {
   back: 'M20 12H5m6-6-6 6 6 6',
   plus: 'M12 5v14M5 12h14',
   book: 'M12 6a9 9 0 0 0-8-2v14a9 9 0 0 1 8 2 9 9 0 0 1 8-2V4a9 9 0 0 0-8 2Zm0 0v14',
+  cards: 'M7 3h13v14H7zM4 7v14h13M10 7h7m-7 4h5',
   file: 'M13 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9Zm0 0v6h6M8 13h8m-8 4h6',
   download: 'M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4',
   up: 'M12 19V5m-6 6 6-6 6 6',

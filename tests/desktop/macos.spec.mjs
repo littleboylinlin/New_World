@@ -1,6 +1,7 @@
 import { startWork } from '../navigation-helpers.mjs'
 import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
+import { desktopStorySettingsFlow } from './story-settings-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -576,5 +577,12 @@ test('网页块永远无痕：Mac 安装版关闭网页块后读不到 Cookie，
   try {
     const page = await app.firstWindow()
     await privateWebSmoke(app, page, startWork)
+  } finally { await stop(app) }
+})
+
+test('macOS 故事设定独立窗口可重开，编辑器与设定实时同步', async ({}) => {
+  const app = await launch()
+  try {
+    await desktopStorySettingsFlow(app, await app.firstWindow(), 'macOS 故事设定验收')
   } finally { await stop(app) }
 })

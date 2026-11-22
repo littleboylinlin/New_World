@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   onCaptureShown: (listener) => { ipcRenderer.on('new-world:capture-shown', () => listener()) },
   setRecentWorks: (works) => ipcRenderer.invoke('new-world:set-recent-works', works),
   openReadingWindow: (hash) => ipcRenderer.invoke('new-world:open-reading-window', hash),
+  openStorySettings: (hash) => ipcRenderer.invoke('new-world:open-story-settings', hash),
   web: (action, id, ...args) => ipcRenderer.invoke('new-world:web', action, id, ...args),
   onWebState: (listener) => { ipcRenderer.on('new-world:web-state', (_event, state) => listener(state)) },
   onWebKeep: (listener) => { ipcRenderer.on('new-world:web-keep', (_event, entry) => listener(entry)) },

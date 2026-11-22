@@ -2,9 +2,10 @@ import { announced, committed, openDatabase, resultOf, writing } from '../librar
 import type { RevisionBlobRecord } from '../library'
 import { synchronousContentHash } from '../confirm-state'
 import { packProject } from './archive'
-import { projectStores, projectTaskStores, readableProjectSchemas, ProjectError, requireValid as ok } from './model'
+import { projectStores, projectTaskStores, isReadableProjectSchema, ProjectError, requireValid as ok } from './model'
 import { taskIdentities, remapTasks, projectTaskData } from '../tasks/model'
 import { announceTasks } from '../tasks/store'
+import { announceStoryChange } from '../story-settings/changes'
 import type { ProjectContents, ProjectData, ProjectRoot } from './model'
 import { detachedIds, referencedIds, validateData, validatePayloads } from './validate'
 
@@ -55,7 +56,7 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
       }
     })
   })
-  for (const name of ['editions', 'chapters', 'revisions', 'aiBaselines'] as const) {
+  for (const name of ['editions', 'chapters', 'revisions', 'aiBaselines', 'storyCards'] as const) {
     const q = tx.objectStore(name).index('byBook').getAll([root.library, root.id])
     q.onsuccess = () => {
       ;(data[name] as unknown[]) = q.result
@@ -131,7 +132,7 @@ export function copyProject(contents: ProjectContents, reserved = new Set<string
     for (const [k, v] of Object.entries(value)) {
       if (k === 'metadata') continue // Unknown metadata may contain literal IDs; it is not a reference graph.
       if((projectTaskStores as readonly string[]).includes(k))continue
-      if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
+      if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'targetCardId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
       else walk(v)
     }
   }
@@ -147,7 +148,7 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
   if (mode === 'skip') return null
   // Clone before async verification, preventing UI callers mutating already-validated records.
   const prepared = structuredClone(contents)
-  if (!readableProjectSchemas.includes(prepared.manifest.schemaVersion as 1 | 2 | 3)) throw new ProjectError('version')
+  if (!isReadableProjectSchema(prepared.manifest.schemaVersion)) throw new ProjectError('version')
   validateData(prepared.data, prepared.manifest.root, prepared.manifest.detached, prepared.manifest.schemaVersion)
   await validatePayloads(prepared.data)
   const db = await openDatabase()
@@ -175,5 +176,8 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
     }
     return incoming.manifest.root
   })
-  const imported=await announced(done());announceTasks();return imported
+  const imported = await announced(done())
+  announceTasks()
+  announceStoryChange({ library: imported.library, bookId: imported.id })
+  return imported
 }

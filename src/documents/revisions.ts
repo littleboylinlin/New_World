@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { announceStoryChange } from '../story-settings/changes'
 import { ConfirmStateConflictError, hashDocumentContent, synchronousContentHash } from '../confirm-state'
 import { announced, maxTitleLength, openDatabase, resultOf, trashEntry, writing } from '../library'
 import type { AiChapterBaseline, ChapterRevision, LibraryId, RevisionBlobRecord, RevisionSource, TrashEntry } from '../library'
@@ -524,7 +525,9 @@ export async function restoreChapterRevision(edition: EditionKey, chapterId: str
     })
 
     try {
-      return await announced(done())
+      const restored = await announced(done())
+      announceStoryChange(edition)
+      return restored
     } catch (error) {
       if (error instanceof RetryRevisionPrepError && attempt < 2) continue
       throw error
@@ -673,7 +676,9 @@ export async function applyAiChapterUpdate(params: {
     })
 
     try {
-      return await announced(done())
+      const updated = await announced(done())
+      announceStoryChange(params.edition)
+      return updated
     } catch (error) {
       if (error instanceof RetryRevisionPrepError && !params.expected && attempt < 2) continue
       throw error
@@ -968,7 +973,9 @@ export async function applyAiEditionReplaceBatch(params: {
     })
 
     try {
-      return await announced(done())
+      const replaced = await announced(done())
+      announceStoryChange(params.edition)
+      return replaced
     } catch (error) {
       if (error instanceof RetryRevisionPrepError && !params.expected && attempt < 2) continue
       throw error

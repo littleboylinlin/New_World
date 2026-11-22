@@ -1,7 +1,7 @@
 import { BlobReader, BlobWriter, ZipReader, ZipWriter } from '@zip.js/zip.js'
 import type { FileEntry } from '@zip.js/zip.js'
 import { runningVersion } from '../updates'
-import { limits, projectFormat, projectSchemaVersion, readableProjectSchemas, projectStores, legacyProjectStores, projectTaskStores, ProjectError, recordPaths, requireValid as ok } from './model'
+import { limits, projectFormat, projectSchemaVersion, isReadableProjectSchema, projectStores, projectStoresAt, ProjectError, recordPaths, requireValid as ok } from './model'
 import { MetadataError, validateWorkMetadata } from '../work-metadata'
 import { TaskDataError } from '../tasks/model'
 import type { ProjectContents, ProjectData, ProjectManifest, ProjectRoot, Resource } from './model'
@@ -106,10 +106,10 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
     const manifest = await json(await read('manifest.json', limits.json)) as ProjectManifest
     fields(manifest, 'format schemaVersion appVersion createdAt root records detached resources')
     ok(manifest.format === projectFormat && Number.isSafeInteger(manifest.schemaVersion), 'format identifier')
-    if (!readableProjectSchemas.includes(manifest.schemaVersion as 1 | 2 | 3)) throw new ProjectError('version')
+    if (!isReadableProjectSchema(manifest.schemaVersion)) throw new ProjectError('version')
     ok(typeof manifest.appVersion === 'string' && Number.isSafeInteger(manifest.createdAt) && manifest.createdAt >= 0, 'manifest metadata')
     fields(manifest.root, 'library id')
-    const stores=manifest.schemaVersion>=3?projectStores:legacyProjectStores
+    const stores = projectStoresAt(manifest.schemaVersion)
     fields(manifest.records, stores.join(' '))
     ok(Array.isArray(manifest.resources), 'resource inventory')
     const resources = new Map<string, Resource>()
@@ -156,7 +156,11 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
       used.add(path)
       ;(data[name] as unknown) = await decode(await json(decoded.get(path)!))
     }
-    if(manifest.schemaVersion<3){fields(manifest.detached,'books editions chapters ideas');manifest.detached.tasks=[];for(const name of projectTaskStores)(data[name] as unknown[])=[]}
+    const detachedFields = 'books editions chapters ideas' + (manifest.schemaVersion >= 3 ? ' tasks' : '') + (manifest.schemaVersion >= 4 ? ' cards' : '')
+    fields(manifest.detached, detachedFields)
+    if (manifest.schemaVersion < 3) manifest.detached.tasks = []
+    if (manifest.schemaVersion < 4) manifest.detached.cards = []
+    for (const name of projectStores) if (!Object.hasOwn(data, name)) (data[name] as unknown[]) = []
     ok(used.size === resources.size, 'unreferenced resource')
     validateData(data, manifest.root, manifest.detached, manifest.schemaVersion)
     await validatePayloads(data)

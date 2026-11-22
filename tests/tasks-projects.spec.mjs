@@ -1,5 +1,5 @@
 import { test, expect, withoutRelease } from './app-test.mjs'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js'
@@ -85,7 +85,7 @@ async function seed(page, library = 'original') {
   return { ...work, ...tasks }
 }
 for (const library of ['original', 'reference'])
-  test(`${library} Schema 3 任务、附件、回收记录跨书库无损往返，个人数据不泄露，副本引用重映射`, async ({
+  test(`${library} 工程任务、附件、回收记录跨书库无损往返，个人数据不泄露，副本引用重映射`, async ({
     page,
     browser,
   }, info) => {
@@ -96,13 +96,9 @@ for (const library of ['original', 'reference'])
     expect(await page.evaluate(databaseSnapshot)).toEqual(before)
     const entries = await unpack(path),
       manifest = JSON.parse(Buffer.from(entries.get('manifest.json')).toString())
-    expect(manifest.schemaVersion).toBe(3)
+    expect(manifest.schemaVersion).toBe(4)
     for (const bytes of entries.values())
       expect(Buffer.from(bytes).toString()).not.toContain('PRIVATE-')
-    if (process.env.UPDATE_TASK_EXAMPLE === '1' && library === 'original') {
-      await mkdir('docs/examples', { recursive: true })
-      await writeFile('docs/examples/雾港-创作任务.newworld', await readFile(path))
-    }
     const clean = await fresh(browser)
     try {
       await choose(clean.page, projectImport, path)

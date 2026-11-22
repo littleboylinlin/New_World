@@ -35,9 +35,15 @@ function isReadingRoute(hash) {
   return typeof hash === 'string' && hash.length <= 200 && readingRoute.test(hash)
 }
 
-/** A reading window may only ask for what it needs to show text (its language pack). */
-function isTrustedReadingRenderer(event, { appUrl, readingWindows }) {
-  for (const win of readingWindows ?? []) {
+const storySettingsRoute = /^#\/story-settings\/(original|reference)\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+
+function isStorySettingsRoute(hash) {
+  return typeof hash === 'string' && storySettingsRoute.test(hash)
+}
+
+/** A secondary window may only ask for its language pack. */
+function isTrustedSecondaryRenderer(event, appUrl, windows) {
+  for (const win of windows) {
     if (isWindowWebContents(event, win) && isTrustedOriginFrame(event, appUrl)) return true
   }
   return false
@@ -71,6 +77,7 @@ module.exports = {
   isTrustedAppRenderer,
   isTrustedTaskNotification,
   isReadingRoute,
-  isTrustedReadingRenderer,
+  isStorySettingsRoute,
+  isTrustedSecondaryRenderer,
   shouldCancelClientConfirmations,
 }

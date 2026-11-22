@@ -80,7 +80,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程跨干�
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   const packed = await unpack(path)
   const manifest = JSON.parse(Buffer.from(packed.get('manifest.json')).toString())
-  expect(manifest.schemaVersion).toBe(3)
+  expect(manifest.schemaVersion).toBe(4)
   expect(manifest.appVersion).not.toBe(manifest.schemaVersion)
   expect(manifest.detached.editions).toContain(seeded.missingEdition)
   for (const r of manifest.resources) expect(createHash('sha256').update(packed.get(r.path)).digest('hex')).toBe(r.sha256)
@@ -307,8 +307,8 @@ test('现有 v7 书库升级到最新版本后完整保留数据和索引主键'
     const books = db.transaction('books').objectStore('books')
     const result = { version: db.version, unique: books.index('byLibraryDigest').unique, keyPath: books.keyPath }; db.close(); return result
   })
-  expect(version).toEqual({ version: 11, unique: false, keyPath: ['library', 'id'] })
-  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments','writingStyles']) before[name] = []
+  expect(version).toEqual({ version: 12, unique: false, keyPath: ['library', 'id'] })
+  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments','writingStyles','storyCards']) before[name] = []
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')

@@ -21,7 +21,8 @@ const {
   isTrustedTaskNotification,
   isTrustedAppRenderer,
   isReadingRoute,
-  isTrustedReadingRenderer,
+  isStorySettingsRoute,
+  isTrustedSecondaryRenderer,
   shouldCancelClientConfirmations,
 } = require('./ipc-guard.cjs')
 const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
@@ -96,8 +97,9 @@ function trustedAppRenderer(event) {
   return isTrustedAppRenderer(event, { appUrl, mainWindow, captureWindow })
 }
 
-function trustedReadingRenderer(event) {
-  return isTrustedReadingRenderer(event, { appUrl, readingWindows })
+function trustedSecondaryRenderer(event) {
+  return isTrustedSecondaryRenderer(event, appUrl, readingWindows)
+    || isTrustedSecondaryRenderer(event, appUrl, storyWindows.values())
 }
 
 function rejectPendingAiDispatches(reason) {
@@ -240,7 +242,7 @@ ipcMain.handle('new-world:reset-storage-location', (event) => {
 })
 
 ipcMain.handle('new-world:get-language', (event) => {
-  if (!(trustedAppRenderer(event) || trustedReadingRenderer(event)) || !languages?.current) throw new Error('Invalid language request')
+  if (!(trustedAppRenderer(event) || trustedSecondaryRenderer(event)) || !languages?.current) throw new Error('Invalid language request')
   return languages.current
 })
 
@@ -621,6 +623,33 @@ function trayMenu() {
   }))
 }
 
+// Keep one independent window per work, in the library's existing profile and origin.
+const storyWindows = new Map()
+ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
+  if (!trustedMainRenderer(event) || !isStorySettingsRoute(hash)) throw new Error(t('main.invalidSettingsRequest'))
+  const existing = storyWindows.get(hash)
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.focus()
+    return
+  }
+  const window = new BrowserWindow({
+    width: 1060, height: 760, minWidth: 420, minHeight: 420, title: t('story.title'),
+    backgroundColor: windowBackground(), icon: join(__dirname, 'icon.png'),
+    webPreferences: { preload: join(__dirname, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, spellcheck: true },
+  })
+  if (process.platform !== 'darwin') window.setMenuBarVisibility(false)
+  harden(window.webContents, window, false)
+  storyWindows.set(hash, window)
+  window.on('closed', () => storyWindows.delete(hash))
+  try {
+    await window.loadURL(`${appUrl}${hash}`)
+  } catch (error) {
+    if (!window.isDestroyed()) window.destroy()
+    throw error
+  }
+})
+
 ipcMain.handle('new-world:capture-state', (event) => {
   if (!trustedMainRenderer(event)) throw new Error(t('main.invalidSettingsRequest'))
   return captureShortcut.state()
@@ -775,6 +804,7 @@ function openWindow(visible = true, intro = false) {
     // A hidden quick note window must not keep the app running once the main window is gone.
     if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
     for (const reading of readingWindows) if (!reading.isDestroyed()) reading.destroy()
+    for (const window of storyWindows.values()) if (!window.isDestroyed()) window.destroy()
     void webPanes.closeAll()
   })
   contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {

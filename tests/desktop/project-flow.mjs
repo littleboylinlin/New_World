@@ -51,7 +51,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await page.getByRole('button', { name: '保存工程', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '导出 New_World 工程（.newworld）' })).toBeHidden()
   expect((await readFile(output)).subarray(0, 2).toString()).toBe('PK')
-  const taskZip=new ZipReader(new Uint8ArrayReader(await readFile(output)),{useWebWorkers:false});const zipEntries=await taskZip.getEntries();const manifest=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename==='manifest.json').getData(new Uint8ArrayWriter())).toString());expect(manifest.schemaVersion).toBe(3);const exportedTasks=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename===manifest.records.tasks).getData(new Uint8ArrayWriter())).toString());expect(exportedTasks.map(t=>t.title)).toEqual(['Desktop linked task']);await taskZip.close()
+  const taskZip=new ZipReader(new Uint8ArrayReader(await readFile(output)),{useWebWorkers:false});const zipEntries=await taskZip.getEntries();const manifest=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename==='manifest.json').getData(new Uint8ArrayWriter())).toString());expect(manifest.schemaVersion).toBe(4);const exportedTasks=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename===manifest.records.tasks).getData(new Uint8ArrayWriter())).toString());expect(exportedTasks.map(t=>t.title)).toEqual(['Desktop linked task']);await taskZip.close()
   await card.getByRole('link', { name: '查看 雾港 · 原创验收', exact: true }).click()
   await openVersion(page, '初稿')
   await expect(editor).toBeVisible()

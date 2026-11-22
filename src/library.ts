@@ -8,6 +8,8 @@ import type { Idea } from './ideas'
 import { MetadataError, validateWorkMetadata } from './work-metadata'
 import type { WorkMetadata } from './work-metadata'
 import { taskStores, TaskDataError } from './tasks/model'
+import { announceStoryChange } from './story-settings/changes'
+import type { StoryCard } from './story-settings/model'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -47,7 +49,7 @@ export interface BookFile {
 // A deleted item keeps every record it owned, so restoring puts the same rows back.
 export interface TrashEntry {
   id: string
-  kind: 'book' | 'original' | 'edition' | 'chapter' | 'idea'
+  kind: 'book' | 'original' | 'edition' | 'chapter' | 'idea' | 'storyCard'
   library: LibraryId
   bookId: string
   title: string
@@ -57,6 +59,7 @@ export interface TrashEntry {
   editions: Edition[]
   chapters: ChapterRecord[]
   ideas?: Idea[]
+  storyCards?: StoryCard[]
   position?: { editionId: string; index: number }
 }
 
@@ -127,7 +130,7 @@ export interface AiChapterBaseline {
 }
 
 export const libraryChanges = new EventTarget()
-export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash']
+export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash', 'storyCards']
 
 let connection: Promise<IDBDatabase> | undefined
 export const maxTitleLength = 255
@@ -135,7 +138,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 11)
+    const request = indexedDB.open('new-world-library', 12)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -191,6 +194,11 @@ export function openDatabase() {
       if (event.oldVersion < 10) request.transaction!.objectStore('trash').createIndex('byDeletedAt', 'deletedAt')
       // Writing styles for the AI, and which style each work uses by default. Backups carry them.
       if (event.oldVersion < 11) db.createObjectStore('writingStyles', { keyPath: 'id' })
+      if (event.oldVersion < 12) {
+        const cards = db.createObjectStore('storyCards', { keyPath: ['library', 'bookId', 'id'] })
+        cards.createIndex('byBook', ['library', 'bookId'])
+        request.transaction!.objectStore('trash').createIndex('byWorkKind', ['library', 'bookId', 'kind'])
+      }
     }
     request.onsuccess = () => {
       const db = request.result
@@ -395,6 +403,7 @@ export async function renameBook(library: LibraryId, id: string, value: string) 
   }
   await committed(tx)
   if (!found) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
+  announceStoryChange({ library, bookId: id })
 }
 
 /** Updates work information without replacing sources, covers or another window's metadata. */
@@ -418,10 +427,12 @@ export async function saveWorkInformation(book: Book, title: string, metadata?: 
     store.put(next)
     return next
   })
-  return announced(done())
+  const saved = await announced(done())
+  announceStoryChange({ library: book.library, bookId: book.id })
+  return saved
 }
 
-// Deleting moves a work with its originals, editions and chapters to the trash in one transaction.
+// Deleting moves a work and its owned records to the trash in one transaction.
 export async function deleteBook(library: LibraryId, id: string, expectedFingerprint?: string) {
   const db = await openDatabase()
   const tx = db.transaction(libraryStores, 'readwrite', { durability: 'strict' })
@@ -429,6 +440,7 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
   const files = tx.objectStore('files')
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
+  const cards = tx.objectStore('storyCards')
   const key = [library, id]
   const { step, done } = writing<TrashEntry>(tx)
   const conflictMsg = 'The target work changed before confirmation completed; nothing was deleted.'
@@ -446,7 +458,8 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
     const storedFiles = owned.map((book) => files.get([library, book.id]))
     const storedEditions = editions.index('byBook').getAll(key)
     const storedChapters = chapters.index('byBook').getAll(key)
-    storedChapters.onsuccess = step(() => {
+    const storedCards = cards.index('byBook').getAll(key)
+    storedCards.onsuccess = step(() => {
       if (owned.some((book, i) => book.format !== 'draft' && !storedFiles[i].result)) {
         throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
       }
@@ -461,18 +474,23 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
       entry.files = storedFiles.map((request) => request.result).filter(Boolean)
       entry.editions = editionRows
       entry.chapters = chapterRows
+      const storyCards: StoryCard[] = storedCards.result
+      if (storyCards.length) entry.storyCards = storyCards
       for (const book of owned) {
         books.delete([library, book.id])
         files.delete([library, book.id])
       }
       for (const edition of entry.editions) editions.delete([library, id, edition.id])
       for (const chapter of entry.chapters) chapters.delete([library, id, chapter.editionId, chapter.id])
+      for (const card of storyCards) cards.delete([...key, card.id])
       tx.objectStore('trash').add(entry)
       return entry
     })
     return entry
   })
-  return announced(done())
+  const deleted = await announced(done())
+  announceStoryChange({ library, bookId: id })
+  return deleted
 }
 
 export async function removeWorkOriginal(workId: string, id: string, expectedFingerprint?: string) {

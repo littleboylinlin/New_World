@@ -7,6 +7,7 @@ import type { ChapterInput, ChapterRecord, DocumentContent, Edition, EditionBund
 import { validateWorkMetadata } from '../work-metadata'
 import type { WorkMetadata } from '../work-metadata'
 import { recordWriting } from '../writing-stats'
+import { announceStoryChange } from '../story-settings/changes'
 import { buildDeduplicatedRevision } from './revisions'
 import { keptWritingSnapshots, noteWritingSnapshot, noteWritingStart, planWritingSnapshot } from './writing-history'
 import type { WritingSnapshot } from './writing-history'
@@ -71,7 +72,7 @@ export async function createEdition(book: Book, inputs: ChapterInput[], options:
   const tx = db.transaction(['books', 'editions', 'chapters'], 'readwrite', { durability: 'strict' })
   const exists = tx.objectStore('books').get([book.library, book.id])
   const existing = tx.objectStore('editions').index('byBook').getAll([book.library, book.id])
-  return updateRecord(tx, existing, (editions: Edition[]) => {
+  const created = await updateRecord(tx, existing, (editions: Edition[]) => {
     if (!exists.result) throw new Error(t('store.thisWorkHasBeenRemovedFromTheLibrary'))
     if (name === undefined) {
       const names = new Set(editions.map((edition) => edition.name))
@@ -80,6 +81,8 @@ export async function createEdition(book: Book, inputs: ChapterInput[], options:
     addRecords(tx, draft.edition, draft.records)
     return draft.edition
   })
+  announceStoryChange({ library: book.library, bookId: book.id })
+  return created
 }
 
 export async function listEditions(library: LibraryId, bookId: string): Promise<Edition[]> {
@@ -225,7 +228,7 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
   const expectedFingerprint = change.type === 'delete' ? change.expectedFingerprint : undefined
   const conflictMsg = 'Chapter changed before confirmation completed.'
   let trashed: TrashEntry | undefined
-  return announced(updateRecord(tx, editions.get(editionKey(edition)), (stored: Edition | undefined) => {
+  const changed = await announced(updateRecord(tx, editions.get(editionKey(edition)), (stored: Edition | undefined) => {
     if (!stored) {
       if (expectedFingerprint !== undefined) throw new ConfirmStateConflictError(conflictMsg)
       throw new Error(t('store.thisEditableVersionHasBeenRemoved'))
@@ -301,6 +304,8 @@ export async function changeChapters(edition: Edition, change: ChapterChange) {
     editions.put(next)
     return { edition: next, selected, trashed }
   }))
+  announceStoryChange({ library: edition.library, bookId: edition.bookId })
+  return changed
 }
 
 export async function deleteEdition(edition: EditionKey, expectedFingerprint?: string) {
@@ -330,5 +335,7 @@ export async function deleteEdition(edition: EditionKey, expectedFingerprint?: s
     tx.objectStore('trash').add(entry)
     return entry
   })
-  return announced(done())
+  const deleted = await announced(done())
+  announceStoryChange({ library: edition.library, bookId: edition.bookId })
+  return deleted
 }
