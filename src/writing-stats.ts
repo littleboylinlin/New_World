@@ -134,9 +134,8 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   tooltip.setAttribute('aria-hidden', 'true')
   tooltip.hidden = true
 
-  const hint = element('p', 'stats-hint', t('writing.emptyHint'))
   const statsFooter = element('div', 'stats-footer')
-  statsFooter.append(hint, legend)
+  statsFooter.append(legend)
 
   heatmap.append(body, tooltip)
   panel.append(top, heatmap, statsFooter)
@@ -277,7 +276,6 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
     for (const words of days.values()) peak = Math.max(peak, words)
     setValue(streakValue, numberOf(currentStreak(days, today)))
     setValue(totalValue, numberOf(total))
-    hint.hidden = days.size > 0
 
     // Refresh values in place: replacing cells drops keyboard focus, hover state and the user's scroll position.
     if (grid.childElementCount) {

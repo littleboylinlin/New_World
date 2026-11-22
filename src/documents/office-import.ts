@@ -45,7 +45,7 @@ export async function docxMarkup(blob: Blob, signal: AbortSignal) {
       return { src: data ?? '' }
     }),
   })
-  const notes = [t('officeImport.preservesCommonTextStylesHeadingsListsTablesAnd')]
+  const notes: string[] = []
   if (skipped) notes.push(t('officeImport.imagePartSAreOversizedOrCouldNot', [skipped]))
   if (result.messages.length) notes.push(t('officeImport.thereAreWordCompatibilityWarningSCheckComplex', [result.messages.length]))
   return { markup: result.value, notes }
@@ -142,5 +142,5 @@ export async function odtMarkup(blob: Blob, signal: AbortSignal) {
   }
 
   const markup = await walk(body)
-  return { markup, notes: [t('officeImport.convertsTextCommonStylesListsBasicTablesAnd')] }
+  return { markup, notes: [] }
 }

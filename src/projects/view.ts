@@ -21,7 +21,7 @@ export function showProjectExport(root: ProjectRoot, title: string) {
   name.value = `${title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 180)}.newworld`
   label.append(name)
   formDialog(document.body, {
-    title: t('project.export'), action: t('project.save'), description: t('project.exportHint'), fields: [label],
+    title: t('project.export'), action: t('project.save'), fields: [label],
   }, async () => {
     const filename = /\.newworld$/i.test(name.value) ? name.value : `${name.value}.newworld`
     if (/[<>:"/\\|?*\x00-\x1f]/.test(filename) || !filename.trim()) throw new Error(t('project.badFilename'))
@@ -75,7 +75,7 @@ async function previewImport(file: Blob) {
     const option = element('option', '', t(key)); option.value = value; mode.append(option)
   }
   mode.name = 'mode'; choices.append(mode)
-  summary.append(choices, element('p', 'dialog-help', t('project.importHint')))
+  summary.append(choices)
   await new Promise<void>((resolve) => {
     formDialog(document.body, { title: t('project.importPreview'), action: t('project.confirm'), fields: [summary] }, async () => {
       if (mode.value === 'skip') return

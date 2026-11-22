@@ -212,7 +212,6 @@ export function readingAnnotations(
     const expected = data.revision, items = data.items
     formDialog(document.body, {
       title: t('annotations.delete'), action: t('annotations.confirmDelete'), danger: true,
-      description: t('annotations.deleteHelp'),
     }, async () => persist(items.filter((entry) => entry.id !== item.id), expected))
     dialog = document.body.lastElementChild as HTMLDialogElement
     dialog.addEventListener('close', () => { dialog = undefined }, { once: true })

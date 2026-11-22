@@ -1440,7 +1440,6 @@ test.describe('v0.15.3 英文文案与单复数语法验证', () => {
       await page.getByRole('link', { name: 'Settings', exact: true }).click()
       const settings = page.locator('.settings-page')
       await settings.getByRole('link', { name: 'Backup & restore', exact: true }).click()
-      await expect(settings).toContainText('Each backup saves both libraries, all editions, original files, and the trash in a single .zip file.')
       await expect(settings).toContainText('Because the web version cannot create background automatic backups or save to a custom folder, click “Back Up Now” regularly.')
       await expect(settings).not.toContainText('backups made by hand')
 
@@ -1486,10 +1485,6 @@ test.describe('v0.15.3 英文文案与单复数语法验证', () => {
         return res.json()
       })
       expect(enPack.messages['revisions.keepAtLeastOne']).toBe('At least one recoverable revision must be kept.')
-      expect(enPack.messages['backup.desktopHint']).toBe(
-        'Each backup saves both libraries, all editions, original files, and the trash in a single .zip file. The {0} most recent automatic backups are kept; manual backups and pre-restore safety backups are never deleted automatically.',
-      )
-      expect(enPack.messages['backup.desktopHint']).not.toContain('made by hand')
 
       // Verify chapter history prune dialog uses natural English without "(s)"
       await page.goto(`/#/original/${work2Id}/${editionId}`)

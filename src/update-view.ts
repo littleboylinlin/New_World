@@ -33,15 +33,13 @@ export function mountUpdateView(
   const update = button(desktop ? t('update.updateAndRestart') : t('update.reloadThisPage'), desktop ? 'button button-primary' : 'button button-quiet')
   const releaseActions = element('div', 'update-actions')
   releaseActions.append(releaseLink, update)
-  const updateHint = element('p', 'update-hint', macos ? t('macUpdate.installHint') : t('update.youCanKeepWritingDuringTheDownloadAfter'))
-  updateHint.hidden = !desktop
   const updateError = element('p', 'field-error')
   updateError.setAttribute('role', 'alert')
   updateError.hidden = true
   const progress = element('progress', 'update-progress')
   progress.setAttribute('aria-label', t('update.installerDownloadProgress'))
   progress.hidden = true
-  release.append(element('h4', '', t('update.releaseNotes')), notes, releaseActions, updateHint, progress, updateError)
+  release.append(element('h4', '', t('update.releaseNotes')), notes, releaseActions, progress, updateError)
   if (!desktop) {
     content.append(currentVersion, element('p', 'dialog-help', t('webUpdate.automatic')))
     return

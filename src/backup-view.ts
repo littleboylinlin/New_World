@@ -149,7 +149,7 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
     section.append(heading(t('backup.automatic')), frequency.group, heading(t('backup.location')), location, folderActions)
   }
   section.append(heading(t('backup.encryption')), encryption.group, changePassword, last, actions, status, error,
-    element('p', 'dialog-help', desktop ? t('backup.desktopHint', [10]) : t('backup.webHint')))
+    ...(desktop ? [] : [element('p', 'dialog-help', t('backup.webHint'))]))
   if (!desktop) {
     const reminder = element('label', 'appearance-check')
     const toggle = element('input')

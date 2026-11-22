@@ -97,7 +97,6 @@ test('柔纸可选、跨页面生效，刷新和切换语言后记住，主要�
   expect(await contrast(stats, root(page), 'backgroundColor')).toBeGreaterThanOrEqual(1.09)
   expect(await contrast(stats.locator('.stat-streak .stat-label'), stats.locator('.stat-streak'))).toBeGreaterThanOrEqual(4.5)
   expect(await contrast(stats.locator('.stat-total .stat-label'), stats.locator('.stat-total'))).toBeGreaterThanOrEqual(4.5)
-  expect(await contrast(stats.locator('.stats-hint'), stats)).toBeGreaterThanOrEqual(4.5)
   await page.screenshot({ path: testInfo.outputPath('home-soft-paper.png') })
 
   await page.goto('/#/notes/tasks')

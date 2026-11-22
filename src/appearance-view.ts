@@ -164,7 +164,7 @@ function dictionaryControls(): HTMLElement[] {
   linkRow.append(linkLabel, download)
   const status = element('p', 'settings-state')
   status.setAttribute('aria-live', 'polite')
-  box.append(title, list, importButton, linkRow, status, element('p', 'dialog-help', t('spelling.dictionaryHint')))
+  box.append(title, list, importButton, linkRow, status)
 
   function render(state: SpellingState) {
     box.hidden = !state.supported
@@ -240,7 +240,7 @@ export function mountAppearanceSettings(section: HTMLElement) {
   const cjk = radioGroup(t('appearance.cjkFont'), 'settings-options font-options', cjkFonts,
     (value) => [
       element('span', `font-name font-${value}`, cjkLabel(value)),
-      element('span', `font-sample font-${value}`, value === 'auto' ? t('appearance.cjkAutoHint') : t('appearance.cjkSample')),
+      element('span', `font-sample font-${value}`, t('appearance.cjkSample')),
     ],
     (value) => updateAppearance({ cjk: value }), (value) => value.cjk, true)
 
@@ -265,7 +265,6 @@ export function mountAppearanceSettings(section: HTMLElement) {
     radioGroup(t('appearance.spellcheck'), 'settings-options', switches,
       (value) => [element('span', '', value === 'on' ? t('appearance.on') : t('appearance.off'))],
       (value) => updateAppearance({ spellcheck: value === 'on' }), (value) => value.spellcheck ? 'on' : 'off', true),
-    element('p', 'dialog-help', t('appearance.spellcheckHint')),
     ...dictionaryControls(),
   )
 
@@ -284,8 +283,8 @@ export function mountAppearanceSettings(section: HTMLElement) {
   smoothTyping.append(smoothTypingBox, element('span', '', t('appearance.smoothTyping')))
   writingGroup.append(
     element('h3', 'settings-group-title', t('appearance.writing')),
-    smoothTyping, element('p', 'dialog-help', t('appearance.smoothTypingHint')),
-    typewriter, element('p', 'dialog-help', t('appearance.typewriterHint')),
+    smoothTyping,
+    typewriter,
   )
   // Only the desktop app plays an opening animation, on a cold start.
   const startupGroup = element('div', 'settings-subgroup')
@@ -298,10 +297,10 @@ export function mountAppearanceSettings(section: HTMLElement) {
     intro.append(introBox, element('span', '', t('appearance.intro')))
     startupGroup.append(
       element('h3', 'settings-group-title', t('appearance.startup')),
-      intro, element('p', 'dialog-help', t('appearance.introHint')),
+      intro,
     )
   }
-  section.append(typographyGroup, themeGroup, writingGroup, ...(window.newWorldDesktop ? [startupGroup] : []), spellingGroup, element('p', 'dialog-help', t('appearance.hint')))
+  section.append(typographyGroup, themeGroup, writingGroup, ...(window.newWorldDesktop ? [startupGroup] : []), spellingGroup)
 }
 
 /**

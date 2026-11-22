@@ -788,3 +788,7 @@ html.capture-window, html.capture-window body { min-height: 0; height: 100%; ove
 @keyframes progress-spin { to { transform: rotate(1turn); } }
 @media (prefers-reduced-motion: reduce) { .progress-spinner { animation-duration: 2400ms; } }
 .editor-loading { margin: 24px auto; max-width: 36em; }
+
+.dialog-help:empty { display: none; }
+.confirm-check { display: flex; align-items: center; gap: 8px; font-size: .92rem; cursor: pointer; }
+.confirm-check input { margin: 0; flex: none; }

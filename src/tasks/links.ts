@@ -70,7 +70,7 @@ export async function taskLinkFields(initial: Task['link']) {
   const work = choices(key('linkedWork'), options, initialId),
     edition = choices(key('linkedEdition'), []),
     chapter = choices(key('linkedChapter'), []),
-    hint = element('p', 'dialog-help', key('ownerHint'))
+    hint = element('p', 'dialog-help')
   let editions: Edition[] = [],
     changed = false,
     loading = false,

@@ -15,6 +15,7 @@ import { stagger } from './motion'
 import { restoreTrash } from './trash'
 import { bookPath, button, element, icon, libraries, link, notice } from './ui'
 import { offerActionUndo, showNotice } from './undo'
+import { confirmDialog } from './dialogs'
 import './documents/editor.css'
 
 function when(time: number) {
@@ -48,7 +49,6 @@ async function showIdeaRevisionsDialog(idea: Idea, books: Book[]) {
   closeIcon.setAttribute('aria-label', t('common.close'))
   head.append(heading, closeIcon)
 
-  const hint = element('p', 'dialog-help', t('revisions.ideaHint'))
   const errBox = element('p', 'notice notice-error')
   errBox.setAttribute('role', 'alert')
   errBox.hidden = true
@@ -78,7 +78,7 @@ async function showIdeaRevisionsDialog(idea: Idea, books: Book[]) {
   restoreBtn.disabled = true
   controls.append(cancelBtn, restoreBtn)
 
-  dialog.append(head, hint, errBox, body, controls)
+  dialog.append(head, errBox, body, controls)
   document.body.append(dialog)
 
   const close = () => {
@@ -243,6 +243,7 @@ export function ideaActions(idea: Idea, books: Book[], report: (message: string)
     }) },
     { label: t('ideas.copy'), icon: 'copy', action: run(() => navigator.clipboard.writeText(idea.text)) },
     { label: t('shelf.delete'), icon: 'trash', danger: true, action: run(async () => {
+      if (!await confirmDialog(t('ideas.deleteTitle'), [idea.text.split('\n')[0].slice(0, 120)], t('shelf.confirmDeletion'), true)) return
       const entry = await deleteIdea(idea.id)
       if (entry) offerActionUndo(t('ideas.deleted'), () => restoreTrash(entry.id))
     }) },
@@ -320,7 +321,6 @@ export function renderIdeas(root: HTMLElement, signal: AbortSignal) {
       const emptyIcon = element('div', 'empty-icon')
       emptyIcon.append(icon('idea'))
       empty.append(emptyIcon, element('h3', '', t(ideas.length ? 'notes.noMatch' : 'ideas.none')))
-      if (!ideas.length) empty.append(element('p', '', t('ideas.noneHint')))
       content.replaceChildren(empty)
     }
     arriving = false

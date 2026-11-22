@@ -55,6 +55,7 @@ test('灵感页可以记下、标记已用、关联作品、删除和撤销', as
   await first.locator('.idea-text').click({ button: 'right' })
   await expect(menu.getByRole('menuitem', { name: '标为未用' })).toBeVisible()
   await menu.getByRole('menuitem', { name: '删除' }).click()
+  await page.getByRole('dialog', { name: '删除这条灵感？' }).getByRole('button', { name: '确认删除' }).click()
   await expect(first).toHaveCount(0)
   await page.getByRole('status').filter({ hasText: '灵感已删除' }).getByRole('button', { name: '撤销' }).click()
   await expect(first).toHaveCount(1)

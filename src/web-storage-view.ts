@@ -25,7 +25,7 @@ export function mountWebStorageSettings(content: HTMLElement) {
   const folderLabel = element('p', 'web-storage-label', t('webFolder.title'))
   const folderValue = element('p', 'web-storage-value')
   folderValue.setAttribute('role', 'status')
-  const folderHelp = element('p', 'dialog-help', folderSupported() ? t('webFolder.hint') : t('webFolder.unsupported'))
+  const folderHelp = element('p', 'dialog-help', folderSupported() ? '' : t('webFolder.unsupported'))
   const choose = button(t('webFolder.choose'), 'button button-primary button-small')
   const reconnect = button(t('webFolder.reconnect'), 'button button-primary button-small')
   const stop = button(t('webFolder.stop'), 'button button-quiet button-small')

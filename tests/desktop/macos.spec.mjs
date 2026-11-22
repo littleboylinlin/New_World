@@ -397,6 +397,7 @@ test('AI 接入与权限：macOS 桌面端可启用本地接口，创建作品�
 
     await openSettingsCategory(page, 'ai')
     await section.locator('.ai-client-card').filter({ hasText: 'MacDesktopAgent' }).getByRole('button', { name: '撤销配置' }).click()
+    await page.getByRole('dialog', { name: /撤销配置/ }).getByRole('button', { name: '撤销配置' }).click()
     await section.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(section.locator('.ai-badge').first()).toHaveText('已停用')
   } finally { await stop(app) }
@@ -525,6 +526,7 @@ test('10. AI 历史版本与回收站保护：macOS 桌面端重启后仍可预�
 
     const resetSection = await openSettingsCategory(page, 'ai')
     await resetSection.locator('.ai-client-card').filter({ hasText: 'MacRecoveryAI' }).getByRole('button', { name: '撤销配置' }).click()
+    await page.getByRole('dialog', { name: /撤销配置/ }).getByRole('button', { name: '撤销配置' }).click()
     await resetSection.locator('input[data-ai-global-enable="true"]').uncheck()
     await expect(resetSection.locator('.ai-badge').first()).toHaveText('已停用')
   } finally { await stop(app) }

@@ -153,7 +153,7 @@ function manageBook(root: HTMLElement, book: Book, mode: 'rename' | 'delete') {
   } else {
     const message = element('p', 'dialog-help')
     message.append(t('shelf.move'), element('strong', '', book.title), book.library === 'reference' ? t('shelf.andAllContinuationsAndSourceFilesInThis') : t('shelf.andAllItsEditableVersionsAndLocalOriginal'))
-    form.append(message,element('p','dialog-help',t('tasks.workDeleteHint')))
+    form.append(message)
   }
 
   const error = element('p', 'field-error')
@@ -290,7 +290,7 @@ function bookCard(root: HTMLElement, book: Book, covers: string[], report: (mess
     { label: t('archive.archive'), icon: 'archive', action: async () => {
       try {
         await setArchived(book.library, book.id, true)
-        offerArchiveUndo(book.title, () => setArchived(book.library, book.id, false), t('tasks.workArchiveHint'))
+        offerArchiveUndo(book.title, () => setArchived(book.library, book.id, false))
       } catch (error) {
         report(storageError(error))
       }

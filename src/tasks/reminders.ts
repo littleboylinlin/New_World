@@ -100,8 +100,6 @@ export function reminderControls(active = false) {
   const details = element('details', 'task-reminder-controls')
   details.append(
     element('summary', '', t('tasks.reminderSettings')),
-    element('p', 'dialog-help', t('tasks.reminderLimits')),
-    element('p', 'dialog-help', t('tasks.shortcuts')),
   )
   const status = element(
     'p',

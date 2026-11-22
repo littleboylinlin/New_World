@@ -108,7 +108,6 @@ test('功能分配、自定义请求头和导入导出；改写等功能跟随�
 
   const routing = page.locator('.settings-card').filter({ has: page.getByRole('heading', { name: '功能分配' }) })
   await expect(routing.getByLabel('默认配置')).toHaveValue(/.+/)
-  await expect(routing.getByText('同时用于改写、扩写、缩写和改语气')).toBeVisible()
   await routing.getByLabel('润色与改写').selectOption({ label: '停用这个功能' })
   await expect(routing.getByRole('status')).toHaveText('功能分配已保存。')
   await expect(routing.getByLabel('总结网页')).toHaveCount(0)

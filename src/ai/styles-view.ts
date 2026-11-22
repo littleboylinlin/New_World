@@ -48,7 +48,7 @@ export function mountStyleLibrary(card: HTMLElement): () => Promise<void> {
   editorRegion.hidden = true
   const status = element('p', 'settings-state styles-status')
   status.setAttribute('role', 'status')
-  card.append(element('p', 'dialog-help', t('styles.intro')), actions, list, editorRegion, status)
+  card.append(actions, list, editorRegion, status)
 
   const say = (text: string) => { status.textContent = text }
 
@@ -132,12 +132,12 @@ export function mountStyleLibrary(card: HTMLElement): () => Promise<void> {
     name.maxLength = 80
     name.setAttribute('aria-labelledby', nameLabel.id)
     nameField.append(nameLabel, name)
-    const summary = textArea(t('styles.summary'), current.draft.summary, t('styles.summaryHint'), 2)
+    const summary = textArea(t('styles.summary'), current.draft.summary, undefined, 2)
     const vocabulary = textArea(t('styles.vocabulary'), current.draft.vocabulary)
     const rhythm = textArea(t('styles.rhythm'), current.draft.rhythm)
     const perspective = textArea(t('styles.perspective'), current.draft.perspective, undefined, 2)
-    const samples = textArea(t('styles.samples'), current.draft.samples.join('\n\n'), t('styles.samplesHint', [maxSamples]), 5)
-    const basis = textArea(t('styles.basis'), current.draft.basis ?? '', t('styles.basisHint'), 1)
+    const samples = textArea(t('styles.samples'), current.draft.samples.join('\n\n'), undefined, 5)
+    const basis = textArea(t('styles.basis'), current.draft.basis ?? '', undefined, 1)
     const fields = [name, summary.area, vocabulary.area, rhythm.area, perspective.area, samples.area, basis.area]
     for (const field of fields) field.readOnly = readOnly
 
