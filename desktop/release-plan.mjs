@@ -2,7 +2,7 @@ import { appendFile, readFile, readdir, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { installerName, isStableTag } from './release.mjs'
+import { installerName, isStableTag, onlineInstallerName, windowsPackageName } from './release.mjs'
 
 export function validatePlan(plan, version) {
   if (plan.version !== version || !isStableTag('v' + version) || !Array.isArray(plan.platforms) || !plan.platforms.length
@@ -14,7 +14,9 @@ export function validatePlan(plan, version) {
 
 export function releaseAssets(plan) {
   return [
-    ...(plan.platforms.includes('windows') ? [installerName('v' + plan.version, 'win32', 'x64')] : []),
+    ...(plan.platforms.includes('windows')
+      ? [installerName('v' + plan.version, 'win32', 'x64'), onlineInstallerName('v' + plan.version), windowsPackageName('v' + plan.version)]
+      : []),
     ...(plan.platforms.includes('macos') ? ['arm64', 'x64'].map((arch) => installerName('v' + plan.version, 'darwin', arch)) : []),
     'New-World-lang-zh-CN.json', 'New-World-lang-en.json',
   ]

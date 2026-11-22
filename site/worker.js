@@ -9,6 +9,7 @@ const GITHUB_DOWNLOADS = 'https://github.com/littleboylinlin/New_World/releases/
 const RELEASES = 'https://github.com/littleboylinlin/New_World/releases'
 const PLATFORMS = {
   windows: 'windows-x64',
+  'windows-online': 'windows-x64-online',
   'macos-arm64': 'macos-arm64',
   'macos-x64': 'macos-x64',
   'lang-zh-CN': 'lang-zh-CN',

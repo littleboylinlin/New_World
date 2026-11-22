@@ -3,6 +3,7 @@ import { REPO } from '../config.mjs'
 
 const INSTALLERS = {
   'windows-x64': /^New-World-Setup-.+-x64\.exe$/,
+  'windows-x64-online': /^New-World-Online-Setup-.+-x64\.exe$/,
   'macos-arm64': /^New-World-.+-macos-arm64\.dmg$/,
   'macos-x64': /^New-World-.+-macos-x64\.dmg$/,
 }
