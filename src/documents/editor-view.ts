@@ -31,7 +31,7 @@ import { mountFindPanel } from './find-panel'
 import { chapterDirectory } from './chapter-directory'
 import { selectionToolbar } from './selection-toolbar'
 import { defaultSideWidth, lastChapter, readChapterPlace, readEditorPreferences, saveChapterPlace, updateEditorPreferences } from './editor-prefs'
-import { changeChapters, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
+import { changeChapters, chapterSaves, chapterWordCounts, createEdition, deleteEdition, listEditions, readBundle, readChapter, saveChapter } from './store'
 import { AnnotationDecorations, documentSurface } from '../annotations/surface'
 import { readingAnnotations } from '../annotations/view'
 import type { ReadingAnnotations } from '../annotations/view'
@@ -1143,6 +1143,12 @@ export async function renderEdition(
     location.hash = bookPath(book.library)
   }))
   libraryChanges.addEventListener('update', () => { void refreshHistoryCount() }, { signal })
+  chapterSaves.addEventListener('save', (event) => {
+    const detail = (event as CustomEvent<{ library: string; bookId: string; editionId?: string; chapterId?: string; snapshot?: boolean }>).detail
+    if (detail?.snapshot && detail.library === edition.library && detail.bookId === edition.bookId && detail.editionId === edition.id && detail.chapterId === chapter.id) {
+      void refreshHistoryCount()
+    }
+  }, { signal })
 
   window.addEventListener('keydown', (event) => {
     if ((!event.ctrlKey && !event.metaKey) || event.altKey || event.isComposing || document.querySelector('dialog[open]')) return

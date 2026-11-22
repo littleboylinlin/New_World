@@ -728,6 +728,8 @@
   "revisions.sourceAi": "Before AI edit ({0})",
   "revisions.sourceAiGeneric": "Before AI edit",
   "revisions.sourceRestore": "Backup before restore",
+  "revisions.sourceAutosave": "Kept while writing",
+  "revisions.sourceLargeChange": "Before a large change",
   "revisions.words": "{0} words",
   "revisions.emptyChapterPreview": "(Empty chapter)",
   "revisions.restoreThis": "Restore this version",

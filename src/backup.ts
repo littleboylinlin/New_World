@@ -14,6 +14,7 @@ import { validateWorkMetadata } from './work-metadata'
 import { taskStores, validateTasks } from './tasks/model'
 import { styleChanges, styleStore } from './ai/styles'
 import { clearAllBaselines } from './ai/guard'
+import { clearWritingSnapshotClock } from './documents/writing-history'
 import type { TaskData } from './tasks/model'
 import { decodeTaskResources, encodeTaskResources } from './tasks/transfer'
 import { validateTaskAssets } from './tasks/resources'
@@ -513,6 +514,7 @@ export async function restoreBackup(contents: BackupContents) {
     throw error
   }
   clearAllBaselines()
+  clearWritingSnapshotClock()
   libraryChanges.dispatchEvent(new Event('update'))
   if (contents.writingStyles) styleChanges.dispatchEvent(new Event('change'))
   announceTasks()

@@ -29,7 +29,7 @@ export interface ExpectedEditionState {
   chapters?: ExpectedChapterState[]
 }
 
-interface PreparedPayload {
+export interface PreparedPayload {
   blob: RevisionBlobRecord
   words: number
   plainText: string
@@ -88,7 +88,7 @@ export async function decodeRevisionBlob(record: RevisionBlobRecord): Promise<Do
   return JSON.parse(json) as DocumentContent
 }
 
-async function prepareChapterPayload(content: DocumentContent, now = Date.now()): Promise<PreparedPayload> {
+export async function prepareChapterPayload(content: DocumentContent, now = Date.now()): Promise<PreparedPayload> {
   const cloned = cloneDocumentContent(content)
   const json = JSON.stringify(cloned)
   const hash = synchronousContentHash(json)
@@ -161,7 +161,7 @@ export function buildChapterRevision(input: BuildRevisionInput): ChapterRevision
   }
 }
 
-function buildDeduplicatedRevision(
+export function buildDeduplicatedRevision(
   input: Omit<BuildRevisionInput, 'chapter'> & { chapter: Pick<ChapterRecord, 'id' | 'revision'> },
   prepared: PreparedPayload,
 ): ChapterRevision {
