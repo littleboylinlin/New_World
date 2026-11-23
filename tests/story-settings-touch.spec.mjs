@@ -358,3 +358,31 @@ test('手机套索：选择按钮再点一次切到套索，长按可直接选�
   await expect.poll(async () => (await boardState(story)).scene.nodes.map(({ x, y }) => [x, y])).toEqual([[a.x + 30, a.y + 20], [b.x, b.y], [c.x + 30, c.y + 20]])
 })
 
+
+test('手机点一下左上角浮出新卡默认关联，可以改成不关联或全书 @webkit', async ({ page }) => {
+  const { story, area } = await startBoard(page)
+  const name = story.locator('.story-title-block')
+  await expectTouchTarget(name)
+  await expect(name).toHaveText('触屏故事设定')
+  await expect(story.locator('#story-default-link')).toBeHidden()
+  await name.tap()
+  const panel = story.locator('#story-default-link')
+  await expect(panel).toBeVisible()
+  await expect(panel).toContainText('新卡默认关联：第 1 章 · 第一章')
+  await panel.getByRole('button', { name: /新卡默认关联/ }).tap()
+  await panel.getByText('不关联章节', { exact: true }).tap()
+  await expect(panel).toContainText('新卡默认关联：不关联章节')
+  // Tap elsewhere to close it; the choice stays.
+  await tapAt(story, { x: area.x + area.width / 2, y: area.y + area.height * .6 })
+  await expect(panel).toBeHidden()
+  await doubleTap(story, { x: area.x + 200, y: area.y + 240 })
+  await inlineField(story).fill('旅客')
+  await inlineField(story).press('Enter')
+  await expect.poll(async () => (await boardState(story)).scene.nodes[0]).toMatchObject({ name: '旅客', wholeBook: false, chapters: [] })
+  // The selected card's name follows the work's name.
+  await expect(name).toHaveText('触屏故事设定 · 旅客')
+  await name.tap()
+  await panel.getByRole('button', { name: /新卡默认关联/ }).tap()
+  await panel.getByText('全书', { exact: true }).tap()
+  await expect(panel).toContainText('新卡默认关联：全书')
+})

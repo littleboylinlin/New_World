@@ -6,7 +6,7 @@ import { bookAction, pixel } from './fixtures.mjs'
 import { databaseSnapshot } from './project-fixture.mjs'
 import {
   addStoryChapter, boardState, cardPanel, closeCard, connect, deleteCard, editCard, nameEdge, newCard,
-  newStoryWork, openMenu, openStoryWindow, saveCard, selectCard, storyCard,
+  chapterBox, linkMode, newStoryWork, openMenu, openStoryWindow, saveCard, selectCard, storyCard,
 } from './story-settings-helpers.mjs'
 
 const button = (page, name) => page.getByRole('button', { name, exact: true })
@@ -44,7 +44,9 @@ async function seedCards(page) {
   await button(panel, '添加字段').click()
   await panel.getByLabel('字段名', { exact: true }).fill('职责')
   await panel.getByLabel('内容', { exact: true }).fill('灯塔值守')
-  await panel.getByRole('combobox', { name: '关联章节', exact: true }).selectOption({ label: '第 1 章 · 第一章' })
+  // New cards follow the editor, now on chapter 2; link chapter 1 instead.
+  // Link both chapters; another card below is for the whole work.
+  await chapterBox(panel, '第 1 章 · 第一章').check()
   await panel.getByText('章节状态', { exact: true }).click()
   await button(panel, '添加状态').click()
   await panel.getByRole('combobox', { name: '从章节起', exact: true }).selectOption({ label: '第 2 章 · 灯塔' })
@@ -73,6 +75,12 @@ async function seedCards(page) {
   await expect(panel.getByRole('status')).toHaveText('已保存')
   await closeCard(story)
   await deleteCard(story, '雾港')
+  await newCard(story, '雾灯规矩', { x: 300, y: 470 })
+  await editCard(story, '雾灯规矩')
+  await linkMode(panel, '全书').check()
+  await saveCard(story)
+  await expect(panel.getByRole('status')).toHaveText('已保存')
+  await closeCard(story)
   await button(story, '放大').click()
   await expect.poll(async () => (await boardState(story)).view.zoom).toBeGreaterThan(1)
   return { story, bookId: new URL(story.url()).hash.split('?')[0].split('/').at(-1) }
@@ -198,7 +206,10 @@ test('工程保留本书卡片和回收记录，副本重映射版本、章节�
     expect(card.id).not.toBe(originalCard.id)
     expect(copy.scene.edges[0]).toMatchObject({ from: { nodeId: card.id }, name: '居于', to: { nodeId: deleted.storyCard.id } })
     expect(copy.scene.edges[0].to.nodeId).not.toBe(original.scene.edges[0].to.nodeId)
-    expect(card.chapters).toEqual([{ editionId: edition.id, chapterId: edition.chapters[0].id }])
+    // Linked to chapter 2 (the editor's when it was made) and chapter 1, both remapped.
+    expect(card.chapters).toEqual([{ editionId: edition.id, chapterId: edition.chapters[1].id }, { editionId: edition.id, chapterId: edition.chapters[0].id }])
+    expect(card.wholeBook).toBe(false)
+    expect(copy.scene.nodes.find((node) => node.name === '雾灯规矩')).toMatchObject({ wholeBook: true, chapters: [] })
     expect(card.states).toEqual([{ editionId: edition.id, chapterId: edition.chapters[1].id, text: '独自值夜' }])
     expect(card.tagIds).toEqual([copy.scene.tags[0].id])
     expect(card.tagIds).not.toEqual(originalCard.tagIds)

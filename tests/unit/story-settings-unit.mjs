@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { bendThrough, bindingGap, borderPoint, freeBend, lassoPick, pointInPolygon, snapRect, storyEdgePaths } from '../../src/story-settings/geometry.ts'
-import { blankStoryCard, defaultStoryColor, emptyStoryBoard, isStoryCard, isStoryScene, matchesStoryCard, repairStoryRows, repairStoryScene, storySceneProblem, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
+import { blankStoryCard, defaultStoryColor, emptyStoryBoard, isStoryCard, isStoryScene, matchesStoryCard, repairStoryRows, repairStoryScene, storyCardApplies, storySceneProblem, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
 
 const { isStorySettingsRoute, isTrustedSecondaryRenderer } = createRequire(import.meta.url)('../../desktop/ipc-guard.cjs')
 const node = (id, name) => ({ ...blankStoryCard(), id, name, kind: 'card', x: 12, y: 4, width: 210, height: 127 })
@@ -184,4 +184,23 @@ test('a lasso picks objects by their middle and arrows only when both ends and t
   assert.deepEqual(lassoPick(loop.slice(0, 2), nodes, paths), [])
   assert.equal(pointInPolygon({ x: 0, y: 0 }, loop), true)
   assert.equal(pointInPolygon({ x: 150, y: 30 }, loop), false)
+})
+
+test('a card applies to the whole work, to its chapters, or to none, and a whole-work card names no chapter', () => {
+  const chapter = (id) => ({ editionId: 'draft', chapterId: id })
+  const whole = { ...node('keeper', '守灯人'), wholeBook: true }
+  const linked = { ...node('captain', '船长'), chapters: [chapter('a'), chapter('b')] }
+  const loose = node('guest', '旅客')
+  assert.equal(isStoryCard(whole), true)
+  assert.equal(isStoryCard(linked), true)
+  assert.equal(isStoryCard({ ...whole, chapters: [chapter('a')] }), false)
+  assert.equal(isStoryCard({ ...loose, wholeBook: 'yes' }), false)
+  for (const id of ['a', 'b', 'c']) assert.equal(storyCardApplies(whole, chapter(id)), true)
+  assert.deepEqual(['a', 'b', 'c'].map((id) => storyCardApplies(linked, chapter(id))), [true, true, false])
+  assert.equal(storyCardApplies(loose, chapter('a')), false)
+  assert.deepEqual(blankStoryCard({ wholeBook: true, chapters: [chapter('a')] }), { ...blankStoryCard(), wholeBook: true, chapters: [] })
+  // Cards from before the whole-work choice read as linked to their own chapters.
+  const { wholeBook: _old, ...before } = linked
+  const repaired = repairStoryScene({ tags: [], nodes: [before], edges: [] }, { untitled: '未命名卡片' }).scene.nodes[0]
+  assert.deepEqual(repaired, linked)
 })

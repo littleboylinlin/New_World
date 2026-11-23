@@ -27,6 +27,8 @@ const previousScene = {
   ],
 }
 const cardsOf = (scene) => scene.nodes.filter((node) => node.kind === 'card')
+// Cards saved before chapter links had a whole-work choice read as linked to their chapters only.
+const upgraded = (scene) => cardsOf(scene).map((card) => ({ ...card, wholeBook: false }))
 
 test('上一版格式的画布能正常打开，移除无效连线后继续保存，卡片一张不少 @webkit', async ({ page }) => {
   await page.goto('/#/writing')
@@ -43,7 +45,7 @@ test('上一版格式的画布能正常打开，移除无效连线后继续保�
   const repaired = (await boardState(story)).scene
   expect(repaired.edges[0]).toEqual({ id: 'mentor', from: { nodeId: 'keeper' }, to: { nodeId: 'captain' }, name: '师徒', direction: 'forward', stroke: 'solid', color: '#64748b', bend: 0 })
   expect(repaired.edges[1]).toMatchObject({ from: { nodeId: 'harbor' }, to: { edgeId: 'mentor', at: .5 }, bend: 0 })
-  expect(cardsOf(repaired)).toEqual(cardsOf(previousScene))
+  expect(cardsOf(repaired)).toEqual(upgraded(previousScene))
   expect(repaired.tags).toEqual(previousScene.tags)
 
   // The old links are drawn again, glued to the cards.
@@ -90,7 +92,7 @@ test('全库备份把上一版画布按当前格式导出，不会因旧数据�
   const manifest = JSON.parse(await entry.getData(new TextWriter()))
   await zip.close()
   const [board] = manifest.storyBoards
-  expect(cardsOf(board.scene)).toEqual(cardsOf(previousScene))
+  expect(cardsOf(board.scene)).toEqual(upgraded(previousScene))
   expect(board.scene.edges.map(({ id, bend }) => [id, bend])).toEqual([['mentor', 0], ['lives', 0]])
 })
 
@@ -101,15 +103,19 @@ test('保存失败时说明具体原因，并选中出问题的卡片', async ({
   await newCard(story, '周行')
   await editCard(story, '周行')
   const panel = cardPanel(story)
-  // Link the same chapter twice.
-  await action(panel, '关联章节').click()
-  await panel.getByRole('combobox', { name: '关联章节', exact: true }).last().selectOption({ label: '第 1 章 · 第一章' })
+  // Two states starting at the same chapter.
+  await panel.getByText('章节状态', { exact: true }).click()
+  for (const text of ['出海', '归港']) {
+    await action(panel, '添加状态').click()
+    await panel.getByRole('combobox', { name: '从章节起', exact: true }).last().selectOption({ label: '第 1 章 · 第一章' })
+    await panel.getByLabel('状态', { exact: true }).last().fill(text)
+  }
   await saveCard(story)
-  const reason = '卡片「周行」重复关联了「第 1 章 · 第一章」。'
+  const reason = '卡片「周行」在「第 1 章 · 第一章」有两条章节状态。'
   await expect(story.getByRole('alert')).toHaveText(reason)
   await expect(panel.getByRole('status')).toHaveText(reason)
   await expect(storyCard(story, '周行')).toHaveAttribute('aria-pressed', 'true')
-  expect((await boardState(story)).scene.nodes[0].chapters).toHaveLength(1)
+  expect((await boardState(story)).scene.nodes[0].states).toHaveLength(0)
   // The refused change is rolled back; the next one saves as usual.
   await action(panel, '关闭编辑面板').click()
   await newCard(story, '旅客', { x: 200, y: 520 })

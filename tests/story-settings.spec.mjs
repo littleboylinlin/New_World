@@ -2,7 +2,7 @@ import { test, expect } from './app-test.mjs'
 import { chapterHeading, moveChapter } from './editor-helpers.mjs'
 import {
   action, addStoryChapter, boardState, canvas, cardPanel, closeCard, connect, deleteCard, drag, editCard, midpoint, nameEdge,
-  newCard, newStoryWork, openMenu, openStoryWindow, props, renameStoryChapter, saveCard, selectEdge, storyCard, storyEntry, tool,
+  chapterBox, linkMode, newCard, newStoryWork, openMenu, openStoryWindow, props, renameStoryChapter, saveCard, selectEdge, storyCard, storyEntry, tool,
 } from './story-settings-helpers.mjs'
 
 test.setTimeout(90_000)
@@ -42,7 +42,8 @@ test('窄屏画布可用模板、自由字段和多个自定义标签，按别�
   await panel.getByLabel('正文', { exact: true }).fill('码头夜班。\n清晨交接。')
   await panel.getByRole('checkbox', { name: '北部群岛' }).check()
   await panel.getByRole('checkbox', { name: '主线' }).check()
-  await expect(panel.getByRole('combobox', { name: '关联章节', exact: true }).locator('option:checked')).toHaveText('第 1 章 · 第一章')
+  await expect(linkMode(panel, '指定章节')).toBeChecked()
+  await expect(chapterBox(panel, '第 1 章 · 第一章')).toBeChecked()
   await saveCard(story)
   await expect(panel.getByRole('status')).toHaveText('已保存')
   await closeCard(story)
@@ -207,13 +208,12 @@ test('编辑器双向同步章节与卡片，两个画布标签页的草稿冲�
   await expect(storyEntry(page)).toHaveAttribute('aria-description', '本章关联 1 张卡片')
   await editCard(story, '周行')
   const panel = cardPanel(story)
-  const linked = panel.getByRole('combobox', { name: '关联章节', exact: true })
-  await expect(linked.locator('option:checked')).toHaveText('第 1 章 · 第一章')
+  await expect(chapterBox(panel, '第 1 章 · 第一章')).toBeChecked()
   await addStoryChapter(page, '出海')
   await expect(chapterHeading(page)).toHaveText('出海')
   await expect(badge).toHaveText('')
-  await expect(linked.locator('option').filter({ hasText: '第 2 章 · 出海' })).toHaveCount(1)
-  await linked.selectOption({ label: '第 2 章 · 出海' })
+  await chapterBox(panel, '第 2 章 · 出海').check()
+  await chapterBox(panel, '第 1 章 · 第一章').uncheck()
   await panel.getByText('章节状态', { exact: true }).click()
   await action(panel, '添加状态').click()
   const start = panel.getByRole('combobox', { name: '从章节起' })

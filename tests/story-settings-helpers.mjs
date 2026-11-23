@@ -12,6 +12,19 @@ export const tool = (page, name) => action(toolbar(page), name)
 export const storyCard = (page, name) => page.locator('.story-node-card').and(action(page, name))
 export const inlineField = (page, name = '名称') => canvas(page).getByRole('textbox', { name, exact: true })
 export const status = (page) => canvas(page).getByRole('status')
+/** A chapter in a link picker ('第 1 章 · 第一章'), and the picker's modes: 全书, 指定章节, 不关联章节. */
+export const chapterBox = (scope, label) => scope.getByRole('checkbox', { name: label, exact: true })
+export const linkMode = (scope, label) => scope.getByRole('radio', { name: label, exact: true })
+
+/** Shows the default link for new cards: hover the work's name with a mouse, tap it on a phone. */
+export async function defaultLink(page, touch = false) {
+  const name = page.locator('.story-title-block')
+  if (touch) await name.tap()
+  else await name.hover()
+  const panel = page.locator('#story-default-link')
+  await expect(panel).toBeVisible()
+  return panel
+}
 
 export async function newStoryWork(page, name) {
   await startWork(page)
@@ -49,8 +62,11 @@ export async function closeCard(page) {
 /** Double-clicks the board (at `point` inside the canvas, or near its middle) and names the new card. */
 export async function newCard(page, name, point) {
   // Clear the selection first, so its properties panel does not sit where the board is double-clicked.
-  await canvas(page).press('Escape')
-  await expect(props(page)).toBeHidden()
+  // Escape closes an open popover or panel first, then clears the selection.
+  await expect(async () => {
+    await canvas(page).press('Escape')
+    await expect(props(page)).toBeHidden({ timeout: 500 })
+  }).toPass()
   const area = await canvas(page).boundingBox()
   await canvas(page).dblclick({ position: point ?? { x: area.width / 2, y: area.height / 2 } })
   await inlineField(page).fill(name)
@@ -173,7 +189,7 @@ export async function seedBoard(page, scene, view = { x: 0, y: 0, zoom: 1 }) {
 }
 
 export const card = (id, name, x, y, extra = {}) => ({
-  id, kind: 'card', x, y, width: 200, height: 120, name, aliases: [], tagIds: [], fields: [], body: '', chapters: [], states: [], ...extra,
+  id, kind: 'card', x, y, width: 200, height: 120, name, aliases: [], tagIds: [], fields: [], body: '', wholeBook: false, chapters: [], states: [], ...extra,
 })
 export const arrow = (id, from, to, extra = {}) => ({
   id, from: { nodeId: from }, to: typeof to === 'string' ? { nodeId: to } : to, name: '', direction: 'forward', stroke: 'solid', color: '#64748b', bend: 0, ...extra,
