@@ -6,6 +6,8 @@ import { MetadataError, validateWorkMetadata } from '../work-metadata'
 import { TaskDataError } from '../tasks/model'
 import type { ProjectContents, ProjectData, ProjectManifest, ProjectRoot, Resource } from './model'
 import { detachedIds, fields, safeJson, sha256, sha256Pattern, validateData, validatePayloads } from './validate'
+import { repairStoryRows } from '../story-settings/model'
+import { t } from '../i18n'
 
 export const projectMime = 'application/vnd.newworld.project+zip'
 const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -161,6 +163,13 @@ export async function readProject(file: Blob): Promise<ProjectContents> {
     if (manifest.schemaVersion < 3) manifest.detached.tasks = []
     if (manifest.schemaVersion < 4) manifest.detached.canvas = []
     for (const name of projectStores) if (!Object.hasOwn(data, name)) (data[name] as unknown[]) = []
+    // A canvas from an earlier build of the story canvas is read in the current format.
+    if (manifest.schemaVersion >= 4 && Array.isArray(data.storyBoards) && Array.isArray(data.trash)
+      && data.storyBoards.every((board) => board && typeof board === 'object') && data.trash.every((entry) => entry && typeof entry === 'object')) {
+      const repaired = repairStoryRows(data.storyBoards, data.trash, t('story.untitledCard'))
+      data.storyBoards = repaired.boards
+      data.trash = repaired.trash
+    }
     ok(used.size === resources.size, 'unreferenced resource')
     validateData(data, manifest.root, manifest.detached, manifest.schemaVersion)
     await validatePayloads(data)

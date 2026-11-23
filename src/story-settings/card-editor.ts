@@ -3,7 +3,7 @@ import { storageError } from '../library'
 import { button, element } from '../ui'
 import type { Edition } from '../documents/model'
 import { blankStoryCard, maxStoryName, storyChapterKey, uniqueAliases } from './model'
-import type { StoryCardInput, StoryChapter, StoryTag } from './model'
+import type { StoryCardInput, StoryChapter, StoryLink, StoryTag } from './model'
 
 export function storyLabel<C extends HTMLElement>(name: string, control: C) {
   const label = element('label', 'field-label')
@@ -90,6 +90,107 @@ function inspector<T>(options: InspectorOptions<T>, read: () => T, focus: HTMLEl
   }
 }
 
+let pickers = 0
+type LinkMode = 'book' | 'chapters' | 'none'
+
+/**
+ * Chooses where a card applies: the whole work, one or more chapters, or no chapter. Chapters that
+ * are no longer in any edition stay chosen (and listed as unavailable) until the writer unticks them.
+ */
+export function chapterLinkPicker(value: StoryLink, change?: (link: StoryLink) => void) {
+  const id = `story-link-${++pickers}`
+  const box = element('fieldset', 'story-link-picker')
+  box.append(element('legend', 'story-link-legend', t('story.chapters')))
+  const modes = element('div', 'story-link-modes')
+  const radios = new Map<LinkMode, HTMLInputElement>()
+  for (const mode of ['book', 'chapters', 'none'] as const) {
+    const input = element('input')
+    input.type = 'radio'
+    input.name = id
+    input.value = mode
+    radios.set(mode, input)
+    const label = storyLabel(t(`story.link.${mode}`), input)
+    label.className = 'story-link-mode'
+    modes.append(label)
+  }
+  const list = element('div', 'story-link-chapters')
+  list.setAttribute('role', 'group')
+  list.setAttribute('aria-label', t('story.link.chapterList'))
+  box.append(modes, list)
+  let chosen = new Set(value.chapters.map(storyChapterKey))
+  let editions: Edition[] = []
+  let mode: LinkMode = value.wholeBook ? 'book' : value.chapters.length ? 'chapters' : 'none'
+
+  const read = (): StoryLink => mode === 'book' ? { wholeBook: true, chapters: [] }
+    : mode === 'chapters' ? { wholeBook: false, chapters: [...chosen].map((key) => { const [editionId, chapterId] = JSON.parse(key); return { editionId, chapterId } }) }
+      : { wholeBook: false, chapters: [] }
+
+  function paint() {
+    for (const [name, input] of radios) input.checked = name === mode
+    list.hidden = mode !== 'chapters'
+    const known = new Set<string>()
+    const rows: HTMLElement[] = []
+    for (const edition of editions) {
+      if (editions.length > 1) rows.push(element('p', 'story-link-edition', edition.name))
+      edition.chapters.forEach((chapter, index) => {
+        const key = storyChapterKey({ editionId: edition.id, chapterId: chapter.id })
+        known.add(key)
+        rows.push(check(key, t('story.chapterOption', [index + 1, chapter.title])))
+      })
+    }
+    for (const key of chosen) if (!known.has(key)) rows.push(check(key, t('story.chapterUnavailable')))
+    list.replaceChildren(...rows)
+  }
+
+  function check(key: string, name: string) {
+    const input = element('input')
+    input.type = 'checkbox'
+    input.value = key
+    input.checked = chosen.has(key)
+    input.onchange = () => {
+      if (input.checked) chosen.add(key)
+      else chosen.delete(key)
+      change?.(read())
+    }
+    const label = storyLabel(name, input)
+    label.className = 'story-link-chapter'
+    return label
+  }
+
+  for (const [name, input] of radios) input.onchange = () => {
+    if (!input.checked) return
+    mode = name
+    paint()
+    change?.(read())
+  }
+  paint()
+  return {
+    element: box,
+    read,
+    set(link: StoryLink) {
+      chosen = new Set(link.chapters.map(storyChapterKey))
+      mode = link.wholeBook ? 'book' : link.chapters.length ? 'chapters' : 'none'
+      paint()
+    },
+    refresh(next: Edition[]) {
+      editions = next
+      paint()
+    },
+  }
+}
+
+/** A short name for a link: 全书, the chapter names, or no chapter. */
+export function linkName(link: StoryLink, editions: Edition[]) {
+  if (link.wholeBook) return t('story.link.book')
+  if (!link.chapters.length) return t('story.link.none')
+  const names = link.chapters.map((ref) => {
+    const edition = editions.find(({ id }) => id === ref.editionId)
+    const index = edition?.chapters.findIndex(({ id }) => id === ref.chapterId) ?? -1
+    return edition && index >= 0 ? t('story.chapterOption', [index + 1, edition.chapters[index].title]) : t('story.chapterUnavailable')
+  })
+  return names.length > 2 ? t('story.link.many', [names.slice(0, 2).join(t('story.nameSeparator')), names.length]) : names.join(t('story.nameSeparator'))
+}
+
 export function cardInspector(options: InspectorOptions<StoryCardInput>, value = blankStoryCard(), template = false, manageTags?: () => void) {
   const name = storyInput(value.name)
   name.required = true
@@ -101,27 +202,24 @@ export function cardInspector(options: InspectorOptions<StoryCardInput>, value =
   const tagList = element('div', 'story-tag-choices')
   const fields = element('div', 'story-field-rows')
   const fieldInputs: { key: HTMLInputElement; value: HTMLTextAreaElement }[] = []
-  const chapters = element('div', 'story-chapter-rows')
   const states = element('div', 'story-chapter-rows')
-  const chapterRows: { field: HTMLSelectElement; text?: HTMLTextAreaElement }[] = []
+  const chapterRows: { field: HTMLSelectElement; text: HTMLTextAreaElement }[] = []
   let chapterGroups: HTMLOptGroupElement[] = []
   let chapterNames = new Set<string>()
 
+  const links = chapterLinkPicker(value, () => panel.changed())
   const panel = inspector(options, () => {
-    const linked: StoryCardInput['chapters'] = []
     const history: StoryCardInput['states'] = []
     for (const { field, text } of chapterRows) {
-      if (!field.value && text?.value.trim()) throw new Error(t('story.chapterUnavailable'))
-      if (!field.value) continue
+      if (!field.value && text.value.trim()) throw new Error(t('story.chapterUnavailable'))
+      if (!field.value || !text.value.trim()) continue
       const [editionId, chapterId]: [string, string] = JSON.parse(field.value)
-      if (text) {
-        if (text.value.trim()) history.push({ editionId, chapterId, text: text.value })
-      } else linked.push({ editionId, chapterId })
+      history.push({ editionId, chapterId, text: text.value })
     }
     const clean = name.value.trim()
     return {
       name: clean, aliases: uniqueAliases(clean, aliases.value.split(/\r?\n/)), tagIds: tags,
-      body: details.value, chapters: linked, states: history,
+      body: details.value, ...links.read(), states: history,
       fields: fieldInputs.map((row) => ({ key: row.key.value, value: row.value.value })).filter((row) => row.key || row.value),
     }
   }, name)
@@ -153,17 +251,16 @@ export function cardInspector(options: InspectorOptions<StoryCardInput>, value =
     field.value = chosen
   }
 
-  function appendChapter(parent: HTMLElement, isState: boolean, ref?: StoryChapter, value = '') {
+  function appendState(ref?: StoryChapter, value = '') {
     const row = element('div', 'story-field-row')
     const field = element('select', 'title-input')
-    field.setAttribute('aria-label', t(isState ? 'story.fromChapter' : 'story.linkedChapter'))
+    field.setAttribute('aria-label', t('story.fromChapter'))
     fillChapters(field, ref ? storyChapterKey(ref) : '')
-    const text = isState ? textarea(value, 2) : undefined
+    const text = textarea(value, 2)
     const item = { field, text }
     chapterRows.push(item)
-    row.append(field, removeRow(row, chapterRows, item, t(isState ? 'story.removeState' : 'story.removeChapter')))
-    if (text) row.append(storyLabel(t('story.stateText'), text))
-    parent.append(row)
+    row.append(field, removeRow(row, chapterRows, item, t('story.removeState')), storyLabel(t('story.stateText'), text))
+    states.append(row)
     return field
   }
 
@@ -180,14 +277,13 @@ export function cardInspector(options: InspectorOptions<StoryCardInput>, value =
   const fieldSection = element('section', 'story-inspector-section')
   fieldSection.append(element('h3', '', t('story.fields')), fields, addButton('story.addField', () => appendField()))
   for (const field of value.fields) appendField(field.key, field.value)
-  const links = element('section', 'story-inspector-section')
-  links.append(element('h3', '', t('story.chapters')), chapters, addButton('story.addChapter', () => appendChapter(chapters, false)))
+  const linkSection = element('section', 'story-inspector-section')
+  linkSection.append(links.element)
   const stateSection = element('details', 'story-inspector-section')
   stateSection.open = Boolean(value.states.length)
   stateSection.append(element('summary', '', t('story.states')), element('p', 'dialog-help', t('story.statesHelp')), states,
-    addButton('story.addState', () => appendChapter(states, true)))
-  for (const chapter of value.chapters) appendChapter(chapters, false, chapter)
-  for (const state of value.states) appendChapter(states, true, state, state.text)
+    addButton('story.addState', () => appendState()))
+  for (const state of value.states) appendState(state, state.text)
   if (template) {
     const choose = optionsList(t('story.template'), ['blank', 'character', 'location'], 'blank', 'story.template.')
     choose.onchange = () => {
@@ -199,7 +295,7 @@ export function cardInspector(options: InspectorOptions<StoryCardInput>, value =
     panel.body.append(storyLabel(t('story.template'), choose))
   }
   panel.body.append(storyLabel(t('story.name'), name), storyLabel(t('story.aliases'), aliases), tagSection,
-    fieldSection, storyLabel(t('story.body'), details), links, stateSection)
+    fieldSection, storyLabel(t('story.body'), details), linkSection, stateSection)
   let chapterSignature = ''
   let tagSignature = ''
   return {
@@ -220,6 +316,7 @@ export function cardInspector(options: InspectorOptions<StoryCardInput>, value =
           return group
         })
         for (const { field } of chapterRows) fillChapters(field, field.value)
+        links.refresh(editions)
       }
       const nextTags = JSON.stringify(available)
       if (nextTags !== tagSignature) {

@@ -8,16 +8,16 @@ import { fixedPage } from '../shell/fixed-page'
 import { restoreTrash } from '../trash'
 import { button, downloadFile, element, icon, notice } from '../ui'
 import type { IconName } from '../ui'
-import { cardInspector, storyInput, storyLabel } from './card-editor'
+import { cardInspector, chapterLinkPicker, linkName, storyInput, storyLabel } from './card-editor'
 import { storyCanvas, storyTools } from './canvas'
 import { cardDetails } from './canvas-overlays'
 import type { StoryTool } from './canvas'
-import { watchStoryChanges } from './changes'
+import { watchEditorChapter, watchStoryChanges } from './changes'
 import { storyImage } from './export-image'
 import { bounds, center, freeBend, overlaps, selectedNodes } from './geometry'
 import { StorySceneError, blankStoryCard, cardInput, defaultStoryColor, emptyStoryBoard, isNodeEnd, matchesStoryCard, maxStoryName, storyCards, storyDirections, storyStrokes } from './model'
-import type { Point, Rect, StoryCardInput, StoryChapter, StoryEdge, StoryNode, StoryProblem, StoryScene, StoryTag } from './model'
-import { parseStoryRoute } from './route'
+import type { Point, Rect, StoryCardInput, StoryChapter, StoryEdge, StoryLink, StoryNode, StoryProblem, StoryScene, StoryTag } from './model'
+import { parseStoryRoute, storyRoute } from './route'
 import { copyStorySelection, parallelBends, pasteStorySelection, remainingStoryEdges } from './selection'
 import { readStorySettings, saveStoryScene, saveStoryView } from './store'
 import './window.css'
@@ -174,16 +174,82 @@ function mount(route: NonNullable<typeof work>) {
     return box
   }
 
-  // ——— Top left: menu, work title and the chapter new cards link to ———
+  // ——— Top left: menu and the work's name, followed by the selected card's name ———
   const menuIsland = island('story-menu-island')
   const menuButton = action('menu', 'menu', () => toggleMenu())
   menuButton.setAttribute('aria-haspopup', 'menu')
   menuButton.setAttribute('aria-expanded', 'false')
-  const title = element('p', 'story-work-title')
-  const context = element('p', 'story-chapter-context')
-  const titleBlock = element('div', 'story-title-block')
-  titleBlock.append(title, context)
+  const title = element('span', 'story-work-title')
+  const selectedName = element('span', 'story-selected-name')
+  // The name doubles as the way to the chapter new cards link to: hover it, or tap it on a phone.
+  const titleBlock = button('', 'story-title-block')
+  titleBlock.append(title, selectedName)
+  titleBlock.setAttribute('aria-expanded', 'false')
+  titleBlock.setAttribute('aria-controls', 'story-default-link')
+  titleBlock.title = t('story.defaultLinkHint')
   menuIsland.append(menuButton, titleBlock)
+
+  // ——— Where new cards link: the editor's chapter unless chosen here ———
+  let manualLink: StoryLink | undefined
+  const defaults = element('div', 'story-default-link story-canvas-control')
+  defaults.id = 'story-default-link'
+  defaults.hidden = true
+  const defaultSummary = button('', 'story-default-summary')
+  defaultSummary.setAttribute('aria-expanded', 'false')
+  const defaultText = element('span', 'story-default-text')
+  const defaultNote = element('small', 'story-default-note')
+  defaultSummary.append(defaultText, defaultNote)
+  const defaultChooser = element('div', 'story-default-chooser')
+  defaultChooser.hidden = true
+  const defaultPicker = chapterLinkPicker({ wholeBook: false, chapters: [] }, (link) => { manualLink = link; paintDefaults(false) })
+  const follow = button(t('story.link.follow'), 'button button-small button-quiet story-default-follow')
+  follow.onclick = () => { manualLink = undefined; paintDefaults() }
+  defaultChooser.append(defaultPicker.element, follow)
+  defaults.append(defaultSummary, defaultChooser)
+  defaultSummary.onclick = () => {
+    defaultChooser.hidden = !defaultChooser.hidden
+    defaultSummary.setAttribute('aria-expanded', String(!defaultChooser.hidden))
+    if (!defaultChooser.hidden) defaultChooser.querySelector<HTMLInputElement>('input:checked')?.focus({ preventScroll: true })
+    revealed = ''
+    revealSelection()
+  }
+  let defaultsTimer = 0
+  let pinned = false
+  function showDefaults(pin: boolean) {
+    if (!snapshot?.book) return
+    clearTimeout(defaultsTimer)
+    pinned ||= pin
+    if (!defaults.hidden) return
+    closeMenu()
+    paintDefaults()
+    defaults.hidden = false
+    titleBlock.setAttribute('aria-expanded', 'true')
+  }
+  function hideDefaults() {
+    clearTimeout(defaultsTimer)
+    pinned = false
+    defaults.hidden = true
+    defaultChooser.hidden = true
+    defaultSummary.setAttribute('aria-expanded', 'false')
+    titleBlock.setAttribute('aria-expanded', 'false')
+  }
+  titleBlock.onclick = () => {
+    if (!defaults.hidden && pinned) hideDefaults()
+    else showDefaults(true)
+  }
+  // Hover shows it on a computer; it stays while the pointer or focus is inside.
+  for (const item of [menuIsland, defaults]) {
+    item.addEventListener('pointerenter', (event) => { if (event.pointerType === 'mouse') showDefaults(false) })
+    item.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'mouse' || pinned) return
+      clearTimeout(defaultsTimer)
+      defaultsTimer = window.setTimeout(() => { if (!defaults.contains(document.activeElement) && !pinned) hideDefaults() }, 250)
+    })
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (!defaults.hidden && event.target instanceof Node && !defaults.contains(event.target) && !menuIsland.contains(event.target)) hideDefaults()
+  }, { signal })
+
   const menu = element('div', 'story-menu story-canvas-control')
   menu.setAttribute('role', 'menu')
   menu.setAttribute('aria-label', t('story.menu'))
@@ -196,7 +262,7 @@ function mount(route: NonNullable<typeof work>) {
   }
   menu.append(
     menuItem('find', 'search', () => sidebarTo('find')), menuItem('tags', 'list', () => sidebarTo('tags')),
-    menuItem('trash', 'trash', () => sidebarTo('trash')), element('hr'),
+    menuItem('trash', 'trash', () => sidebarTo('trash')), menuItem('newWindow', 'window', () => openNewWindow()), element('hr'),
     menuItem('exportImage', 'image', () => exportImage()), menuItem('exportProject', 'download', () => {
       if (snapshot?.book) showProjectExport({ library: scope.library, id: scope.bookId }, snapshot.book.title)
     }), element('hr'),
@@ -207,6 +273,7 @@ function mount(route: NonNullable<typeof work>) {
     menuButton.setAttribute('aria-expanded', String(open))
     if (open) {
       sidebarTo()
+      hideDefaults()
       revealed = ''
       revealSelection()
       for (const item of menu.querySelectorAll<HTMLButtonElement>('button')) item.disabled = !snapshot?.book
@@ -354,7 +421,7 @@ function mount(route: NonNullable<typeof work>) {
     if (file) void addImage(file, file.name, imagePoint).catch(report)
   }
 
-  stage.append(canvas.surface, menuIsland, menu, toolbar, modes, viewIsland, props, left, right, message)
+  stage.append(canvas.surface, menuIsland, defaults, menu, toolbar, modes, viewIsland, props, left, right, message)
   main.append(stage, imageFile)
   main.classList.toggle('story-no-grid', !grid)
   ready = true
@@ -371,12 +438,26 @@ function mount(route: NonNullable<typeof work>) {
     return edition?.chapters.some(({ id }) => id === chapter?.chapterId) ? chapter : undefined
   }
 
-  function paintContext() {
+  /** The link new cards get: chosen here, or else the chapter open in the editor. */
+  function defaultLink(): StoryLink {
+    if (manualLink) return manualLink
     const active = activeChapter()
-    const edition = snapshot?.editions.find(({ id }) => id === active?.editionId)
-    const entry = edition?.chapters.find(({ id }) => id === active?.chapterId)
-    context.textContent = entry ? t('story.defaultChapter', [entry.title]) : ''
-    context.hidden = !entry
+    return { wholeBook: false, chapters: active ? [active] : [] }
+  }
+
+  function paintDefaults(resetPicker = true) {
+    const link = defaultLink()
+    defaultText.textContent = t('story.defaultLink', [linkName(link, snapshot?.editions ?? [])])
+    defaultNote.textContent = manualLink ? t('story.link.chosen') : t('story.link.following')
+    follow.hidden = !manualLink
+    defaultPicker.refresh(snapshot?.editions ?? [])
+    if (resetPicker) defaultPicker.set(link)
+  }
+
+  function paintTitle() {
+    const [only] = selection.size === 1 ? selection : []
+    const card = board.scene.nodes.find((node) => node.id === only && node.kind === 'card')
+    selectedName.textContent = card?.kind === 'card' ? `${t('story.titleSeparator')}${card.name}` : ''
   }
 
   function routeChanged(hash: string) {
@@ -384,8 +465,22 @@ function mount(route: NonNullable<typeof work>) {
     if (!next || next.library !== scope.library || next.bookId !== scope.bookId) return
     chapter = next.chapter
     history.replaceState(null, '', hash)
-    paintContext()
+    paintDefaults()
   }
+
+  /** Another window on the same work, with its own view. */
+  function openNewWindow() {
+    const hash = location.hash
+    if (window.newWorldDesktop?.newStoryWindow) void window.newWorldDesktop.newStoryWindow(hash).catch(report)
+    else window.open(new URL(hash, location.href), '_blank')
+  }
+
+  // The editor announces each chapter it opens, so new cards follow it unless chosen here.
+  watchEditorChapter(scope, (next) => {
+    chapter = next
+    history.replaceState(null, '', storyRoute(scope, next))
+    paintDefaults()
+  }, signal)
   window.newWorldDesktop?.onStoryContext?.(routeChanged)
   window.addEventListener('hashchange', () => routeChanged(location.hash), { signal })
 
@@ -438,7 +533,7 @@ function mount(route: NonNullable<typeof work>) {
     requestAnimationFrame(() => {
       const target = canvas.selectionRect()
       if (!target || canvas.editing()) return
-      const covers = [props, right, left, menu].filter((item) => !item.hidden).map(rectOf).filter((item) => overlaps(item, target))
+      const covers = [props, right, left, menu, defaults].filter((item) => !item.hidden).map(rectOf).filter((item) => overlaps(item, target))
       if (!covers.length) return
       const cover = bounds(covers)!
       const room = { x: stage.clientWidth, y: stage.clientHeight }
@@ -503,6 +598,7 @@ function mount(route: NonNullable<typeof work>) {
   }
 
   function paintProps() {
+    paintTitle()
     const ids = [...selection]
     const nodes = board.scene.nodes.filter(({ id }) => selection.has(id))
     const edges = board.scene.edges.filter(({ id }) => selection.has(id))
@@ -691,7 +787,7 @@ function mount(route: NonNullable<typeof work>) {
   function createCard(rect: Rect, name: string) {
     if (!editable()) return
     const id = crypto.randomUUID()
-    void commit(replaceNode({ ...rect, kind: 'card', id, ...blankStoryCard(activeChapter()), name }))
+    void commit(replaceNode({ ...rect, kind: 'card', id, ...blankStoryCard(defaultLink()), name }))
     canvas.select([id])
   }
 
@@ -862,6 +958,7 @@ function mount(route: NonNullable<typeof work>) {
     if (event.key === 'Escape') {
       if (!menu.hidden) { closeMenu(); menuButton.focus(); event.preventDefault(); return }
       if (!modes.hidden) { closeModes(); selectButton.focus(); event.preventDefault(); return }
+      if (!defaults.hidden) { hideDefaults(); titleBlock.focus(); event.preventDefault(); return }
       if (canvas.dismiss()) { event.preventDefault(); return }
       if (textControl(event.target) && !right.contains(event.target as Node) && !left.contains(event.target as Node)) return
       if (panel) closePanel()
@@ -1031,7 +1128,7 @@ function mount(route: NonNullable<typeof work>) {
       if (writing) { refreshPending = true; return }
       snapshot = next
       title.textContent = next.book?.title ?? ''
-      paintContext()
+      paintDefaults()
       document.title = next.book ? t('story.windowTitle', [next.book.title]) : t('story.title')
       if (!next.book) {
         board = saved = emptyStoryBoard(scope)

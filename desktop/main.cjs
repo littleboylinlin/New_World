@@ -99,7 +99,7 @@ function trustedAppRenderer(event) {
 
 function trustedSecondaryRenderer(event) {
   return isTrustedSecondaryRenderer(event, appUrl, readingWindows)
-    || isTrustedSecondaryRenderer(event, appUrl, storyWindows.values())
+    || isTrustedSecondaryRenderer(event, appUrl, allStoryWindows())
 }
 
 function rejectPendingAiDispatches(reason) {
@@ -508,7 +508,7 @@ ipcMain.handle('new-world:project-open', async (event) => {
 })
 ipcMain.handle('new-world:project-save', async (event, name, bytes) => {
   // The story settings window of a work can export that work too.
-  const storyWindow = isTrustedSecondaryRenderer(event, appUrl, storyWindows.values()) ? BrowserWindow.fromWebContents(event.sender) : null
+  const storyWindow = isTrustedSecondaryRenderer(event, appUrl, allStoryWindows()) ? BrowserWindow.fromWebContents(event.sender) : null
   if ((!trustedMainRenderer(event) && !storyWindow) || typeof name !== 'string' || name.length > 255
     || !(bytes instanceof Uint8Array) || bytes.byteLength > projectFiles.maxBytes) throw new Error('Invalid project export')
   const filename = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'New_World.newworld'
@@ -625,20 +625,12 @@ function trayMenu() {
   }))
 }
 
-// Keep one independent window per work, in the library's existing profile and origin.
+// Independent windows on a work, in the library's existing profile and origin. A work can have several;
+// each list is ordered by last use, so the editor brings back the one used most recently.
 const storyWindows = new Map()
-ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
-  if (!trustedMainRenderer(event) || !isStorySettingsRoute(hash)) throw new Error(t('main.invalidSettingsRequest'))
-  const key = hash.split('?')[0]
-  const existing = storyWindows.get(key)
-  if (existing && !existing.isDestroyed()) {
-    if (existing.isMinimized()) existing.restore()
-    const update = () => { if (!existing.isDestroyed()) existing.webContents.send('new-world:story-context', hash) }
-    if (existing.webContents.isLoadingMainFrame()) existing.webContents.once('did-finish-load', update)
-    else update()
-    existing.focus()
-    return
-  }
+const allStoryWindows = () => [...storyWindows.values()].flat()
+
+async function createStoryWindow(key, hash) {
   const window = new BrowserWindow({
     width: 1060, height: 760, minWidth: 420, minHeight: 420, title: t('story.title'),
     backgroundColor: windowBackground(), icon: join(__dirname, 'icon.png'),
@@ -646,14 +638,50 @@ ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
   })
   if (process.platform !== 'darwin') window.setMenuBarVisibility(false)
   harden(window.webContents, window, false)
-  storyWindows.set(key, window)
-  window.on('closed', () => storyWindows.delete(key))
+  storyWindows.set(key, [...(storyWindows.get(key) ?? []), window])
+  window.on('focus', () => {
+    const list = (storyWindows.get(key) ?? []).filter((item) => item !== window)
+    storyWindows.set(key, [...list, window])
+  })
+  window.on('closed', () => {
+    const list = (storyWindows.get(key) ?? []).filter((item) => item !== window)
+    if (list.length) storyWindows.set(key, list)
+    else storyWindows.delete(key)
+  })
   try {
     await window.loadURL(`${appUrl}${hash}`)
   } catch (error) {
     if (!window.isDestroyed()) window.destroy()
     throw error
   }
+}
+
+ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
+  if (!trustedMainRenderer(event) || !isStorySettingsRoute(hash)) throw new Error(t('main.invalidSettingsRequest'))
+  const key = hash.split('?')[0]
+  const open = (storyWindows.get(key) ?? []).filter((window) => !window.isDestroyed())
+  const existing = open.at(-1)
+  if (existing) {
+    // Every window on the work learns the editor's chapter; the one used last comes to the front.
+    for (const window of open) {
+      const update = () => { if (!window.isDestroyed()) window.webContents.send('new-world:story-context', hash) }
+      if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', update)
+      else update()
+    }
+    if (existing.isMinimized()) existing.restore()
+    existing.focus()
+    return
+  }
+  await createStoryWindow(key, hash)
+})
+
+ipcMain.handle('new-world:new-story-window', async (event, hash) => {
+  const sender = BrowserWindow.fromWebContents(event.sender)
+  const key = typeof hash === 'string' ? hash.split('?')[0] : ''
+  if (!isTrustedSecondaryRenderer(event, appUrl, allStoryWindows()) || !isStorySettingsRoute(hash) || !(storyWindows.get(key) ?? []).includes(sender)) {
+    throw new Error(t('main.invalidSettingsRequest'))
+  }
+  await createStoryWindow(key, hash)
 })
 
 ipcMain.handle('new-world:capture-state', (event) => {
@@ -810,7 +838,7 @@ function openWindow(visible = true, intro = false) {
     // A hidden quick note window must not keep the app running once the main window is gone.
     if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
     for (const reading of readingWindows) if (!reading.isDestroyed()) reading.destroy()
-    for (const window of storyWindows.values()) if (!window.isDestroyed()) window.destroy()
+    for (const window of allStoryWindows()) if (!window.isDestroyed()) window.destroy()
     void webPanes.closeAll()
   })
   contents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {

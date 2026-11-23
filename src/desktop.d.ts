@@ -107,6 +107,8 @@ interface Window {
     /** Opens a separate window that shows one reading route (#/compare/…) and nothing else. */
     openReadingWindow?: (hash: string) => Promise<void>
     openStorySettings?: (hash: string) => Promise<void>
+    /** Opens one more window on the same work, from a story settings window. */
+    newStoryWindow?: (hash: string) => Promise<void>
     onStoryContext?: (listener: (hash: string) => void) => void
     /** Private web panes (main window only); see desktop/web-pane.cjs. */
     web?: (action: WebPaneAction, id: string, ...args: unknown[]) => Promise<any>

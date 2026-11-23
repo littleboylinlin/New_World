@@ -15,9 +15,10 @@ import { fixedPage } from '../shell/fixed-page'
 import { closeAllPopovers, menuButton } from '../shell/popover'
 import type { ShellMenuItem } from '../shell/popover'
 import { priorityToolbar } from '../shell/toolbar'
-import { watchStoryChanges } from '../story-settings/changes'
+import { announceEditorChapter, watchStoryChanges } from '../story-settings/changes'
 import { openStorySettings } from '../story-settings/route'
 import { listStoryCards } from '../story-settings/store'
+import { storyCardApplies } from '../story-settings/model'
 import type { StoryCard } from '../story-settings/model'
 import { createTabs, createWorkbench } from '../shell/workbench'
 import { showExportDialog } from './export-view'
@@ -761,7 +762,8 @@ export async function renderEdition(
   // focus or a pane beside the text loading: a rebuild would pull the entry out from under a press,
   // a drag or an open menu.
   function paintStoryLinks() {
-    const linked = storyCards.filter((card) => card.chapters.some((ref) => ref.editionId === edition.id && ref.chapterId === chapter.id))
+    // Cards for the whole work count in every chapter.
+    const linked = storyCards.filter((card) => storyCardApplies(card, { editionId: edition.id, chapterId: chapter.id }))
     // The badge counts the cards linked to the open chapter, and is hidden when there are none.
     storyCount.textContent = linked.length ? String(linked.length) : ''
     const names = linked.slice(0, 5).map((card) => card.name)
@@ -847,6 +849,7 @@ export async function renderEdition(
     paper.replaceChildren()
     chapter = next
     paintStoryLinks()
+    announceEditorChapter(storyWork, { editionId: edition.id, chapterId: chapter.id })
     // The comparison list marks the chapter being edited; the tasks put this chapter's first.
     splitEditor.refreshPanel()
     sideTasks.repaint()
@@ -1054,6 +1057,7 @@ export async function renderEdition(
   watchStoryChanges(storyWork, () => { void refreshStoryLinks() }, signal)
   window.addEventListener('focus', () => { void refreshStoryLinks() }, { signal })
   void refreshStoryLinks()
+  announceEditorChapter(storyWork, { editionId: edition.id, chapterId: chapter.id })
 
   // ——— Chapter actions ———
   function renameChapter(id: string) {

@@ -249,11 +249,66 @@
 .story-island .button { min-height: 34px; border-color: transparent; background: transparent; }
 .story-island .button:disabled { background: transparent; }
 .story-square { padding-inline: 7px; min-width: 34px; }
-.story-menu-island { top: var(--island-gap); left: var(--island-gap); max-width: calc(50% - 230px); gap: 6px; padding-inline-end: 12px; }
-.story-title-block { display: grid; min-width: 0; line-height: 1.25; }
-.story-work-title, .story-chapter-context { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
-.story-work-title { font-size: .86rem; font-weight: 800; }
-.story-chapter-context { color: var(--muted); font-size: .74rem; }
+.story-menu-island { top: var(--island-gap); left: var(--island-gap); max-width: calc(50% - 230px); gap: 4px; padding-inline-end: 4px; }
+.story-title-block {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ink);
+  background: none;
+  font: inherit;
+  line-height: 1.25;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.story-title-block:is(:hover, :focus-visible, [aria-expanded="true"]) { background: var(--tint); }
+.story-work-title, .story-selected-name { overflow: hidden; min-width: 0; text-overflow: ellipsis; line-height: 1.3; }
+.story-work-title { flex: 0 1 auto; font-size: .9rem; font-weight: 800; }
+.story-selected-name { flex: 0 10 auto; color: var(--muted); font-size: .86rem; font-weight: 600; }
+.story-default-link {
+  position: absolute;
+  z-index: 6;
+  top: 62px;
+  left: var(--island-gap);
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  max-width: min(320px, calc(100% - 24px));
+  padding: 5px;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--island-radius);
+  background: var(--surface-card);
+  box-shadow: var(--island-shadow);
+}
+.story-default-summary {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: none;
+  font: inherit;
+  font-size: .86rem;
+  text-align: start;
+  cursor: pointer;
+}
+.story-default-summary:is(:hover, :focus-visible, [aria-expanded="true"]) { background: var(--tint); }
+.story-default-note { color: var(--muted); font-size: .74rem; }
+.story-default-chooser { display: grid; gap: 6px; padding: 2px 6px 6px; }
+.story-default-follow { justify-self: start; }
+.story-link-picker { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.story-link-legend { padding: 0; font-size: .88rem; font-weight: 720; }
+.story-link-modes { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.story-link-mode, .story-link-chapter { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 6px; font-size: .84rem; }
+.story-link-mode input, .story-link-chapter input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.story-link-chapters { display: grid; gap: 2px; max-height: 220px; overflow: auto; padding: 6px 8px; border: 1px solid var(--surface-line); border-radius: 8px; background: var(--field); }
+.story-link-edition { margin-top: 4px; color: var(--muted); font-size: .74rem; font-weight: 700; }
 .story-toolbar { top: var(--island-gap); left: 50%; transform: translateX(-50%); flex-wrap: nowrap; }
 .story-tool {
   position: relative;
@@ -474,9 +529,13 @@
   .story-sidebar { top: 60px; left: 8px; right: 8px; bottom: 70px; width: auto; }
   .story-inspector { inset: 8px; width: auto; min-width: 0; }
   .story-menu { top: 60px; left: 8px; }
+  .story-default-link { top: 60px; left: 8px; }
 }
 @media (any-pointer: coarse) {
   .story-island .button, .story-props .button, .story-menu-item { min-width: 44px; min-height: 44px; }
+  .story-title-block, .story-default-summary { min-height: 44px; }
+  .story-link-mode, .story-link-chapter { min-height: 36px; }
+  .story-link-mode input, .story-link-chapter input { width: 20px; height: 20px; }
   .story-canvas-handle { width: 44px; height: 44px; }
   :is(.story-port, .story-end-handle)::after { inset: calc(50% - 8px); }
   .story-swatch { width: 30px; height: 30px; }

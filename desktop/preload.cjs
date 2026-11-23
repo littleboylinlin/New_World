@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   setRecentWorks: (works) => ipcRenderer.invoke('new-world:set-recent-works', works),
   openReadingWindow: (hash) => ipcRenderer.invoke('new-world:open-reading-window', hash),
   openStorySettings: (hash) => ipcRenderer.invoke('new-world:open-story-settings', hash),
+  newStoryWindow: (hash) => ipcRenderer.invoke('new-world:new-story-window', hash),
   onStoryContext: (listener) => {
     onStoryContext = listener
     if (storyHash) listener(storyHash)

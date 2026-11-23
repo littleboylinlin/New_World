@@ -15,9 +15,15 @@ export interface StoryCardInput {
   tagIds: string[]
   fields: { key: string; value: string }[]
   body: string
+  /** The card holds for the whole work, in every chapter; `chapters` is then empty. */
+  wholeBook: boolean
+  /** The chapters the card is linked to, when it is not for the whole work. Empty means no link. */
   chapters: StoryChapter[]
   states: StoryState[]
 }
+
+/** Where a card applies: the whole work, some chapters, or (no chapters, not whole) nowhere in particular. */
+export interface StoryLink { wholeBook: boolean; chapters: StoryChapter[] }
 
 interface StoryItem extends Rect { id: string }
 export interface StoryCard extends StoryItem, StoryCardInput { kind: 'card' }
@@ -78,12 +84,17 @@ export function emptyStoryBoard(work: StoryWork): StoryBoard {
   return { ...work, scene: { tags: [], nodes: [], edges: [] }, view: { x: 0, y: 0, zoom: 1 }, revision: '' }
 }
 
-export function blankStoryCard(chapter?: StoryChapter): StoryCardInput {
-  return { name: '', aliases: [], tagIds: [], fields: [], body: '', chapters: chapter ? [chapter] : [], states: [] }
+export function blankStoryCard(link: StoryLink = { wholeBook: false, chapters: [] }): StoryCardInput {
+  return { name: '', aliases: [], tagIds: [], fields: [], body: '', wholeBook: link.wholeBook, chapters: link.wholeBook ? [] : [...link.chapters], states: [] }
 }
 
-export function cardInput({ name, aliases, tagIds, fields, body, chapters, states }: StoryCard): StoryCardInput {
-  return { name, aliases, tagIds, fields, body, chapters, states }
+export function cardInput({ name, aliases, tagIds, fields, body, wholeBook, chapters, states }: StoryCard): StoryCardInput {
+  return { name, aliases, tagIds, fields, body, wholeBook, chapters, states }
+}
+
+/** Whether a card is in effect in a chapter: a whole-work card is in effect everywhere. */
+export function storyCardApplies(card: Pick<StoryCardInput, 'wholeBook' | 'chapters'>, chapter: StoryChapter) {
+  return card.wholeBook || card.chapters.some((ref) => ref.editionId === chapter.editionId && ref.chapterId === chapter.chapterId)
 }
 
 export function storyCards(scene: StoryScene) {
@@ -156,7 +167,8 @@ export function isStoryCard(value: unknown): value is StoryCard {
   if (!plain(value)) return false
   const { name, aliases } = value
   return value.kind === 'card' && validRect(value) && line(value.id)
-    && keys(value, [...geometry, 'name', 'aliases', 'tagIds', 'fields', 'body', 'chapters', 'states'])
+    && keys(value, [...geometry, 'name', 'aliases', 'tagIds', 'fields', 'body', 'wholeBook', 'chapters', 'states'])
+    && typeof value.wholeBook === 'boolean' && !(value.wholeBook && Array.isArray(value.chapters) && value.chapters.length)
     && line(name) && uniqueList<string>(aliases, line, normalized)
     && !aliases.some((alias) => normalized(alias) === normalized(name))
     && uniqueList<string>(value.tagIds, line, (tag) => tag)
@@ -271,6 +283,8 @@ function cardProblem(value: Record<string, unknown>, tags: ReadonlySet<string>):
   if (!listOf(value.fields)?.every((field) => plain(field) && keys(field, ['key', 'value']) && text(field.key) && text(field.value)) || !text(value.body)) {
     return { kind: 'fields', id, name }
   }
+  // A whole-work card names no chapters; without a chapter the message speaks of an invalid link.
+  if (typeof value.wholeBook !== 'boolean' || (value.wholeBook && listOf(value.chapters)?.length)) return { kind: 'chapter', id, name }
   for (const state of [false, true]) {
     const refs = listOf(state ? value.states : value.chapters)
     const seen = new Set<string>()
@@ -377,7 +391,8 @@ function repairCard(value: Record<string, unknown>, tags: ReadonlySet<string>, u
     fields: (listOf(value.fields) ?? []).flatMap((field) => plain(field) && (text(field.key) || text(field.value))
       ? [{ key: text(field.key) ? field.key : '', value: text(field.value) ? field.value : '' }] : []),
     body: text(value.body) ? value.body : '',
-    chapters: repairChapters(value.chapters, false), states: repairChapters(value.states, true) as StoryState[],
+    wholeBook: value.wholeBook === true, chapters: value.wholeBook === true ? [] : repairChapters(value.chapters, false),
+    states: repairChapters(value.states, true) as StoryState[],
   }
 }
 
