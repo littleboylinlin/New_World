@@ -110,4 +110,9 @@ test('保存失败时说明具体原因，并选中出问题的卡片', async ({
   await expect(panel.getByRole('status')).toHaveText(reason)
   await expect(storyCard(story, '周行')).toHaveAttribute('aria-pressed', 'true')
   expect((await boardState(story)).scene.nodes[0].chapters).toHaveLength(1)
+  // The refused change is rolled back; the next one saves as usual.
+  await action(panel, '关闭编辑面板').click()
+  await newCard(story, '旅客', { x: 200, y: 520 })
+  await expect.poll(async () => (await boardState(story)).scene.nodes.map(({ name }) => name)).toEqual(['周行', '旅客'])
+  await expect(story.getByRole('alert')).toBeHidden()
 })

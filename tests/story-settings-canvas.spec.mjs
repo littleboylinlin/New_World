@@ -381,3 +381,43 @@ test('缩放到 50% 时线宽、箭头和关系名仍然够大 @webkit', async (
   await story.mouse.click(middle.x + 30, middle.y + 6)
   await expect(story.locator('[data-edge-id="link"]')).toHaveClass(/selected/)
 })
+
+test('保存较慢时连续操作不会丢：连画箭头、马上写关系名、拖动和撤销都按顺序保存 @webkit', async ({ page }) => {
+  const story = await board(page, { nodes: [keeper, captain, harbor] })
+  // Every save reports back 600 ms late, as on a slow phone.
+  await story.evaluate(() => {
+    const own = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete')
+    Object.defineProperty(IDBTransaction.prototype, 'oncomplete', {
+      get() { return own.get.call(this) },
+      set(fn) {
+        const slow = fn && this.mode === 'readwrite' && [...this.objectStoreNames].includes('storyBoards')
+        own.set.call(this, slow ? (event) => setTimeout(() => fn.call(this, event), 600) : fn)
+      },
+    })
+  })
+  await canvas(story).press('a')
+  await canvas(story).press('q')
+  await drag(story, await center(story, keeper), await center(story, captain), { steps: 3 })
+  await drag(story, await center(story, captain), await center(story, harbor), { steps: 3 })
+  await drag(story, await center(story, harbor), await center(story, keeper), { steps: 3 })
+  // All three show at once, before any save has finished.
+  await expect(story.locator('.story-edge')).toHaveCount(3)
+  await canvas(story).press('q')
+  await canvas(story).press('v')
+  const [first] = await story.locator('.story-edge').evaluateAll((items) => items.map((item) => item.dataset.edgeId))
+  await story.mouse.dblclick(...Object.values(await edgeMiddle(story, first)))
+  await inlineField(story, '关系名称').fill('师徒')
+  await inlineField(story, '关系名称').press('Enter')
+  const from = await center(story, harbor)
+  await story.keyboard.down('Control')
+  await drag(story, from, { x: from.x + 60, y: from.y + 30 })
+  await story.keyboard.up('Control')
+  await expect.poll(async () => {
+    const { scene } = await boardState(story)
+    return [scene.edges.length, scene.edges.find(({ id }) => id === first)?.name, scene.nodes[2].x]
+  }, { timeout: 10_000 }).toEqual([3, '师徒', harbor.x + 60])
+  // Undo waits for the saves, then takes back the latest change.
+  await story.keyboard.press('Control+z')
+  await expect.poll(async () => (await boardState(story)).scene.nodes[2].x, { timeout: 10_000 }).toBe(harbor.x)
+  expect((await boardState(story)).scene.edges).toHaveLength(3)
+})

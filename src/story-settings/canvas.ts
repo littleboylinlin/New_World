@@ -383,12 +383,34 @@ export function storyCanvas(options: CanvasOptions) {
     paintControls()
   }
 
+  /** Whether every object an ongoing gesture works on is still on the board. */
+  function dragAlive(alive: ReadonlySet<string>) {
+    if (!drag) return true
+    if (drag.kind === 'move') return drag.nodes.every(({ id }) => alive.has(id)) && drag.edges.every(({ id }) => alive.has(id))
+    if (drag.kind === 'size') return alive.has(drag.node.id)
+    if (drag.kind === 'end' || drag.kind === 'bend') return alive.has(drag.edge.id)
+    if (drag.kind === 'arrow') {
+      const from = drafts.get(draftId)?.from
+      return !from || !isNodeEnd(from) || alive.has(from.nodeId)
+    }
+    return true
+  }
+
+  /**
+   * Shows a new scene, e.g. after a save or a change in another window. A gesture or text field in
+   * progress carries on, unless what it works on is gone; a finished gesture's preview is dropped.
+   */
   function setScene(next: StoryScene) {
     hidePeek()
-    editor?.close()
-    editor = undefined
-    cancelDrag()
+    const alive = new Set([...next.nodes, ...next.edges].map(({ id }) => id))
+    if (editor?.id && !alive.has(editor.id)) { editor.close(); editor = undefined }
     scene = next
+    if (!drag) {
+      ghost.clear()
+      drafts.clear()
+      guides = []
+      bindTarget = undefined
+    } else if (!dragAlive(alive)) cancelDrag()
     nodes.clear()
     groups.replaceChildren()
     nodesLayer.replaceChildren()
@@ -400,7 +422,9 @@ export function storyCanvas(options: CanvasOptions) {
     const ids = new Set([...scene.nodes, ...scene.edges].map(({ id }) => id))
     selection = new Set([...selection].filter((id) => ids.has(id)))
     options.select(selection)
+    if (drag?.kind === 'erase') for (const id of drag.ids) nodes.get(id)?.classList.add('story-erasing')
     paintGeometry()
+    if (drag?.kind === 'erase') for (const id of drag.ids) edgeGroups.get(id)?.classList.add('story-erasing')
     hint.hidden = Boolean(scene.nodes.length || scene.edges.length)
   }
 

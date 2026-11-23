@@ -61,6 +61,11 @@ function mount(route: NonNullable<typeof work>) {
   let snapshot: Snapshot | undefined
   let opened = false
   let writing = false
+  // Saves run one at a time; `saved` is the board as stored, `board` also holds changes still being saved.
+  let saved = board
+  let pending = 0
+  let generation = 0
+  let queue: Promise<void> = Promise.resolve()
   let refreshPending = false
   let turn = 0
   let selection: ReadonlySet<string> = new Set()
@@ -127,7 +132,7 @@ function mount(route: NonNullable<typeof work>) {
     })
   }
 
-  const editable = () => Boolean(snapshot?.book) && !writing
+  const editable = () => Boolean(snapshot?.book)
   // The canvas reports layout while it is being built, before the panels below exist.
   let ready = false
 
@@ -135,7 +140,10 @@ function mount(route: NonNullable<typeof work>) {
     select(next) { selection = next; paintControls(); paintProps(); revealSelection() },
     change: (scene, ids) => {
       if (!editable()) return Promise.resolve(false)
-      return commit(scene).then((saved) => { if (saved && ids) canvas.select(ids); return saved })
+      // The change shows at once, so it is selected at once; a refused save rolls the selection back with it.
+      const saving = commit(scene)
+      if (ids) canvas.select(ids)
+      return saving
     },
     createCard: (rect, name) => createCard(rect, name),
     openCard: (id) => edit(id),
@@ -521,27 +529,47 @@ function mount(route: NonNullable<typeof work>) {
     return { ...board.scene, nodes: nodes.some(({ id }) => id === node.id) ? nodes.map((current) => current.id === node.id ? node : current) : [...nodes, node] }
   }
 
-  async function write(next: StoryScene, add: TrashEntry[], remove: TrashEntry[], history?: () => void) {
-    if (writing || !snapshot?.book) return false
+  /**
+   * Shows a change at once and saves changes one after another, each on top of the last, so quick
+   * edits never wait for or overwrite each other. If a save is refused, the board goes back to the
+   * last saved state, the changes queued after it are dropped, and the reason is shown.
+   */
+  function write(next: StoryScene, add: TrashEntry[], remove: TrashEntry[], history?: () => void) {
+    if (!snapshot?.book) return Promise.resolve(false)
+    const turn = generation
+    board = { ...board, scene: next }
+    canvas.setScene(next)
+    pending++
     writing = true
     paintControls()
+    paintProps()
+    paintSidebar()
     report()
-    try {
-      board = await saveStoryScene(scope, board.revision, next, { add, remove })
-      history?.()
-      canvas.setScene(board.scene)
-      paintProps()
-      paintSidebar()
-      return true
-    } catch (error) {
-      report(error)
-      refreshPending = true
-      return false
-    } finally {
-      writing = false
-      paintControls()
-      if (refreshPending) { refreshPending = false; void refresh() }
-    }
+    const run = queue.then(async () => {
+      if (turn !== generation) return false
+      try {
+        saved = await saveStoryScene(scope, saved.revision, next, { add, remove })
+        board = { ...saved, scene: board.scene }
+        history?.()
+        return true
+      } catch (error) {
+        generation++
+        board = saved
+        canvas.setScene(saved.scene)
+        paintProps()
+        paintSidebar()
+        report(error)
+        refreshPending = true
+        return false
+      } finally {
+        pending--
+        writing = pending > 0
+        paintControls()
+        if (!writing && refreshPending) { refreshPending = false; void refresh() }
+      }
+    })
+    queue = run.then(() => undefined)
+    return run
   }
 
   function commit(next: StoryScene, trash: TrashEntry[] = []) {
@@ -554,6 +582,8 @@ function mount(route: NonNullable<typeof work>) {
 
   async function stepHistory(forward: boolean) {
     if (!finishPanel()) return
+    // Undo the latest change, including one still being saved.
+    await queue
     const entry = (forward ? redo : undo).at(-1)
     if (!entry) return
     if (await write(forward ? entry.after : entry.before, forward ? entry.trash : [], forward ? [] : entry.trash, () => {
@@ -603,11 +633,12 @@ function mount(route: NonNullable<typeof work>) {
   function createCard(rect: Rect, name: string) {
     if (!editable()) return
     const id = crypto.randomUUID()
-    void commit(replaceNode({ ...rect, kind: 'card', id, ...blankStoryCard(activeChapter()), name })).then((saved) => { if (saved) canvas.select([id]) })
+    void commit(replaceNode({ ...rect, kind: 'card', id, ...blankStoryCard(activeChapter()), name }))
+    canvas.select([id])
   }
 
   function edit(id: string, focus = true, force = false) {
-    if (!snapshot?.book || writing || (!force && !finishPanel())) return
+    if (!snapshot?.book || (!force && !finishPanel())) return
     const node = board.scene.nodes.find((item) => item.id === id)
     if (node?.kind !== 'card') return
     if (phone()) sidebarTo()
@@ -621,7 +652,8 @@ function mount(route: NonNullable<typeof work>) {
     if (!box || !editable()) return
     const id = crypto.randomUUID()
     const rect = { x: box.x - 25, y: box.y - 44, width: box.width + 50, height: box.height + 69 }
-    void commit({ ...board.scene, nodes: [{ ...rect, kind: 'group', id, name: t('story.group') }, ...board.scene.nodes] }).then((saved) => { if (saved) canvas.select([id]) })
+    void commit({ ...board.scene, nodes: [{ ...rect, kind: 'group', id, name: t('story.group') }, ...board.scene.nodes] })
+    canvas.select([id])
   }
 
   async function addImage(file: Blob, name: string, at?: Point) {
@@ -633,16 +665,17 @@ function mount(route: NonNullable<typeof work>) {
     const height = Math.round(Math.min(300, Math.max(65, 230 * image.naturalHeight / image.naturalWidth)))
     const point = at ? { x: Math.round(at.x - 115), y: Math.round(at.y - height / 2) } : spawn()
     const id = crypto.randomUUID()
-    if (await commit(replaceNode({ ...point, kind: 'image', src, name, id, width: 230, height }))) canvas.select([id])
+    void commit(replaceNode({ ...point, kind: 'image', src, name, id, width: 230, height }))
+    canvas.select([id])
   }
 
   function deleteSelection(ids = [...selection]) {
     if (!editable() || !ids.length) return
     const selected = new Set(ids)
     const cards = storyCards(board.scene).filter(({ id }) => selected.has(id))
-    const revision = board.revision
     const removeNow = async () => {
-      if (board.revision !== revision) throw new Error(t('story.conflict'))
+      // The board may have been saved meanwhile; only refuse if a card to delete has changed or gone.
+      if (cards.some((card) => JSON.stringify(board.scene.nodes.find(({ id }) => id === card.id)) !== JSON.stringify(card))) throw new Error(t('story.conflict'))
       const entries = cards.map((card) => {
         const entry = trashEntry('storyCard', scope.library, scope.bookId, card.name)
         entry.storyCard = card
@@ -686,9 +719,8 @@ function mount(route: NonNullable<typeof work>) {
   function insert(pasted: ReturnType<typeof pasteStorySelection>) {
     if (!pasted || (!pasted.nodes.length && !pasted.edges.length)) return
     const edges = spread(board.scene.edges, pasted.edges)
-    void commit({ nodes: [...board.scene.nodes, ...pasted.nodes], edges: [...board.scene.edges, ...edges], tags: pasted.tags }).then((saved) => {
-      if (saved) canvas.select([...pasted.nodes, ...edges].map(({ id }) => id))
-    })
+    void commit({ nodes: [...board.scene.nodes, ...pasted.nodes], edges: [...board.scene.edges, ...edges], tags: pasted.tags })
+    canvas.select([...pasted.nodes, ...edges].map(({ id }) => id))
   }
 
   function duplicate() {
@@ -724,7 +756,8 @@ function mount(route: NonNullable<typeof work>) {
     const pasted = pasteStorySelection(content, scope, board.scene, canvas.center())
     if (pasted) { insert(pasted); return }
     const id = crypto.randomUUID()
-    void commit(replaceNode({ ...spawn(), id, kind: 'text', width: 220, height: 104, text: content })).then((saved) => { if (saved) canvas.select([id]) })
+    void commit(replaceNode({ ...spawn(), id, kind: 'text', width: 220, height: 104, text: content }))
+    canvas.select([id])
   }
 
   function exportImage() {
@@ -942,7 +975,7 @@ function mount(route: NonNullable<typeof work>) {
       paintContext()
       document.title = next.book ? t('story.windowTitle', [next.book.title]) : t('story.title')
       if (!next.book) {
-        board = emptyStoryBoard(scope)
+        board = saved = emptyStoryBoard(scope)
         opened = false
         undo = redo = []
         closePanel()
@@ -953,7 +986,7 @@ function mount(route: NonNullable<typeof work>) {
           canvas.showView(next.board.view)
           zoom.textContent = `${Math.round(next.board.view.zoom * 100)}%`
         }
-        board = next.board
+        board = saved = next.board
         canvas.setScene(board.scene)
         undo = redo = []
         opened = true
