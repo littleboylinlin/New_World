@@ -6,11 +6,11 @@ const encoder = new TextEncoder()
 const sentences = new Intl.Segmenter(undefined, { granularity: 'sentence' })
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
-function conservativeTokens(text) {
+export function conservativeTokens(text) {
   return encoder.encode(text).length
 }
 
-function outputLimit(config) {
+export function outputLimit(config) {
   const body = config.extraBody
   switch (config.protocol) {
     case 'openai-chat':

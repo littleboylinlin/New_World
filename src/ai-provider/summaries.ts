@@ -1,6 +1,6 @@
 import { failureResult, invalid, ProviderFailure } from '../../shared/ai-provider/errors.mjs'
 import { chapterCacheKey, splitChapterText } from '../../shared/ai-provider/summary.mjs'
-import type { ChapterSummaryPlan, ProviderMethods, ResolvedProfile, Result, SplitRequest, SummaryApi } from '../../shared/ai-provider/types.mjs'
+import type { ChapterSummaryPlan, ProviderMethods, ResolvedProfile, Result, Route, SummaryApi } from '../../shared/ai-provider/types.mjs'
 import { localTransaction, summaryStore } from './local-db'
 
 const epochKey = 'epoch'
@@ -30,7 +30,7 @@ function findSummary(key: string): Promise<{ summary?: string; epoch: string }> 
 }
 
 export function createSummaryApi(resolveProfile: ProviderMethods['resolveProfile']): SummaryApi {
-  async function withProfile<T>(request: SplitRequest, action: (profile: ResolvedProfile) => T | Promise<T>): Promise<Result<T>> {
+  async function withProfile<T>(request: Route, action: (profile: ResolvedProfile) => T | Promise<T>): Promise<Result<T>> {
     try {
       const { feature, profileId, expectedProfileRevision } = request
       const resolved = await resolveProfile({ feature, profileId, expectedProfileRevision })
@@ -54,6 +54,21 @@ export function createSummaryApi(resolveProfile: ProviderMethods['resolveProfile
         route: { feature: request.feature, profileId: id, expectedProfileRevision: revision },
         chunks: splitChapterText(config, request),
       }
+    }),
+
+    readCachedBookSummaries: (request) => withProfile(request, async ({ config }) => {
+      const chapterKeys: string[] = []
+      for (const text of request.chapters) chapterKeys.push(await chapterCacheKey(config, text, request.chapterPromptVersion))
+      const bookKey = await chapterCacheKey(config, JSON.stringify([request.bookTitle, chapterKeys]), request.bookPromptVersion)
+      return withEpoch('readonly', (store, epoch, finish) => {
+        const chapters = chapterKeys.map((key) => store.get(key))
+        const book = store.get(bookKey)
+        book.onsuccess = () => finish({
+          chapters: chapters.map(({ result }) => result as string | undefined),
+          book: book.result,
+          bookCacheToken: `${bookKey}:${epoch}`,
+        })
+      })
     }),
 
     async saveChapterSummary(cacheToken, summary) {

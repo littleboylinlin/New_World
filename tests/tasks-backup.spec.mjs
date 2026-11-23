@@ -31,12 +31,13 @@ test('全库备份包含独立任务，旧备份恢复保留任务，新备份�
   const manifest = JSON.parse(
     Buffer.from(data.find(([name]) => name === 'new-world-backup.json')[1]).toString(),
   )
-  expect(manifest.version).toBe(4)
+  expect(manifest.version).toBe(5)
   expect(manifest.taskData.tasks.map((t) => t.title)).toEqual(['进入备份的任务'])
   const legacy = { ...manifest, version: 1 }
   delete legacy.taskData
   delete legacy.aiBaselines
   delete legacy.storyBoards
+  delete legacy.bookChats
   const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
   for (const [name, bytes] of data)
     await writer.add(

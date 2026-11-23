@@ -1,5 +1,8 @@
 import { t } from '../i18n'
 import { Editor } from '@tiptap/core'
+import { closeHistory } from '@tiptap/pm/history'
+import { Fragment, Slice } from '@tiptap/pm/model'
+import { TextSelection } from '@tiptap/pm/state'
 import { formDialog, nameField } from '../dialogs'
 import { libraryChanges, readBook, storageError } from '../library'
 import type { Book } from '../library'
@@ -23,11 +26,12 @@ import type { StoryCard } from '../story-settings/model'
 import { createTabs, createWorkbench } from '../shell/workbench'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
-import { countText, wordCount } from './model'
+import { chapterText, countText, wordCount } from './model'
 import type { ChapterInput, ChapterRecord, DocumentContent, Edition } from './model'
 import { checkDocument, documentExtensions } from './schema'
 import { countChapterRevisions, saveAssistSnapshot } from './revisions'
 import { aiAssist } from './ai-assist'
+import { mountAiChat } from './ai-chat'
 import { summarizeWeb } from './web-summary'
 import { AiSuggestions } from './ai-suggest'
 import { showRevisionsDialog } from './revisions-view'
@@ -443,7 +447,19 @@ export async function renderEdition(
   })
   right.insertBefore(bar.add({ id: 'compare', node: splitEditor.toggle, priority: 73, menu: () => [{ label: t('compare.drawer'), icon: 'compare', action: () => splitEditor.toggle.click() }] }), sideButton)
 
-  const tabs = createTabs(t('editor.sidePanel'), (id) => updateEditorPreferences({ sideTab: id }))
+  const chat = mountAiChat({
+    work: storyWork, source: bookContextSource, editing: () => editing, insert: insertChatAtCaret,
+    close: () => {
+      wb.end!.setOpen(false, true)
+      const trigger = sideButton.offsetParent ? sideButton : moreButton
+      trigger.focus({ preventScroll: true })
+    }, signal,
+  })
+  const tabs = createTabs(t('editor.sidePanel'), (id) => {
+    updateEditorPreferences({ sideTab: id })
+    if (id === 'chat') void chat.open()
+  })
+  tabs.element.classList.add('editor-side-tabs')
   const ideasPanel = element('section', 'ideas-panel')
   ideasPanel.setAttribute('aria-label', t('ideas.forWork'))
   const notesPanel = element('section', 'notes-panel')
@@ -498,6 +514,7 @@ export async function renderEdition(
   }
 
   const ideasTab = tabs.add({ id: 'ideas', label: t('editor.ideasAndTasks'), panel: ideasTasks })
+  tabs.add({ id: 'chat', label: t('aiChat.title'), panel: chat.panel })
   tabs.add({ id: 'notes', label: t('editor.notesTab'), panel: notesPanel })
   tabs.add({ id: 'compare', label: t('compare.tab'), panel: splitEditor.panel })
   // Private web pages are a desktop feature; the web version shows no 网页 tab at all.
@@ -562,13 +579,49 @@ export async function renderEdition(
     work: () => ({ library: edition.library, bookId: edition.bookId }),
     titles: () => ({ book: book.title, chapter: chapterInfo().title }),
     chapters: () => currentChapters(),
+    context: bookContextSource,
     signal,
-    beforeChange: async ({ action, profile }) => {
-      if (!await flush()) throw new Error(t('aiAssist.saveFirst'))
-      await saveAssistSnapshot({ edition, chapterId: chapter.id, profileName: profile.config.name, action: `assist.${action}` })
-      void refreshHistoryCount()
-    },
+    beforeChange: ({ action, profileName }) => beforeAiChange(`assist.${action}`, profileName, editor),
   })
+
+  function bookContextSource() {
+    if (editor.view.composing) throw new Error(t('editor.finishTheCurrentInputFirst'))
+    return {
+      edition, bookTitle: book.title, chapterId: chapter.id, chapterTitle: chapterInfo().title,
+      currentText: chapterText(editor.getJSON() as DocumentContent),
+    }
+  }
+
+  async function beforeAiChange(action: string, profileName: string, target: Editor) {
+    const version = edition
+    const chapterId = chapter.id
+    if (!await flush() || editor !== target || signal.aborted) throw new Error(t('aiAssist.saveFirst'))
+    const savedChange = change
+    await saveAssistSnapshot({ edition: version, chapterId, profileName, action })
+    if (editor !== target || change !== savedChange || signal.aborted) throw new Error(t('aiAssist.textChanged'))
+    void refreshHistoryCount()
+  }
+
+  async function insertChatAtCaret(text: string, profileName: string) {
+    const target = editor
+    if (!editing) return
+    await beforeAiChange('assist.chat', profileName, target)
+    if (!editing || target.view.composing) throw new Error(t('aiAssist.saveFirst'))
+    const { state } = target
+    const at = TextSelection.near(state.doc.resolve(state.selection.to), -1).head
+    const lines = text.replace(/\r\n?/g, '\n').split('\n')
+    const transaction = state.tr
+    if (lines.length === 1) transaction.insertText(lines[0], at)
+    else {
+      const paragraphs = lines.map((line) => state.schema.nodes.paragraph.create(null, line ? state.schema.text(line) : undefined))
+      transaction.replaceRange(at, at, new Slice(Fragment.fromArray(paragraphs), 1, 1))
+    }
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(transaction.mapping.map(at))))
+    target.view.dispatch(closeHistory(transaction.scrollIntoView()))
+    target.view.dispatch(closeHistory(target.state.tr))
+    if (wb.end!.mode() === 'overlay') wb.end!.setOpen(false, true)
+    target.view.focus()
+  }
   /** The menu's entries first put the selection tools away. */
   const assistMenu = (): ShellMenuItem[] => assist.menuItems().map(function wrap(item): ShellMenuItem {
     return {
@@ -796,6 +849,7 @@ export async function renderEdition(
     annotations?.()
     annotations = undefined
     editor.setEditable(editing, false)
+    chat.refreshEditing()
     editor.view.dom.setAttribute('role', editing ? 'textbox' : 'document')
     workspace.classList.toggle('edition-reading', !editing)
     for (const id of [...textTools, ...insertTools]) bar.setAvailable(id, editing)
@@ -1156,6 +1210,7 @@ export async function renderEdition(
       ...(workHidden ? [{ label: t('editor.workMenu', [work.title]), icon: 'book' as const, children: work.menu }] : []),
       ...overflow,
       ...(overflow.length ? [{ separator: true, label: '' }] : []),
+      { label: t('aiChat.title'), icon: 'ai', action: () => openSide('chat') },
       ...(canBrowse() ? [{ label: t('web.open'), icon: 'compare' as const, action: () => splitEditor.openWeb() }] : []),
       { label: editing ? t('editor.readingMode') : t('editor.editText'), icon: editing ? 'book' : 'edit', action: () => { void toggleMode() } },
       { label: t('editor.saveAsASeparateVersion'), icon: 'copy', action: saveCopy },

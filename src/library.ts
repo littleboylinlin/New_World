@@ -139,7 +139,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 13)
+    const request = indexedDB.open('new-world-library', 14)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -197,6 +197,7 @@ export function openDatabase() {
       if (event.oldVersion < 11) db.createObjectStore('writingStyles', { keyPath: 'id' })
       if (event.oldVersion < 12) request.transaction!.objectStore('trash').createIndex('byWorkKind', ['library', 'bookId', 'kind'])
       if (event.oldVersion < 13) db.createObjectStore('storyBoards', { keyPath: ['library', 'bookId'] })
+      if (event.oldVersion < 14) db.createObjectStore('bookChats', { keyPath: 'id' }).createIndex('byBook', ['library', 'bookId'])
     }
     request.onsuccess = () => {
       const db = request.result
