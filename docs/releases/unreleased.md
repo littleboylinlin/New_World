@@ -8,12 +8,15 @@
 - **关联章节**　卡片可以关联全书（在每一章都有效）、一个或多个章节，也可以不关联，仍可添加从某章起生效的状态。新卡默认关联编辑器正在写的那一章，编辑器换章节时跟着变；在设定窗口里手动改成全书、其他章节或多选几章后，就保持手动选的，也可以改回跟随编辑器。左上角只显示小说名，选中卡片时后面跟上卡片名；鼠标停在小说名上（手机上点一下）会浮出新卡默认关联，点开即可修改。编辑器「设定」按钮上的数字是本章有效的卡片数，全书卡片也算在内。
 - **多个窗口**　左上角菜单的「新窗口」可以为同一本书再开一个设定窗口（Web 版是新标签页），各自保留自己的位置和缩放，内容实时同步。从编辑器点「设定」时会回到已经打开的窗口，不会每次都多开一个。
 - **导出**　菜单里可以把整张画布或选中的内容导出为 PNG 图片，也可以直接导出本书的 `.newworld` 工程。
+- **AI 对话**　从编辑器侧栏的「AI 对话」或「⋯」菜单打开。每部作品可以保留多段本机对话，支持继续聊、查看历史、确认删除、中途停止、复制回复。回复可插入正文的光标处，插入可以撤销，插入前的正文保留在历史版本里。
+- **全书上下文**　AI 对话和浮动工具条的「自由提问」会带上当前章节、相关设定和已有的摘要。针对具体情节的问题可带上相关章的原文。设定卡只带当前章节及以前生效的状态。首次发送全书资料会提示确认，回复下方可以展开查看实际带入的资料。提问不会自动生成摘要，主动使用「总结整本」后就能复用结果。润色、改写等编辑功能仍只使用原有范围的文字。
+- **选项式提问**　有几种合理理解且选错会造成较多返工时，AI 会给出可点选的答案。侧栏和选中提问都支持，也可以自己输入回答。
 
 ### 升级与回退
 
-- 新版把本地书库升级到 IndexedDB v13，添加画布表和回收站的作品索引。v0.30.0 及更早版本无法直接打开升级后的书库。
-- 新导出的全库备份使用格式 4，单部 `.newworld` 工程使用 Schema 4。两者保存画布、布局、视角和卡片回收记录。v0.30.0 及更早版本会拒绝这两种新格式。新版仍可读取全库备份格式 1–3 和工程 Schema 1–3。
-- 全库恢复会替换当前书库的画布。旧备份恢复后画布为空。需要回退时，请在升级前用旧版保留一份全库备份。
+- 新版把本地书库升级到 IndexedDB v14，添加画布表、回收站的作品索引和本机 AI 对话表。v0.30.0 及更早版本无法直接打开升级后的书库。
+- 全库备份使用格式 5，包含本机对话记录。单部 `.newworld` 工程使用 Schema 4，包含画布、布局、视角和卡片回收记录。v0.30.0 及更早版本会拒绝这两种新格式。新版可读取全库备份格式 1–5 和工程 Schema 1–4。
+- 全库恢复会替换当前书库的画布和对话。格式 1–3 的备份恢复后画布为空，格式 1–4 的备份恢复后对话为空。需要回退时，请在升级前用旧版保留一份全库备份。
 
 ## Unreleased
 
@@ -25,9 +28,12 @@
 - **Chapter links**　A card can apply to the whole work (in every chapter), to one or more chapters, or to no chapter, and can still carry states that start at a chapter. New cards link to the chapter open in the editor and follow it as the editor moves; choose the whole work, other chapters or several chapters in the story window and that choice stays, until you switch back to following the editor. The top left shows only the work’s name, followed by the selected card’s name; hover the name (tap it on a phone) to see and change where new cards link. The number on the editor’s **Story settings** button counts the cards in effect in the current chapter, whole-work cards included.
 - **Several windows**　**New window** in the top-left menu opens another story window on the same work (a new tab on the web). Each keeps its own position and zoom, and the content stays in sync. **Story settings** in the editor brings back the window already open instead of opening another each time.
 - **Export**　From the menu, export the whole canvas or the selection as a PNG image, or export the work as a `.newworld` project.
+- **AI Chat**　Open **AI Chat** from the editor sidebar or the **More** menu. Each work keeps its own conversations on this device. Resume a conversation, review or delete it, stop a reply as it streams, or copy the reply. Inserting a reply at the cursor is undoable and saves the previous text in chapter history.
+- **Book context**　AI Chat and **Ask AI** in the selection toolbar can include the current chapter, related story cards and cached summaries. Questions about specific plot details can also include relevant chapter text. Card states are included through the current chapter. The first request for book context asks for consent, and the sources used are listed under each reply. Use **Summarize book** to populate the cache. Editing features such as polishing and rewriting continue to use the original text scope.
+- **Questions with choices**　When several interpretations are plausible and a wrong guess would mean substantial rework, the AI can offer choices. Pick an answer or type your own in either AI Chat or **Ask AI**.
 
 ### Upgrade and rollback
 
-- The local library upgrades to IndexedDB v13, adding a canvas store and a work index for Trash. New World v0.30.0 and earlier cannot open the upgraded library.
-- Full-library backups use format 4 and `.newworld` projects use Schema 4. Both preserve the canvas, layout, view and trashed cards. New World v0.30.0 and earlier reject these exports. The new version still reads backup formats 1–3 and project Schemas 1–3.
-- A full-library restore replaces the current canvases. Restoring a legacy backup leaves an empty canvas. Keep a backup made in the older app before upgrading if you need to roll back.
+- The local library upgrades to IndexedDB v14, adding stores for the canvas and local AI conversations and a work index for Trash. New World v0.30.0 and earlier cannot open the upgraded library.
+- Full-library backups use format 5 and include local conversations. Individual `.newworld` projects use Schema 4 and include the canvas, layout, view and trashed cards. New World v0.30.0 and earlier reject these exports. The new version reads backup formats 1–5 and project Schemas 1–4.
+- A full-library restore replaces the current canvases and conversations. Backups in formats 1–3 restore with empty canvases, and formats 1–4 restore with no conversations. Keep a backup made in the older app before upgrading if you need to roll back.

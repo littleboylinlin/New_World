@@ -169,6 +169,12 @@ export type ChapterSummaryPlan =
 export interface SummaryApi {
   splitText(request: SplitRequest): Promise<Result<TextChunk[]>>
   prepareChapterSummary(request: SplitRequest & { promptVersion: string }): Promise<Result<ChapterSummaryPlan>>
+  readCachedBookSummaries(request: Route & {
+    bookTitle: string
+    chapters: readonly string[]
+    chapterPromptVersion: string
+    bookPromptVersion: string
+  }): Promise<Result<{ chapters: (string | undefined)[]; book?: string; bookCacheToken: string }>>
   saveChapterSummary(cacheToken: string, summary: string): Promise<Result<void>>
   clearSummaryCache(): Promise<Result<void>>
 }
@@ -181,6 +187,7 @@ export type ResolvedProfile = {
 
 export interface AiProviderApi extends SummaryApi {
   getConfig(): Promise<Result<ConfigState>>
+  resolveProfile(route: Route): Promise<Result<ResolvedProfile>>
   saveProfile(input: SaveProfileInput): Promise<Result<SavedProfile>>
   deleteProfile(id: string): Promise<Result<void>>
   setRouting(routing: Routing): Promise<Result<void>>
@@ -193,9 +200,7 @@ export interface AiProviderApi extends SummaryApi {
   listModels(target: ConnectionTarget, cursor?: string): Promise<Result<ModelPage>>
 }
 
-export type ProviderMethods = Omit<AiProviderApi, 'generate' | 'listPresets' | keyof SummaryApi> & {
-  resolveProfile(route: Route): Promise<Result<ResolvedProfile>>
-}
+export type ProviderMethods = Omit<AiProviderApi, 'generate' | 'listPresets' | keyof SummaryApi>
 
 export interface AiProviderDesktopBridge {
   call<M extends keyof ProviderMethods>(method: M, ...args: Parameters<ProviderMethods[M]>): ReturnType<ProviderMethods[M]>

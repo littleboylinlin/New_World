@@ -2,15 +2,20 @@ import type { Editor } from '@tiptap/core'
 import { Mapping } from '@tiptap/pm/transform'
 import type { Transaction } from '@tiptap/pm/state'
 import { ai } from '../ai-provider'
-import type { AiError, AiRun, SavedProfile } from '../ai-provider'
-import { aiSettingsHash, requireAi } from '../ai/access'
+import type { AiError, AiRun, GenerateRequest, ResolvedProfile, SavedProfile } from '../ai-provider'
+import { aiSettingsHash, requireAi, requireBookAi } from '../ai/access'
+import { buildBookQuestion } from '../ai/book-context'
+import type { BookRequestSource } from '../ai/book-context'
+import type { ChatTurn, ContextSources } from '../ai/book-chat-model'
+import { clarificationView, contextDetails, copyReply, readableReply } from '../ai/book-reply-view'
+import { parseClarification } from '../ai/clarification'
 import { describeAiError } from '../ai/errors'
 import { assistFeatures, assistMessages, editingActions, styledActions, wasTruncated } from '../ai/prompts'
 import { allStyles, isBuiltin, setWorkStyle, styleInstructions, workStyle } from '../ai/styles'
 import type { WritingStyle } from '../ai/styles'
 import type { LibraryId } from '../library'
 import { addIdea } from '../ideas'
-import { bookMessages, chapterSummaries, collect, parseProofread, proofreadChunks, proofreadMessages, summaryMessages } from '../ai/review'
+import { bookMessages, cachedBookSummaries, chapterSummaries, collect, parseProofread, proofreadChunks, proofreadMessages, summaryMessages } from '../ai/review'
 import type { ProofreadEdit } from '../ai/review'
 import type { Feature } from '../ai-provider'
 import { chapterText } from './model'
@@ -44,11 +49,12 @@ export interface AssistOptions {
   titles: () => { book: string; chapter: string }
   /** Every chapter of the version being edited, with the open one as it is on screen. */
   chapters: () => Promise<{ title: string; content: DocumentContent }[]>
+  context: () => BookRequestSource
   /**
    * Runs once per panel before its first change to the text: the editor saves, and the chapter as
    * it was is kept in its history.
    */
-  beforeChange: (input: { action: AssistAction; profile: SavedProfile }) => Promise<void>
+  beforeChange: (input: { action: AssistAction; profileName: string }) => Promise<void>
   signal: AbortSignal
 }
 
@@ -64,7 +70,9 @@ interface Session {
   mapping: Mapping
   /** The selected text was edited after the request, so its suggestions no longer fit. */
   touched: boolean
-  profile?: SavedProfile
+  profile: SavedProfile | ResolvedProfile
+  /** Earlier questions and replies in this selection panel. */
+  history: ChatTurn[]
   run?: AiRun
   reply: string
   prepared: boolean
@@ -114,7 +122,8 @@ export function aiAssist(options: AssistOptions) {
   const output = element('div', 'ai-assist-output')
   output.setAttribute('aria-live', 'polite')
   const outputText = element('p', 'ai-assist-text')
-  output.append(outputText)
+  const replyExtras = element('div')
+  output.append(outputText, replyExtras)
   const message = element('div', 'ai-assist-message')
   message.setAttribute('role', 'status')
   const actions = element('div', 'ai-assist-actions')
@@ -250,13 +259,13 @@ export function aiAssist(options: AssistOptions) {
     const to = whole ? editor.state.doc.content.size : editor.state.selection.to
     const blocks = scope === 'book' ? [] : readBlocks(editor.state.doc, from, to)
     if (!blocks.length && scope !== 'book') { showNotice(scope === 'chapter' ? t('aiAssist.chapterEmpty') : t('aiAssist.selectFirst')); return }
-    const profile = await requireAi(featureOf(next, scope))
-    if (!profile || editor.isDestroyed) return
+    const profile = next === 'ask' ? await requireBookAi() : await requireAi(featureOf(next, scope))
+    if (!profile || editor.isDestroyed || editor !== options.editor() || options.signal.aborted) return
     closePanel()
     finish?.()
     const current: Session = {
       action: next, tone, blocks, from, to, mapping: new Mapping(), touched: false, profile, reply: '', prepared: false, accepted: 0, turn: 0,
-      scope, halted: false,
+      scope, halted: false, history: [],
     }
     styleRow.hidden = !styledActions.includes(next)
     if (!styleRow.hidden) {
@@ -278,17 +287,19 @@ export function aiAssist(options: AssistOptions) {
     via.textContent = profile.config.name
     via.title = t('aiAssist.via', [profile.config.name])
     outputText.textContent = ''
+    replyExtras.replaceChildren()
     output.hidden = true
     setMessage('')
     setActions()
     if (next === 'ask') {
-      ask.hidden = false
+      setExpanded(ask, true)
       question.value = ''
+      question.placeholder = t('aiAssist.askPlaceholder')
       openPanel()
       question.focus()
       return
     }
-    ask.hidden = true
+    setExpanded(ask, false)
     openPanel()
     void run(current)
   }
@@ -337,13 +348,17 @@ export function aiAssist(options: AssistOptions) {
     }
   })
 
-  ask.addEventListener('submit', (event) => {
-    event.preventDefault()
-    const current = session
-    if (!current || !question.value.trim()) return
-    current.question = question.value.trim()
+  function submitQuestion(current: Session, value: string) {
+    if (session !== current || current.action !== 'ask' || !value.trim()) return
+    current.question = value.trim()
+    question.value = ''
     setExpanded(ask, false)
     void run(current)
+  }
+
+  ask.addEventListener('submit', (event) => {
+    event.preventDefault()
+    if (session) submitQuestion(session, question.value)
   })
 
   async function run(current: Session) {
@@ -353,6 +368,7 @@ export function aiAssist(options: AssistOptions) {
     const alive = () => session === current && current.turn === turn
     current.reply = ''
     outputText.textContent = ''
+    replyExtras.replaceChildren()
     outputText.classList.add('ai-assist-streaming')
     showOutput(true)
     setMessage(t('aiAssist.waiting'))
@@ -377,6 +393,8 @@ export function aiAssist(options: AssistOptions) {
     }
     if (current.action === 'proofread') { await proofread(current, alive, fail, halt); return }
     let book: { title: string; summary: string }[] | undefined
+    let bookCacheToken: string | undefined
+    let profileRevision = 'revision' in current.profile ? current.profile.revision : undefined
     if (current.action === 'summary' && current.scope === 'book') {
       // Chapters are split to fit the model, which needs its context size.
       if (!current.profile?.config.generation?.contextTokens) {
@@ -388,8 +406,17 @@ export function aiAssist(options: AssistOptions) {
       }
       const chapters = (await options.chapters()).map((chapter) => ({ title: chapter.title, text: chapterText(chapter.content, '\n') }))
       if (!alive()) return
+      const resolved = await ai.resolveProfile({ feature: 'bookSummary', profileId: current.profile.id })
+      if (!alive()) return
+      if (current.halted) { halt(); return }
+      if (!resolved.ok) { fail(resolved.error); return }
+      profileRevision = resolved.data.revision
+      const cached = await cachedBookSummaries(options.titles().book, chapters, { profileId: current.profile.id, expectedProfileRevision: profileRevision })
+      if (!alive()) return
+      if (current.halted) { halt(); return }
+      if (cached.ok) bookCacheToken = cached.data.bookCacheToken
       const result = await chapterSummaries(chapters, {
-        profileId: current.profile?.id,
+        profileId: current.profile.id,
         track: (live) => { current.run = live },
         stopped: () => !alive() || current.halted,
         progress: ({ done, total, cached, title: name }) => {
@@ -402,14 +429,43 @@ export function aiAssist(options: AssistOptions) {
       current.remark = t('aiAssist.bookCached', [result.cached, chapters.length])
     }
     const titles = options.titles()
-    const messages = book ? bookMessages(titles.book, book)
-      : current.action === 'summary' ? summaryMessages(current.scope === 'chapter' ? 'chapter' : 'selection', blocksText(current.blocks), current.scope === 'chapter' ? titles.chapter : undefined)
-      : assistMessages({
-      action: current.action, text: blocksText(current.blocks), paragraphs: current.blocks.length,
-      tone: current.tone ? t(`aiAssist.tone.${current.tone}`) : undefined, question: current.question,
-      system: current.style && styledActions.includes(current.action) ? styleInstructions(current.style) : undefined,
+    let sources: ContextSources | undefined
+    let messages: GenerateRequest['messages']
+    if (current.action === 'ask') {
+      try {
+        const request = await buildBookQuestion(options.context(), current.profile.config, current.question ?? '', current.history,
+          blocksText(current.blocks), () => !alive() || current.halted)
+        if (!alive()) return
+        if (!request || current.halted) { halt(); return }
+        if (!request.messages.length) {
+          outputText.classList.remove('ai-assist-streaming')
+          showOutput(false)
+          setMessage(t('aiContext.tooSmall'), 'warning')
+          setActions(settingsLink(), dismiss())
+          return
+        }
+        messages = request.messages
+        sources = request.sources
+      } catch {
+        if (!alive()) return
+        if (current.halted) halt()
+        else fail({ code: 'storage', message: t('aiContext.readFailed') })
+        return
+      }
+    } else {
+      messages = book ? bookMessages(titles.book, book)
+        : current.action === 'summary' ? summaryMessages(current.scope === 'chapter' ? 'chapter' : 'selection', blocksText(current.blocks), current.scope === 'chapter' ? titles.chapter : undefined)
+        : assistMessages({
+          action: current.action, text: blocksText(current.blocks), paragraphs: current.blocks.length,
+          tone: current.tone ? t(`aiAssist.tone.${current.tone}`) : undefined,
+          system: current.style && styledActions.includes(current.action) ? styleInstructions(current.style) : undefined,
+        })
+    }
+    if (current.halted) { halt(); return }
+    const live = ai.generate({
+      feature: featureOf(current.action, current.scope), profileId: current.profile.id, expectedProfileRevision: profileRevision, messages,
+      ...(current.action === 'ask' ? { stream: true } : {}),
     })
-    const live = ai.generate({ feature: featureOf(current.action, current.scope), profileId: current.profile?.id, messages })
     current.run = live
     let finishReason: string | undefined
     let failure: AiError | undefined
@@ -435,11 +491,22 @@ export function aiAssist(options: AssistOptions) {
     outputText.classList.remove('ai-assist-streaming')
     outputText.textContent = current.reply
     current.run = undefined
+    if (sources && current.reply) replyExtras.append(contextDetails(sources))
     if (failure) { fail(failure); return }
     if (stopped) { halt(); return }
     const truncated = wasTruncated(finishReason)
-    if (current.action === 'summary') { finishSummary(current, truncated); return }
-    if (current.action === 'ask' || current.action === 'continue') { finishAnswer(current, truncated); return }
+    if (current.action === 'summary') {
+      if (bookCacheToken && !truncated && current.reply.trim()) await ai.saveChapterSummary(bookCacheToken, current.reply.trim())
+      if (alive()) finishSummary(current, truncated)
+      return
+    }
+    if (current.action === 'ask' || current.action === 'continue') {
+      if (sources && current.question) current.history.push({ id: crypto.randomUUID(), question: current.question, reply: {
+        text: current.reply, profileName: current.profile.config.name, context: sources, status: truncated ? 'truncated' : 'complete',
+      } })
+      finishAnswer(current, truncated)
+      return
+    }
     if (truncated) {
       setMessage(t('aiAssist.truncated'), 'warning')
       setActions(retry(), settingsLink(), dismiss())
@@ -530,10 +597,17 @@ export function aiAssist(options: AssistOptions) {
 
   function finishAnswer(current: Session, truncated: boolean) {
     setMessage(truncated ? t('aiAssist.truncatedAnswer') : '', truncated ? 'warning' : 'info')
-    const copy = action(t('aiAssist.copy'), () => {
-      void navigator.clipboard?.writeText(current.reply).then(() => showNotice(t('aiAssist.copied')), () => showNotice(t('aiAssist.copyFailed')))
-    })
-    const insert = action(t('aiAssist.insertAfter'), () => { void insertAfter(current) }, true)
+    const answer = current.action === 'ask' && !truncated ? parseClarification(current.reply) : { text: current.reply }
+    const content = readableReply(answer)
+    if (answer.questions) {
+      outputText.textContent = answer.text
+      replyExtras.prepend(clarificationView(answer.questions, (value) => submitQuestion(current, value)))
+      output.scrollTop = 0
+      question.placeholder = t('aiChat.replyPlaceholder')
+      setExpanded(ask, true)
+    }
+    const copy = action(t('aiAssist.copy'), () => { void copyReply(content) })
+    const insert = action(t('aiAssist.insertAfter'), () => { void insertAfter(current, content) }, true)
     insert.hidden = !options.editing()
     const again = current.action === 'ask'
       ? action(t('aiAssist.askAgain'), () => {
@@ -542,7 +616,7 @@ export function aiAssist(options: AssistOptions) {
         setExpanded(ask, true, () => question.focus())
       })
       : action(t('aiAssist.retry'), () => { void run(current) })
-    setActions(insert, copy, again, action(t('common.close'), () => closePanel()))
+    setActions(insert, copy, ...(answer.questions ? [] : [again]), action(t('common.close'), () => closePanel()))
   }
 
   function finishEdit(current: Session) {
@@ -611,34 +685,37 @@ export function aiAssist(options: AssistOptions) {
 
   /** Every change to the text goes through here, so the chapter is kept in history first. */
   async function adopt(current: Session, change: () => boolean | void, count = 1) {
-    if (session !== current) return
+    if (session !== current) return false
     if (!current.prepared) {
+      const previous = Array.from(actions.children) as HTMLElement[]
       setActions()
       setMessage(t('aiAssist.saving'))
       try {
-        await options.beforeChange({ action: current.action, profile: current.profile! })
+        await options.beforeChange({ action: current.action, profileName: current.profile.config.name })
       } catch (cause) {
-        if (session !== current) return
+        if (session !== current) return false
         setMessage(t('aiAssist.saveFailed', [cause instanceof Error ? cause.message : String(cause)]), 'error')
-        paintReview(current)
-        return
+        setActions(...previous)
+        return false
       }
-      if (session !== current) return
+      if (session !== current) return false
       current.prepared = true
     }
-    if (change() !== false) current.accepted += count
+    const applied = change() !== false
+    if (applied) current.accepted += count
     paintReview(current)
+    return applied
   }
 
-  async function insertAfter(current: Session) {
+  async function insertAfter(current: Session, text = current.reply) {
     const editor = options.editor()
-    const paragraphs = replyParagraphs(current.reply)
+    const paragraphs = replyParagraphs(text)
     if (!paragraphs.length) return
-    await adopt(current, () => {
+    const inserted = await adopt(current, () => {
       clearSuggestions(editor.view)
       insertParagraphsAfter(editor.view, current.to, paragraphs)
     })
-    if (session !== current) return
+    if (!inserted || session !== current) return
     setMessage(t('aiAssist.inserted'))
     const undo = action(t('aiAssist.undo'), () => { editor.commands.undo(); closePanel() })
     setActions(undo, action(t('common.close'), () => { closePanel(); backToText() }, true))

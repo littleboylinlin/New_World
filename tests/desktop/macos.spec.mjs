@@ -2,6 +2,7 @@ import { startWork } from '../navigation-helpers.mjs'
 import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { desktopStorySettingsFlow } from './story-settings-flow.mjs'
+import { desktopBookChatFlow } from './book-chat-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -585,4 +586,8 @@ test('macOS 故事设定独立窗口可重开，编辑器与设定实时同步',
   try {
     await desktopStorySettingsFlow(app, await app.firstWindow(), 'macOS 故事设定验收')
   } finally { await stop(app) }
+})
+
+test('macOS AI 对话走主进程流式请求，能点选并在重开后保留', async () => {
+  await desktopBookChatFlow(launch, stop, 'macOS AI 对话验收')
 })

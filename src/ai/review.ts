@@ -1,5 +1,5 @@
 import { ai } from '../ai-provider'
-import type { AiError, AiRun, GenerateRequest } from '../ai-provider'
+import type { AiError, AiRun, GenerateRequest, Route } from '../ai-provider'
 import { locale } from '../i18n'
 
 const zh = () => locale === 'zh-CN'
@@ -80,6 +80,24 @@ export function parseProofread(reply: string, offset: number, count: number): Pr
 export type SummaryScope = 'selection' | 'chapter' | 'book'
 /** Changing the chapter prompt below means bumping this, so cached summaries are made again. */
 export const chapterPromptVersion = 'chapter-summary-1'
+const bookPromptVersion = 'book-summary-1'
+
+export interface SummaryChapter {
+  title: string
+  text: string
+}
+
+function chapterSummaryInput(chapter: SummaryChapter) {
+  return `${chapter.title}\n\n${chapter.text}`
+}
+
+/** Local cache lookup only. A miss never schedules a model request or splits the manuscript. */
+export function cachedBookSummaries(bookTitle: string, chapters: readonly SummaryChapter[], route?: Pick<Route, 'profileId' | 'expectedProfileRevision'>) {
+  return ai.readCachedBookSummaries({
+    feature: 'bookSummary', ...route, bookTitle,
+    chapters: chapters.map(chapterSummaryInput), chapterPromptVersion, bookPromptVersion,
+  })
+}
 
 export function summaryMessages(scope: 'selection' | 'chapter', text: string, title?: string) {
   const system = zh()
@@ -139,7 +157,7 @@ export interface BookProgress {
  * Summarises every chapter for a book summary, reusing cached summaries of chapters whose text,
  * model and prompt are unchanged. `track` receives each request so it can be stopped.
  */
-export async function chapterSummaries(chapters: readonly { title: string; text: string }[], options: {
+export async function chapterSummaries(chapters: readonly SummaryChapter[], options: {
   profileId?: string
   track: (run: AiRun) => void
   progress: (state: BookProgress) => void
@@ -147,7 +165,8 @@ export async function chapterSummaries(chapters: readonly { title: string; text:
 }): Promise<{ ok: true; summaries: { title: string; summary: string }[]; cached: number } | { ok: false; error?: AiError; cancelled?: boolean }> {
   const summaries: { title: string; summary: string }[] = []
   let cached = 0
-  const generate = async (request: GenerateRequest) => {
+  const generate = async (request: GenerateRequest): Promise<Outcome> => {
+    if (options.stopped()) return { ok: false, cancelled: true }
     const run = ai.generate({ ...request, stream: false })
     options.track(run)
     return collect(run)
@@ -155,7 +174,7 @@ export async function chapterSummaries(chapters: readonly { title: string; text:
   for (const [index, chapter] of chapters.entries()) {
     if (options.stopped()) return { ok: false, cancelled: true }
     options.progress({ done: index, total: chapters.length, cached, title: chapter.title })
-    const text = `${chapter.title}\n\n${chapter.text}`
+    const text = chapterSummaryInput(chapter)
     let summary: string | undefined
     for (let attempt = 0; attempt < 2 && summary === undefined; attempt++) {
       const plan = await ai.prepareChapterSummary({ feature: 'bookSummary', profileId: options.profileId, text, promptVersion: chapterPromptVersion, reservedPromptTokens: 400 })

@@ -161,7 +161,7 @@ function chapterTupleKey(library: string, bookId: string, editionId: string, cha
 export async function emptyTrash(id?: string) {
   const db = await openDatabase()
   const tx = db.transaction(
-    ['chapters', 'ideas', 'trash', 'revisions', 'revisionBlobs', 'aiBaselines', 'ideaRevisions'],
+    ['chapters', 'ideas', 'trash', 'revisions', 'revisionBlobs', 'aiBaselines', 'ideaRevisions', 'bookChats'],
     'readwrite',
     { durability: 'strict' },
   )
@@ -190,6 +190,12 @@ export async function emptyTrash(id?: string) {
       const remainingTrash = id ? allTrash.filter((entry) => entry.id !== id) : []
       if (id) trashStore.delete(id)
       else trashStore.clear()
+      const chats = tx.objectStore('bookChats')
+      for (const entry of allTrash) {
+        if (entry.kind !== 'book' || (id && entry.id !== id)) continue
+        const keys = chats.index('byBook').getAllKeys([entry.library, entry.bookId])
+        keys.onsuccess = () => { for (const key of keys.result) chats.delete(key) }
+      }
 
       const reachableChapters = new Set<string>()
       for (const ch of chaptersReq.result as Array<{ library: string; bookId: string; editionId: string; id: string }>) {

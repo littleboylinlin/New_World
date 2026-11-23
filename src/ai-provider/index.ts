@@ -63,6 +63,7 @@ function desktopApi(bridge: AiProviderDesktopBridge): AiProviderApi {
   return {
     ...createSummaryApi(call('resolveProfile')),
     getConfig: call('getConfig'),
+    resolveProfile: call('resolveProfile'),
     saveProfile: call('saveProfile'),
     deleteProfile: call('deleteProfile'),
     setRouting: call('setRouting'),
@@ -81,6 +82,7 @@ function webApi(): AiProviderApi {
   return {
     ...calls,
     ...createSummaryApi(resolveProfile),
+    resolveProfile,
     listPresets,
     generate: (request) => run((input, _id, signal) => generate(input, signal), request),
   }
