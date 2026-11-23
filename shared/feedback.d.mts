@@ -3,4 +3,4 @@ export function feedbackLinks(
   version: string,
   platform: string,
   t: (key: string, values: string[]) => string,
-): { github: string; email: string }
+): { bug: string; feature: string; email: string }

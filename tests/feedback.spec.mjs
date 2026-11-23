@@ -5,9 +5,20 @@ import { startWork } from './navigation-helpers.mjs'
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 const versionTag = `v${version}`
-const issueChooser = 'https://github.com/littleboylinlin/New_World/issues/new/choose'
+const issueForm = 'https://github.com/littleboylinlin/New_World/issues/new'
 
-test('反馈链接只带版本和平台，并在新标签页打开 GitHub', async ({ page, context }) => {
+async function expectIssueLink(link, template, platform) {
+  const url = new URL(await link.getAttribute('href'))
+  expect(url.origin + url.pathname).toBe(issueForm)
+  expect([...url.searchParams]).toEqual([
+    ['template', template], ['version', versionTag], ['platform', platform],
+  ])
+  expect([url.username, url.password, url.hash]).toEqual(['', '', ''])
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  return url
+}
+
+test('Bug 和建议链接直达各自表单，只预填版本和平台', async ({ page, context }) => {
   await page.goto('/#/original')
   await startWork(page)
   await page.getByRole('textbox', { name: '作品名', exact: true }).fill('私密作品标题')
@@ -17,17 +28,22 @@ test('反馈链接只带版本和平台，并在新标签页打开 GitHub', asyn
   await page.getByRole('link', { name: '设置', exact: true }).click()
   await page.getByRole('link', { name: '更新与关于', exact: true }).click()
   const settings = page.getByRole('region', { name: '更新与关于', exact: true })
-  const github = settings.getByRole('link', { name: '在 GitHub 提交', exact: true })
+  const bug = settings.getByRole('link', { name: '报告 Bug', exact: true })
+  const feature = settings.getByRole('link', { name: '提建议', exact: true })
   const email = settings.getByRole('link', { name: '发邮件', exact: true })
-  await expect(github).toBeHidden()
+  await expect(bug).toBeHidden()
+  await expect(feature).toBeHidden()
   await expect(email).toBeHidden()
   await settings.getByText('反馈与建议', { exact: true }).click()
 
-  const githubUrl = new URL(await github.getAttribute('href'))
-  expect(githubUrl.origin + githubUrl.pathname).toBe(issueChooser)
-  expect([...githubUrl.searchParams]).toEqual([['version', versionTag], ['platform', '网页']])
-  expect(githubUrl.hash).toBe('')
-  await expect(github).toHaveAttribute('rel', 'noopener noreferrer')
+  for (const [link, template] of [[bug, 'bug.yml'], [feature, 'feature.yml']]) {
+    const url = await expectIssueLink(link, template, '网页')
+    await context.route(url.href, (route) => route.fulfill({ body: 'Issue form' }))
+    const [popup] = await Promise.all([page.waitForEvent('popup'), link.click()])
+    await expect(popup).toHaveURL(url.href)
+    await popup.close()
+    await expect(page).toHaveURL(/#\/settings\/updates$/)
+  }
 
   const emailUrl = new URL(await email.getAttribute('href'))
   expect(emailUrl.protocol + emailUrl.pathname).toBe('mailto:feedback@writenewworld.com')
@@ -36,11 +52,6 @@ test('反馈链接只带版本和平台，并在新标签页打开 GitHub', asyn
     ['body', `版本号：${versionTag}\r\n平台：网页\r\n\r\n`],
   ])
   expect(emailUrl.hash).toBe('')
-
-  await context.route(githubUrl.href, (route) => route.fulfill({ body: 'Issue chooser' }))
-  const [popup] = await Promise.all([page.waitForEvent('popup'), github.click()])
-  await expect(popup).toHaveURL(githubUrl.href)
-  await expect(page).toHaveURL(/#\/settings\/updates$/)
 })
 
 test.describe('English mobile browser', () => {
@@ -52,11 +63,11 @@ test.describe('English mobile browser', () => {
     const settings = page.getByRole('region', { name: 'Updates & about', exact: true })
     await settings.getByText('Feedback', { exact: true }).click()
 
-    const github = settings.getByRole('link', { name: 'Submit on GitHub', exact: true })
+    const bug = settings.getByRole('link', { name: 'Report a bug', exact: true })
+    const feature = settings.getByRole('link', { name: 'Suggest a feature', exact: true })
     const email = settings.getByRole('link', { name: 'Send email', exact: true })
-    const githubUrl = new URL(await github.getAttribute('href'))
-    expect(githubUrl.origin + githubUrl.pathname).toBe(issueChooser)
-    expect([...githubUrl.searchParams]).toEqual([['version', versionTag], ['platform', 'Mobile browser']])
+    await expectIssueLink(bug, 'bug.yml', 'Mobile browser')
+    await expectIssueLink(feature, 'feature.yml', 'Mobile browser')
 
     const emailUrl = new URL(await email.getAttribute('href'))
     expect([...emailUrl.searchParams]).toEqual([

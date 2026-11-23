@@ -188,17 +188,29 @@ test('反馈链接交给系统浏览器和邮件客户端，应用窗口留在�
     await page.evaluate(() => { location.hash = '#/settings/updates' })
     const settings = page.getByRole('region', { name: '更新与关于', exact: true })
     await settings.getByText('反馈与建议', { exact: true }).click()
-    const github = settings.getByRole('link', { name: '在 GitHub 提交', exact: true })
+    const bug = settings.getByRole('link', { name: '报告 Bug', exact: true })
+    const feature = settings.getByRole('link', { name: '提建议', exact: true })
     const email = settings.getByRole('link', { name: '发邮件', exact: true })
-    const githubUrl = new URL(await github.getAttribute('href'))
     const version = await app.evaluate(({ app }) => app.getVersion())
     const platform = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[process.platform]
-    expect([...githubUrl.searchParams]).toEqual([['version', `v${version}`], ['platform', platform]])
+    const issueUrls = []
+    for (const [link, template] of [[bug, 'bug.yml'], [feature, 'feature.yml']]) {
+      const url = new URL(await link.getAttribute('href'))
+      expect(url.origin + url.pathname).toBe('https://github.com/littleboylinlin/New_World/issues/new')
+      expect([...url.searchParams]).toEqual([
+        ['template', template], ['version', `v${version}`], ['platform', platform],
+      ])
+      issueUrls.push(url.href)
+      await link.click()
+    }
 
-    await github.click()
     await email.click()
+    const releaseUrl = `https://github.com/littleboylinlin/New_World/releases/tag/v${version}`
+    for (const url of [issueUrls[0] + '&title=extra', releaseUrl]) {
+      await page.evaluate((href) => { window.open(href, '_blank', 'noopener,noreferrer') }, url)
+    }
     await expect.poll(() => app.evaluate(() => globalThis.openedFeedbackLinks))
-      .toEqual([githubUrl.href, await email.getAttribute('href')])
+      .toEqual([...issueUrls, await email.getAttribute('href'), releaseUrl])
     await expect(page).toHaveURL(/#\/settings\/updates$/)
     expect(await windowCount(app)).toBe(1)
   } finally { await app.close() }

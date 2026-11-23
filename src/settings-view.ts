@@ -271,14 +271,17 @@ export function mountSettingsView(
     ? desktopFeedbackPlatform(desktop.platform) ?? t('feedback.platformDesktop')
     : t(mobileBrowser ? 'feedback.platformMobile' : 'feedback.platformWeb')
   const links = feedbackLinks(runningVersion, platform, t)
-  const github = link(links.github, t('feedback.github'), 'button button-quiet')
-  github.target = '_blank'
-  github.rel = 'noopener noreferrer'
+  const bug = link(links.bug, t('feedback.bug'), 'button button-quiet')
+  const feature = link(links.feature, t('feedback.feature'), 'button button-quiet')
+  for (const issueLink of [bug, feature]) {
+    issueLink.target = '_blank'
+    issueLink.rel = 'noopener noreferrer'
+  }
   const email = link(links.email, t('feedback.email'), 'button button-quiet')
   if (desktop) email.target = '_blank'
   email.rel = 'noopener noreferrer'
   const feedbackActions = element('div', 'settings-actions')
-  feedbackActions.append(github, email)
+  feedbackActions.append(bug, feature, email)
   feedback.append(element('summary', '', t('feedback.title')), feedbackActions)
   updatesBody.append(feedback)
 

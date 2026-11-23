@@ -767,7 +767,7 @@ function harden(contents, window, ideas) {
     // Match the feedback links built from the running app's version, platform, and language.
     const platform = desktopFeedbackPlatform(process.platform) ?? t('feedback.platformDesktop')
     const feedback = feedbackLinks(`v${app.getVersion()}`, platform, t)
-    if (isReleasePage || url === feedback.github || url === feedback.email) {
+    if (isReleasePage || url === feedback.bug || url === feedback.feature || url === feedback.email) {
       void shell.openExternal(url).catch(() => {})
     }
     return { action: 'deny' }

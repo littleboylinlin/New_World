@@ -7,11 +7,13 @@ export function desktopFeedbackPlatform(platform) {
 }
 
 export function feedbackLinks(version, platform, t) {
+  const issueForm = 'https://github.com/littleboylinlin/New_World/issues/new'
   const fields = new URLSearchParams({ version, platform })
   const subject = encodeURIComponent(t('feedback.emailSubject', [version]))
   const body = encodeURIComponent(t('feedback.emailBody', [version, platform]))
   return {
-    github: `https://github.com/littleboylinlin/New_World/issues/new/choose?${fields}`,
+    bug: `${issueForm}?template=bug.yml&${fields}`,
+    feature: `${issueForm}?template=feature.yml&${fields}`,
     email: `mailto:feedback@writenewworld.com?subject=${subject}&body=${body}`,
   }
 }
