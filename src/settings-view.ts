@@ -1,8 +1,10 @@
 import { changeLanguage, locale, t } from './i18n'
 import type { Locale } from '../shared/language-packs.mjs'
+import { desktopFeedbackPlatform, feedbackLinks } from '../shared/feedback.mjs'
 import { button, element, icon, link } from './ui'
 import { mountStorageView } from './storage-view'
 import { mountUpdateView } from './update-view'
+import { runningVersion } from './updates'
 import { mountAppearanceSettings } from './appearance-view'
 import { mountAiSettings } from './ai/settings-view'
 import { mountProviderSettings } from './ai/provider-settings-view'
@@ -261,6 +263,27 @@ export function mountSettingsView(
     element('p', 'dialog-help', t('settings.aboutCopy')),
     element('p', 'dialog-help', desktop ? t('settings.aboutEnvironmentDesktop') : t('settings.aboutEnvironmentWeb')),
   )
+
+  const feedback = element('details', 'settings-card settings-feedback')
+  const mobileBrowser = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  const platform = desktop
+    ? desktopFeedbackPlatform(desktop.platform) ?? t('feedback.platformDesktop')
+    : t(mobileBrowser ? 'feedback.platformMobile' : 'feedback.platformWeb')
+  const links = feedbackLinks(runningVersion, platform, t)
+  const bug = link(links.bug, t('feedback.bug'), 'button button-quiet')
+  const feature = link(links.feature, t('feedback.feature'), 'button button-quiet')
+  for (const issueLink of [bug, feature]) {
+    issueLink.target = '_blank'
+    issueLink.rel = 'noopener noreferrer'
+  }
+  const email = link(links.email, t('feedback.email'), 'button button-quiet')
+  if (desktop) email.target = '_blank'
+  email.rel = 'noopener noreferrer'
+  const feedbackActions = element('div', 'settings-actions')
+  feedbackActions.append(bug, feature, email)
+  feedback.append(element('summary', '', t('feedback.title')), feedbackActions)
+  updatesBody.append(feedback)
 
   let behavior: CloseBehavior = 'quit'
   let busy = false

@@ -15,6 +15,7 @@ export async function prepareDesktopApp(output) {
     ...desktopFiles.map((file) => cp(join('desktop', file), join(appDir, 'desktop', file))),
     cp('desktop/dictionaries', join(appDir, 'desktop/dictionaries'), { recursive: true }),
     cp('shared/language-packs.mjs', join(appDir, 'shared/language-packs.mjs')),
+    cp('shared/feedback.mjs', join(appDir, 'shared/feedback.mjs')),
     cp('shared/ai-provider', join(appDir, 'shared/ai-provider'), { recursive: true }),
     cp('public/locales/manifest.json', join(appDir, 'desktop/language-manifest.json')),
     writeFile(join(appDir, 'package.json'), JSON.stringify({

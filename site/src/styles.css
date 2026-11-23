@@ -172,7 +172,7 @@ main { flex: 1; outline: none; }
 /* Footer */
 .foot { border-top: 3px solid var(--ink); background: var(--paper); color: var(--muted); font-size: .86rem; }
 .foot-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 20px; min-height: 64px; padding-block: 12px; }
-.foot-links { display: flex; gap: 18px; }
+.foot-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 .foot-links a { font-weight: 700; text-underline-offset: 3px; }
 .foot-links a:hover { color: var(--ink); }
 
