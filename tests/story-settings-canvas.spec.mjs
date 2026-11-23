@@ -299,7 +299,9 @@ test('双击空白新建卡片，双击卡片直接改名，回车打开完整�
   const confirm = story.getByRole('dialog', { name: '将卡片移入回收站？' })
   await expect(confirm).toBeVisible()
   await action(confirm, '移入回收站').click()
+  // The card leaves the board at once; the dialog closes when the deletion is saved.
   await expect(storyCard(story, '老守灯人')).toHaveCount(0)
+  await expect(confirm).toBeHidden()
   // Text and frames go without asking and come back with undo.
   await canvas(story).press('t')
   await canvas(story).click({ position: { x: 300, y: 300 } })
