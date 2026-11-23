@@ -113,6 +113,11 @@ export function setSearch(editor: Editor, query?: SearchQuery, preferred: number
   return applySearch(editor, activeResult(doc, { matches, normal, active: -1, decorations: normal }, index))
 }
 
+export function highlightMatch(editor: Editor, match: Match) {
+  const decorations = DecorationSet.create(editor.state.doc, [matchDecoration(match, true)])
+  applySearch(editor, { matches: [match], active: 0, normal: decorations, decorations })
+}
+
 export function selectMatch(editor: Editor, index: number) {
   const state = searchState(editor)
   return state.active === index ? state : applySearch(editor, activeResult(editor.state.doc, state, index))

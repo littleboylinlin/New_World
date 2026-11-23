@@ -1,6 +1,8 @@
 import { rememberWork } from './ideas'
 import { createLinkedTask, workTaskControls, workTaskPath } from './tasks/links'
 import { t } from './i18n'
+import { revealOriginalQuote } from './ai/story-jump'
+import type { StoryJump } from './ai/story-jump'
 import { showWorkInformation, workInformationPanel } from './work-information-view'
 import type { ShellMenuItem } from './shell/popover'
 import { showNotice } from './undo'
@@ -90,7 +92,7 @@ function previewProblem(error: unknown) {
   return notice(t('reader.theOriginalFileCanStillBeDownloaded', [reason]), true)
 }
 
-function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: AbortSignal, setEncoding: (encoding?: TextEncoding) => void) {
+function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: AbortSignal, setEncoding: (encoding?: TextEncoding) => void, jump?: StoryJump) {
   const toolbar = element('div', 'preview-toolbar')
   const label = book.format === 'md' ? t('reader.markdownSource') : book.format === 'html' ? t('reader.htmlText') : t('reader.plainText')
   const heading = element('h2', '', label)
@@ -121,7 +123,9 @@ function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: Abo
       const result = await openText(blob, book.format === 'html', encoding)
       if (signal.aborted || current !== requestNumber) return
       auto.textContent = select.value ? t('reader.autoDetect') : t('reader.auto', [textEncodings[result.encoding]])
-      content.replaceChildren(readingText(result.text, book.format === 'md'))
+      const text = readingText(result.text, book.format === 'md')
+      content.replaceChildren(text)
+      if (jump) revealOriginalQuote(content, text, jump)
     } catch (error) {
       if (!signal.aborted && current === requestNumber) content.replaceChildren(previewProblem(error))
     }
@@ -132,7 +136,7 @@ function showText(host: HTMLElement, book: ImportedBook, blob: Blob, signal: Abo
 
 function showPaged(
   host: HTMLElement, title: string, unit: string, count: number,
-  read: (index: number) => Promise<HTMLElement>, signal: AbortSignal, textTools = false,
+  read: (index: number) => Promise<HTMLElement>, signal: AbortSignal, textTools = false, jump?: StoryJump,
 ) {
   const toolbar = element('div', 'preview-toolbar')
   const paging = element('div', 'pagination')
@@ -151,7 +155,7 @@ function showPaged(
   const content = element('div', 'preview-body')
   host.replaceChildren(toolbar, content)
 
-  let index = 0
+  let index = Math.min(count - 1, jump?.previewSection ?? 0)
   async function goTo(target: number) {
     index = target
     previous.disabled = true
@@ -161,7 +165,10 @@ function showPaged(
     try {
       const page = await read(index)
       page.dataset.readingSection = `section:${index}`
-      if (!signal.aborted) content.replaceChildren(page)
+      if (!signal.aborted) {
+        content.replaceChildren(page)
+        if (jump?.previewSection === index) revealOriginalQuote(content, page, jump)
+      }
     } catch (error) {
       if (!signal.aborted) content.replaceChildren(previewProblem(error))
     } finally {
@@ -171,17 +178,17 @@ function showPaged(
   }
   previous.addEventListener('click', () => void goTo(index - 1))
   next.addEventListener('click', () => void goTo(index + 1))
-  void goTo(0)
+  void goTo(index)
 }
 
-async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, signal: AbortSignal, setEncoding: (encoding?: TextEncoding) => void) {
+async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, signal: AbortSignal, setEncoding: (encoding?: TextEncoding) => void, jump?: StoryJump) {
   const format = formats[book.format]
   if (format.preview === null) {
     host.replaceChildren(notice(t('reader.onlyTheOriginalFileIsStoredDownloadIt', [format.label])))
     return
   }
   if (format.preview === 'text') {
-    showText(host, book, blob, signal, setEncoding)
+    showText(host, book, blob, signal, setEncoding, jump)
     return
   }
 
@@ -192,14 +199,16 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
       if (!signal.aborted) {
         const heading = element('div', 'preview-toolbar')
         heading.append(element('h2', '', t('reader.rtfText')), appearanceMenu())
-        host.replaceChildren(heading, readingText(text))
+        const article = readingText(text)
+        host.replaceChildren(heading, article)
+        if (jump) revealOriginalQuote(host, article, jump)
       }
       return
     }
     if (format.preview === 'pdf') {
       const { openPdf } = await import('./pdf-preview')
       const pdf = await openPdf(blob, signal)
-      if (!signal.aborted) showPaged(host, t('reader.pdfReader'), t('reader.page'), pdf.length, pdf.renderPage, signal)
+      if (!signal.aborted) showPaged(host, t('reader.pdfReader'), t('reader.page'), pdf.length, pdf.renderPage, signal, false, jump)
       return
     }
     const { openEpub, openDocx, openOdt } = await import('./archive-preview')
@@ -226,14 +235,16 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
           if (figure.childElementCount) return figure
           requireText(text)
           return readingText(text)
-        }, signal, true)
+        }, signal, true, jump)
       }
     } else {
       const text = await (book.format === 'docx' ? openDocx : openOdt)(blob, signal)
       if (!signal.aborted) {
         const heading = element('div', 'preview-toolbar')
         heading.append(element('h2', '', t('reader.text', [format.label])), appearanceMenu())
-        host.replaceChildren(heading, readingText(text))
+        const article = readingText(text)
+        host.replaceChildren(heading, article)
+        if (jump) revealOriginalQuote(host, article, jump)
       }
     }
   } catch (error) {
@@ -242,7 +253,7 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
 }
 
 export async function renderReader(
-  root: HTMLElement, library: LibraryId, id: string, editionId: string | undefined, signal: AbortSignal, registerLeave: RegisterLeave,
+  root: HTMLElement, library: LibraryId, id: string, editionId: string | undefined, signal: AbortSignal, registerLeave: RegisterLeave, storyJump?: StoryJump,
 ) {
   const panel = element('section', `reader-page mode-${library}`)
   const content = element('div')
@@ -261,6 +272,7 @@ export async function renderReader(
     const { book, blob } = stored
     const reference = library === 'reference'
     const workId = book.workId ?? id
+    const jump = storyJump?.library === library && storyJump.bookId === workId ? storyJump : undefined
     rememberWork({ library, bookId: workId })
     if (reference && !editionId && !blob) {
       content.replaceChildren(link(bookPath(library, workId), t('reader.backToContinuationProject')), notice(t('reader.thisSourceFileHasBeenRemoved'), true))
@@ -306,7 +318,7 @@ export async function renderReader(
         return items
       }
       const { renderEdition } = await import('./documents/editor-view')
-      await renderEdition(body, root, book, selected, signal, registerLeave, { title: book.title, menu: workMenu })
+      await renderEdition(body, root, book, selected, signal, registerLeave, { title: book.title, menu: workMenu }, jump)
       return
     }
     const heading = element('header', 'page-heading reader-heading')
@@ -390,7 +402,7 @@ export async function renderReader(
     preview.append(notice(t('reader.preparingFilePreview')))
     body.append(preview)
     annotateTextPreviews(preview, book, signal)
-    await showPreview(preview, book, blob, signal, (value) => { encoding = value })
+    await showPreview(preview, book, blob, signal, (value) => { encoding = value }, jump)
   } catch (error) {
     if (!signal.aborted) content.replaceChildren(notice(storageError(error), true))
   }

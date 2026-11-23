@@ -1,15 +1,17 @@
 const databaseName = 'new-world-ai-providers'
 export const configStore = 'config'
 export const summaryStore = 'summaries'
+export const storyIgnoreStore = 'storyCheckIgnored'
 let opening: Promise<IDBDatabase> | undefined
 
 function database(): Promise<IDBDatabase> {
   if (opening) return opening
   opening = new Promise((resolve, reject) => {
-    const request = indexedDB.open(databaseName, 2)
+    const request = indexedDB.open(databaseName, 3)
     request.onupgradeneeded = (event) => {
       if (event.oldVersion < 1) request.result.createObjectStore(configStore)
-      request.result.createObjectStore(summaryStore)
+      if (event.oldVersion < 2) request.result.createObjectStore(summaryStore)
+      if (event.oldVersion < 3) request.result.createObjectStore(storyIgnoreStore)
     }
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {

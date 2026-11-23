@@ -40,7 +40,7 @@ export function hasConsent(profile: SavedProfile) {
   return consents(consentKey)[profile.id] === originOf(profile)
 }
 
-async function requestedProfile(feature: Feature): Promise<SavedProfile | null> {
+async function requestedProfile(feature: Feature, openSettings = () => { location.hash = aiSettingsHash }): Promise<SavedProfile | null> {
   const state = await readAiConfig()
   const found = state ? profileFor(state, feature) : { ok: false as const, reason: 'not_configured' as const }
   if (!found.ok) {
@@ -50,7 +50,7 @@ async function requestedProfile(feature: Feature): Promise<SavedProfile | null> 
       [disabled ? t('aiAccess.disabledCopy') : t('aiAccess.setupCopy')],
       t('aiAccess.openSettings'),
     )
-    if (go) location.hash = aiSettingsHash
+    if (go) openSettings()
     return null
   }
   return found.profile
@@ -78,10 +78,11 @@ export async function requireAi(feature: Feature): Promise<SavedProfile | null> 
 }
 
 /** Book context needs its own consent and uses the approved configuration for the entire request. */
-export async function requireBookAi(): Promise<ResolvedProfile | null> {
-  const saved = await requestedProfile('ask')
+export async function requireBookAi(feature: Feature = 'ask', openSettings?: () => void): Promise<ResolvedProfile | null> {
+  const saved = await requestedProfile(feature, openSettings)
   if (!saved) return null
-  const resolved = await ai.resolveProfile({ feature: 'ask', profileId: saved.id })
+  const resolved = await ai.resolveProfile({ feature, profileId: saved.id })
   if (!resolved.ok) { showNotice(describeAiError(resolved.error)); return null }
-  return await approveSend(resolved.data, bookConsentKey, 'aiAccess.bookConsentCopy') ? resolved.data : null
+  const scope = feature === 'ask' ? [bookConsentKey, 'aiAccess.bookConsentCopy'] : ['new-world:ai-story-consent', 'storyAi.consent']
+  return await approveSend(resolved.data, scope[0], scope[1]) ? resolved.data : null
 }

@@ -19,6 +19,8 @@ export const featureGroups: readonly FeatureGroup[] = [
   { feature: 'proofread', label: 'aiProvider.featureProofread', members: [] },
   { feature: 'extension:summary', label: 'aiProvider.featureSummary', members: [] },
   { feature: 'bookSummary', label: 'aiProvider.featureBookSummary', members: [] },
+  { feature: 'extension:storyExtract', label: 'storyAi.extract', members: [] },
+  { feature: 'extension:storyCheck', label: 'storyAi.check', members: [] },
   { feature: 'extension:webSummary', label: 'aiProvider.featureWebSummary', members: [], desktopOnly: true },
   { feature: 'extension:styleAnalysis', label: 'aiProvider.featureStyleAnalysis', members: [] },
 ]

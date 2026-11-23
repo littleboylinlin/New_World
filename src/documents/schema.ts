@@ -28,8 +28,10 @@ export function toMarkup(content: DocumentContent) {
 
 const schema = getSchema(documentExtensions)
 
+export const documentNode = (content: DocumentContent) => schema.nodeFromJSON(content)
+
 export function checkDocument(content: DocumentContent) {
-  const node = schema.nodeFromJSON(content)
+  const node = documentNode(content)
   node.check()
   if (node.type !== schema.topNodeType) throw new Error(t('schema.theManuscriptTextStructureIsInvalid'))
 }

@@ -93,6 +93,9 @@ export function textSurface(root: HTMLElement): AnnotationSurface {
     for (const ui of fragment.querySelectorAll('[data-annotation-ui]')) ui.remove()
     return fragment.textContent?.length ?? 0
   }
+  const initial = root.querySelector('mark[data-preview-highlight]')
+  const highlightFrom = initial ? offsetAt(initial, 0) : -1
+  const highlightTo = initial ? offsetAt(initial, initial.childNodes.length) : -1
   return {
     element: root, source, kind: 'text', size: source.length, quote,
     selection: () => {
@@ -117,14 +120,22 @@ export function textSurface(root: HTMLElement): AnnotationSurface {
     },
     render: (items) => {
       const segments = annotationSegments(items.filter((item) => item.display === 'mark'))
-      const boundaries = [...new Set([0, source.length, ...segments.flatMap(({ from, to }) => [from, to])])].sort((a, b) => a - b)
+      const boundaries = [...new Set([
+        0, source.length, ...segments.flatMap(({ from, to }) => [from, to]),
+        ...(initial ? [highlightFrom, highlightTo] : []),
+      ])].sort((a, b) => a - b)
       const nodes: Node[] = []
       let index = 0
       for (let i = 0; i < boundaries.length - 1; i++) {
         const from = boundaries[i], to = boundaries[i + 1]
         while (segments[index] && segments[index].to <= from) index++
         const segment = segments[index]
-        const text = document.createTextNode(source.slice(from, to))
+        let text: Node = document.createTextNode(source.slice(from, to))
+        if (initial && from >= highlightFrom && to <= highlightTo) {
+          const mark = initial.cloneNode(false) as HTMLElement
+          mark.append(text)
+          text = mark
+        }
         if (segment && segment.from <= from && segment.to >= to) {
           const mark = document.createElement('span')
           for (const [key, value] of Object.entries(markAttributes(segment.items))) mark.setAttribute(key, value)

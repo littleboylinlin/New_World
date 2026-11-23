@@ -2,7 +2,7 @@
 
 状态：本仓库原生工程交换格式，扩展名 `.newworld`，MIME `application/vnd.newworld.project+zip`。
 
-工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。v0.19.0 正式写入 **Schema 3**，显式读取 Schema 1、2、3。v0.18.1 及更旧应用不能读取 Schema 3。故事设定库引入 Schema 4，读取 Schema 1–4，写入 Schema 4。升级、回退和全库备份格式见[未发布版本说明](releases/unreleased.md)。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
+工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。v0.19.0 正式写入 **Schema 3**，显式读取 Schema 1、2、3。v0.18.1 及更旧应用不能读取 Schema 3。v0.31.0 随故事设定库引入 Schema 4，读取 Schema 1–4，写入 Schema 4。升级、回退和全库备份格式见[v0.31.0 发行说明](releases/v0.31.0.md)。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
 
 ## v0.19.0 升级与回退
 
@@ -181,7 +181,7 @@ Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 S
 - 逐项校验 ZIP CRC、本地/中央目录、声明及实际流入字节数、SHA-256、UTF-8 JSON、类型、唯一键、章节双向引用、原文件摘要、历史载荷及 detached 集合；全部成功后才显示摘要。Manifest 自身由 ZIP CRC 与严格解析保护；清单 SHA-256 能发现损坏，不提供发布者身份认证或数字签名。
 - 物理归档 ≤512 MiB，累计解压 ≤512 MiB，单项 ≤128 MiB，JSON 索引/manifest ≤32 MiB，条目 ≤10000，顶层记录总量 ≤50000；JSON 最大 64 层、1000000 个遍历值；大于 1 MiB 的条目压缩率不得超过 200:1。
 - 章节历史 gzip 单项原始 JSON ≤32 MiB，累计解码 ≤512 MiB；原文件沿用 ≤128 MiB，封面 ≤32 MiB，插图沿用单图 ≤4 MiB、文档预算 ≤24 MiB。声明偏小也不能绕过流式限额。
-- 当前读取器接受 Schema 1–4，写入器始终写 Schema 4。更高、更低或缺少版本的文件会被拒绝。v0.18.0 仅支持 Schema 1，v0.18.1 支持 Schema 1–2，v0.19.0 至 v0.30.0 支持 Schema 1–3。导入旧工程时，未提供的 metadata 继续省略，新增索引和对应的 detached 字段在内存中填为空数组。只有 metadata 内符合本规范的未知 JSON 值允许保留。
+- v0.31.0 读取 Schema 1–4，写入 Schema 4。更高、更低或缺少版本的文件会被拒绝。v0.18.0 仅支持 Schema 1，v0.18.1 支持 Schema 1–2，v0.19.0 至 v0.30.0 支持 Schema 1–3。导入旧工程时，未提供的 metadata 继续省略，新增索引和对应的 detached 字段在内存中填为空数组。只有 metadata 内符合本规范的未知 JSON 值允许保留。
 - 无网络资源加载、代码执行或原文件自动打开；原文件只按现有受限预览器读取。安全检查失败不会打开写事务。
 
 ## 5. 导入、冲突与本地存储

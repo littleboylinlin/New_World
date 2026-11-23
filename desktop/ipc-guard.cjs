@@ -36,13 +36,14 @@ function isReadingRoute(hash) {
 }
 
 const uuid = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
-const storySettingsRoute = new RegExp(`^#/story-settings/(original|reference)/${uuid}(?:\\?edition=${uuid}&chapter=${uuid})?$`)
+const storyCardQuery = 'card=[a-zA-Z0-9%*+._-]{1,2300}'
+const storySettingsRoute = new RegExp(`^#/story-settings/(original|reference)/${uuid}(?:\\?edition=${uuid}&chapter=${uuid}(?:&${storyCardQuery})?|\\?${storyCardQuery})?$`)
 
 function isStorySettingsRoute(hash) {
   return typeof hash === 'string' && storySettingsRoute.test(hash)
 }
 
-/** A secondary window may only ask for its language pack. */
+/** Verifies a registered secondary window and its top frame for explicitly allowed IPC operations. */
 function isTrustedSecondaryRenderer(event, appUrl, windows) {
   for (const win of windows) {
     if (isWindowWebContents(event, win) && isTrustedOriginFrame(event, appUrl)) return true

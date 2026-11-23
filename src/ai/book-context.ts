@@ -1,6 +1,6 @@
 import type { ProfileConfig } from '../ai-provider'
 import { chapterText } from '../documents/model'
-import type { Edition } from '../documents/model'
+import type { Edition, EditionKey } from '../documents/model'
 import { readBundle } from '../documents/store'
 import { t } from '../i18n'
 import { storyCardApplies, storyCards } from '../story-settings/model'
@@ -21,7 +21,12 @@ export interface BookRequestSource {
 }
 
 const normalize = (text: string) => text.normalize('NFKC').toLowerCase()
-const defaultContextTokens = 8192
+export const contextTokensFor = (config: ProfileConfig) => config.generation?.contextTokens ?? 8192
+
+export async function readBookContext(edition: EditionKey) {
+  const [bundle, settings] = await Promise.all([readBundle(edition), readStorySettings(edition)])
+  return { bundle, settings }
+}
 
 function nameMatcher(name: string): (text: string) => boolean {
   const term = normalize(name.trim())
@@ -32,26 +37,23 @@ function nameMatcher(name: string): (text: string) => boolean {
   return (text) => pattern.test(text)
 }
 
-function cardContext(scene: StoryScene, edition: Edition, chapterId: string, text: string, number: number) {
+export function storyContextCards(scene: StoryScene, edition: Edition, chapterId: string, manuscript: string, includeUnlinked = false) {
+  const text = normalize(manuscript)
   const tags = new Map(scene.tags.map(({ id, name }) => [id, name]))
+  const number = edition.chapters.findIndex(({ id }) => id === chapterId) + 1
   const chapters = new Map(edition.chapters.slice(0, number).map(({ id, title }, index) => [id, { number: index + 1, title }]))
   const priority = (card: StoryCard) => card.wholeBook ? 0
     : storyCardApplies(card, { editionId: edition.id, chapterId }) ? 1
     : [card.name, ...card.aliases].some((name) => nameMatcher(name)(text)) ? 2 : 3
   return storyCards(scene).map((card) => ({ card, rank: priority(card) }))
-    .filter(({ rank }) => rank < 3).sort((a, b) => a.rank - b.rank)
+    .filter(({ rank }) => includeUnlinked || rank < 3).sort((a, b) => a.rank - b.rank)
     .map(({ card }) => {
       const states = card.states.flatMap((state) => {
         const chapter = state.editionId === edition.id ? chapters.get(state.chapterId) : undefined
         return chapter ? [{ ...chapter, text: state.text }] : []
       }).sort((a, b) => a.number - b.number)
-      return {
-        name: card.name,
-        text: JSON.stringify({
-          name: card.name, aliases: card.aliases, tags: card.tagIds.flatMap((id) => tags.get(id) ?? []),
-          fields: card.fields, body: card.body, states,
-        }),
-      }
+      return { id: card.id, name: card.name, aliases: card.aliases, tags: card.tagIds.flatMap((id) => tags.get(id) ?? []),
+        fields: card.fields, body: card.body, states }
     })
 }
 
@@ -105,7 +107,7 @@ function relatedChapters(question: string, chapters: readonly ContextText[], sum
 export async function buildBookQuestion(source: BookRequestSource, config: ProfileConfig, question: string,
   history: readonly ChatTurn[], selection?: string, stopped: () => boolean = () => false) {
   const { edition, bookTitle, chapterId, chapterTitle, currentText } = source
-  const [bundle, settings] = await Promise.all([readBundle(edition), readStorySettings(edition)])
+  const { bundle, settings } = await readBookContext(edition)
   if (stopped()) return
   const currentIndex = bundle.edition.chapters.findIndex(({ id }) => id === chapterId)
   if (currentIndex < 0) throw new Error(t('aiContext.readFailed'))
@@ -114,11 +116,12 @@ export async function buildBookQuestion(source: BookRequestSource, config: Profi
     number: index + 1, text: index === currentIndex ? currentText : chapterText(content),
   }))
   const current = chapters[currentIndex]
-  const combined = normalize([currentText, selection, question].filter(Boolean).join('\n'))
-  const cards = cardContext(settings.board.scene, bundle.edition, chapterId, combined, current.number)
+  const combined = [currentText, selection, question].filter(Boolean).join('\n')
+  const cards = storyContextCards(settings.board.scene, bundle.edition, chapterId, combined)
+    .map(({ id: _id, ...card }) => ({ name: card.name, text: JSON.stringify(card) }))
   const system = bookQuestionInstructions(Boolean(selection))
   const input = {
-    ...system, config, contextTokens: config.generation?.contextTokens ?? defaultContextTokens,
+    ...system, config, contextTokens: contextTokensFor(config),
     question, selection, history, bookTitle, current: { ...current, focus: selection ? currentText.indexOf(selection) : undefined },
     cards, summaries: [], excerpts: [],
   }

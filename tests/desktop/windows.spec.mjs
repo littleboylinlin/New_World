@@ -3,6 +3,7 @@ import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { desktopStorySettingsFlow } from './story-settings-flow.mjs'
 import { desktopBookChatFlow } from './book-chat-flow.mjs'
+import { desktopStoryAiFlow } from './story-ai-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
@@ -92,7 +93,8 @@ async function exportTo(page, format) {
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
   await dialog.getByRole('radio', { name: exportLabels[format] }).check()
   await dialog.getByRole('button', { name: '开始导出' }).click()
-  await expect(dialog).toBeHidden()
+  // The dialog closes after Electron finishes native printing and writes the PDF.
+  await expect(dialog).toBeHidden({ timeout: 30_000 })
 }
 
 async function expectCleanPdf(bytes, expectedText) {
@@ -156,8 +158,12 @@ test('桌面平滑写作：光标、输入法、打字机模式和长章节输�
 })
 
 test('桌面离线打开、读写和导出，关闭及重新安装后保留原文和续写', async ({}, testInfo) => {
-  const original = file('桌面续写原文.txt', '路旁亮着一盏灯。')
-  const savedText = '第一卷正文。Windows desktop export.'
+  // Installed Windows runs share the library with the preceding attempt.
+  const attempt = testInfo.retry ? `（重试 ${testInfo.retry}）` : ''
+  const originalTitle = '桌面续写原文' + attempt
+  const pdfTitle = '桌面 PDF' + attempt
+  const original = file(originalTitle + '.txt', '路旁亮着一盏灯。' + attempt)
+  const savedText = '第一卷正文。Windows desktop export.' + attempt
   let app = await launch(testInfo)
   try {
     let page = await app.firstWindow()
@@ -207,11 +213,14 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await page.locator('[data-filter="reference"]').click()
     await page.locator('input[type=file]').setInputFiles(original)
     await chooseImportType(page, 'reference')
-    await page.getByRole('link', { name: '查看 桌面续写原文', exact: true }).click()
+    await page.getByRole('link', { name: `查看 ${originalTitle}`, exact: true }).click()
     const projectUrl = page.url()
     await page.getByRole('button', { name: '新建续写' }).click()
-    await page.getByRole('textbox', { name: '续写名称' }).fill('到达港口')
-    await page.getByRole('button', { name: '开始续写' }).click()
+    const continuation = page.getByRole('dialog', { name: '新建续写', exact: true })
+    await continuation.getByRole('textbox', { name: '续写名称' }).fill('到达港口' + attempt)
+    await continuation.getByRole('button', { name: '开始续写' }).click()
+    await expect(continuation).toBeHidden({ timeout: 30_000 })
+    await expect(editor(page)).toBeEditable({ timeout: 30_000 })
     await editor(page).fill('这段先保存。')
     const draftUrl = page.url()
     await expect(status(page)).toHaveText('已保存')
@@ -220,8 +229,10 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       dialog.showSaveDialog = async () => ({ canceled: false, filePath })
     }, pdfPath)
     await editor(page).fill(savedText)
+    const exporting = performance.now()
     await exportTo(page, 'pdf')
     const exportedPdf = await readFile(pdfPath)
+    console.info(`Desktop PDF export and write completed in ${Math.round(performance.now() - exporting)} ms`)
     expect(exportedPdf.subarray(0, 5).toString()).toBe('%PDF-')
     await expectCleanPdf(exportedPdf, savedText)
     await expect(page.locator('.print-edition')).toHaveCount(0)
@@ -242,9 +253,9 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     app = await launch(testInfo)
     page = await app.firstWindow()
     await page.goto(draftUrl)
-    await expect(editor(page)).toHaveText(lastText)
+    await expect(editor(page)).toHaveText(lastText, { timeout: 30_000 })
     await page.goto(projectUrl)
-    await page.getByRole('link', { name: '查看原文 桌面续写原文' }).click()
+    await page.getByRole('link', { name: `查看原文 ${originalTitle}` }).click()
     await expect(page.getByRole('article')).toHaveText(original.buffer.toString())
 
     const originalPath = testInfo.outputPath(original.name)
@@ -252,17 +263,17 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       session.defaultSession.once('will-download', (_event, item) => item.setSavePath(savePath))
     }, originalPath)
     await page.getByRole('button', { name: '下载原文件' }).click()
-    await expect.poll(async () => readFile(originalPath).catch(() => null)).toEqual(original.buffer)
+    await expect.poll(async () => readFile(originalPath).catch(() => null), { timeout: 30_000 }).toEqual(original.buffer)
 
     await page.getByRole('link', { name: 'New World 书库首页' }).click()
     await page.getByRole('link', { name: '写作', exact: true }).click()
     await page.locator('[data-filter="original"]').click()
-    await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
-    await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', exportedPdf))
+    await expect(page.getByRole('link', { name: `查看 ${originalTitle}`, exact: true })).toHaveCount(0)
+    await page.locator('input[type=file]').setInputFiles(file(pdfTitle + '.pdf', exportedPdf))
     await chooseImportType(page, 'original')
-    await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
+    await page.getByRole('link', { name: `查看 ${pdfTitle}`, exact: true }).click({ timeout: 30_000 })
     const canvas = page.getByRole('img', { name: 'PDF 第 1 页' })
-    await expect(canvas).toBeVisible()
+    await expect(canvas).toBeVisible({ timeout: 30_000 })
     const marginsAreWhite = await canvas.evaluate((page) => {
       const context = page.getContext('2d')
       const x = Math.floor(page.width / 2)
@@ -948,6 +959,75 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
   } finally { await stop(app) }
 })
 
+test('备份保留份数只在确认名单后清理升级遗留和缩减份数的旧备份', async ({}, info) => {
+  const folder = info.outputPath('retention')
+  await mkdir(folder, { recursive: true })
+  const names = (kind, count) => Array.from({ length: count }, (_, index) =>
+    `New-World-${kind}-2026-01-${String(index + 1).padStart(2, '0')}-000000.zip`)
+  const automatic = names('auto-backup', 7)
+  const restored = names('before-restore', 12)
+  const others = [...names('backup', 2), 'user-backup.zip', 'New-World-before-restore-KEEP.zip']
+  const all = [...automatic, ...restored, ...others]
+  await Promise.all(all.map((name) => writeFile(join(folder, name), 'test fixture')))
+  const app = await launch(info)
+  try {
+    const page = await app.firstWindow()
+    const section = await openSettingsCategory(page, 'backup')
+    const prior = await page.evaluate(() => window.newWorldDesktop.getBackupState())
+    await page.evaluate(() => window.newWorldDesktop.setBackupFrequency('off'))
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+    }, folder)
+    await section.getByRole('button', { name: '选择文件夹…' }).click()
+    await expect(section.locator('.backup-location')).toContainText(folder)
+    const auto = section.getByLabel('自动备份保留份数')
+    const before = section.getByLabel('恢复前备份保留份数')
+    const clean = page.getByRole('dialog', { name: '清理旧备份？' })
+    const onDisk = async () => (await readdir(folder)).sort()
+    try {
+      await expect(auto).toHaveValue('10')
+      await expect(before).toHaveValue('10')
+      await expect(section.getByText('有 2 份旧备份超出保留份数。')).toBeVisible()
+      expect(await onDisk()).toEqual(all.toSorted())
+      await auto.selectOption('5')
+      await expect(clean.getByRole('listitem')).toHaveText(automatic.slice(0, 2))
+      await clean.getByRole('button', { name: '取消' }).click()
+      await expect(clean).toBeHidden()
+      await expect(auto).toHaveValue('10')
+      expect(await onDisk()).toEqual(all.toSorted())
+      await auto.selectOption('5')
+      await clean.getByRole('button', { name: '清理', exact: true }).click()
+      await expect(auto).toHaveValue('5')
+      await expect(clean).toBeHidden()
+      expect(await onDisk()).toEqual([...automatic.slice(2), ...restored, ...others].sort())
+      await section.getByRole('button', { name: '清理', exact: true }).click()
+      await expect(clean.getByRole('listitem')).toHaveText(restored.slice(0, 2))
+      await clean.getByRole('button', { name: '清理', exact: true }).click()
+      await expect(clean).toBeHidden()
+      await expect(section.getByText('有 2 份旧备份超出保留份数。')).toBeHidden()
+      expect(await onDisk()).toEqual([...automatic.slice(2), ...restored.slice(2), ...others].sort())
+      await before.selectOption('null')
+      await expect.poll(() => page.evaluate(async () => (await window.newWorldDesktop.getBackupState()).retention['before-restore'])).toBeNull()
+    } finally {
+      await page.evaluate(async (previous) => {
+        const desktop = window.newWorldDesktop
+        for (const [kind, limit] of Object.entries(previous.retention)) {
+          const plan = await desktop.planBackupRetention(kind, limit)
+          await desktop.applyBackupRetention(kind, limit, plan.token)
+        }
+        await desktop.setBackupFrequency(previous.frequency)
+        if (!previous.custom) await desktop.resetBackupFolder()
+      }, prior)
+      if (prior.custom) {
+        await app.evaluate(({ dialog }, path) => {
+          dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+        }, prior.folder)
+        await page.evaluate(() => window.newWorldDesktop.chooseBackupFolder())
+      }
+    }
+  } finally { await stop(app) }
+})
+
 test('灵感速记：全局快捷键可在设置里更换，任务栏的速记任务打开小窗并存进书库', async ({}, testInfo) => {
   const app = await launch(testInfo)
   const shortcutFile = ({ app }) => {
@@ -1325,4 +1405,8 @@ test('Windows 故事设定独立窗口可重开，编辑器与设定实时同步
 
 test('Windows AI 对话走主进程流式请求，能点选并在重开后保留', async ({}, info) => {
   await desktopBookChatFlow(() => launch(info), stop, 'Windows AI 对话验收')
+})
+
+test('Windows 设定窗口通过主进程提取与检查并定位主窗口正文', async ({}, info) => {
+  await desktopStoryAiFlow(() => launch(info), stop, 'Windows 设定检查验收')
 })

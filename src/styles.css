@@ -350,6 +350,10 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 /* The brand stripe of the header, on top of every dialog. */
 .manage-dialog::before { content: ""; display: block; height: 5px; background: linear-gradient(90deg, var(--red) 0 34%, var(--yellow) 34% 67%, var(--blue) 67%); }
 .manage-dialog::backdrop { background: var(--backdrop); backdrop-filter: blur(3px); }
+.backup-retention { display: grid; gap: 10px; }
+.backup-retention-row .field-label { margin: 0; }
+.backup-excess { align-items: center; margin-top: 6px; }
+.backup-prune-files { max-block-size: 38dvh; margin-block: 0; padding-inline-start: 22px; overflow: auto; overflow-wrap: anywhere; }
 .manage-form { padding: 22px 26px 24px; }
 .manage-form > h2 { margin-bottom: 16px; font-size: 1.26rem; font-weight: 900; letter-spacing: .01em; }
 .manage-form > h2 + .dialog-help { margin-top: -6px; }
