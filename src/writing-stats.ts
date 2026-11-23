@@ -298,18 +298,26 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
     months.replaceChildren()
     grid.replaceChildren()
     active = undefined
+    let monthGroup: HTMLElement | undefined
     let lastMonth = -1
+    let previousLabelWeek = -1
+    const monthText = new Intl.DateTimeFormat(tag(), { month: 'short' })
     let todayCell: HTMLElement | undefined
     for (let week = 0; week < heatmapWeeks; week++) {
       const monday = addDays(firstMonday, week * 7)
-      const monthTag = element('span')
       if (monday.getMonth() !== lastMonth) {
-        monthTag.className = 'month'
-        monthTag.textContent = new Intl.DateTimeFormat(tag(), { month: 'short' }).format(monday)
+        // Consecutive labels can happen when the first month covers just one column.
+        if (!monthGroup || week !== previousLabelWeek + 1) {
+          monthGroup = element('span', 'month-group')
+          monthGroup.style.gridColumn = String(week + 1)
+          months.append(monthGroup)
+        }
+        const label = element('span', 'month', monthText.format(monday))
+        monthGroup.append(label)
+        monthObserver.observe(label)
         lastMonth = monday.getMonth()
-        monthObserver.observe(monthTag)
+        previousLabelWeek = week
       }
-      months.append(monthTag)
       for (let row = 0; row < 7; row++) {
         const date = addDays(monday, row)
         const key = dayKey(date)

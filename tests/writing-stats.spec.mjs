@@ -377,6 +377,7 @@ test('首尾日期在缩放和窄视口中完整可见，视口变化后聚焦�
 
 test('热力图在不同宽度下完整显示左侧月份标签', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'))
   const wrap = page.locator('.heatmap-grid-wrap')
   const firstVisibleMonthFits = () => wrap.evaluate((node) => {
     const bounds = node.getBoundingClientRect()
@@ -410,7 +411,12 @@ test('热力图在不同宽度下完整显示左侧月份标签', async ({ page 
       await expect.poll(firstVisibleMonthFits).toBe(true)
     }
     await wrap.evaluate((node) => { node.scrollLeft = 0 })
-    await expect(wrap.locator('.month').filter({ hasText: /\S/ }).first()).toBeVisible()
+    const months = wrap.locator('.month')
+    await expect(months.first()).toBeVisible()
+    await expect(months.nth(1)).toBeVisible()
+    const first = await months.first().boundingBox()
+    const second = await months.nth(1).boundingBox()
+    expect(first.x + first.width).toBeLessThanOrEqual(second.x)
     await expect.poll(firstVisibleMonthFits).toBe(true)
   }
 })
