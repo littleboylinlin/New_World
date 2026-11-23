@@ -12,10 +12,9 @@
 .story-stage { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; overflow: clip; }
 .story-ai-empty {
   position: absolute;
-  top: 58%;
-  left: 50%;
+  top: 70px;
+  right: var(--island-gap);
   min-height: 44px;
-  transform: translateX(-50%);
   white-space: nowrap;
   z-index: 4;
 }
