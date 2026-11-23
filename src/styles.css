@@ -55,7 +55,7 @@ h1, h2, h3, p { margin: 0; }
 .mode-reference { --accent: var(--blue); --tint: var(--tint-blue); }
 
 /* The header is also the window title bar, with its own foreground and background. */
-.site-header { --ink: var(--bar); --paper: var(--bar-text); --edge: var(--bar); position: relative; z-index: 3; color: var(--paper); background: var(--ink); }
+.site-header { --ink: var(--bar); --paper: var(--bar-text); --edge: var(--bar); position: relative; z-index: 3; flex: none; color: var(--paper); background: var(--ink); }
 .site-header::after { content: ""; display: block; height: 6px; background: linear-gradient(90deg, var(--red) 0 34%, var(--yellow) 34% 67%, var(--blue) 67%); }
 .site-header :focus-visible { outline-color: var(--yellow); }
 .header-inner { container: header / inline-size; display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--topbar-height); }
@@ -73,9 +73,11 @@ h1, h2, h3, p { margin: 0; }
 :root[data-theme="soft-paper"] .site-header :focus-visible { outline-color: var(--ring); }
 :root[data-theme="soft-paper"] .local-label > [aria-hidden] { background: var(--red); }
 .page { display: flex; flex: 1 0 auto; flex-direction: column; min-width: 0; overflow-x: clip; }
-.main-content { flex: 1; min-width: 0; padding-block: var(--page-padding-top) calc(48px + var(--corner-tips-space, 0px)); }
+.main-content { flex: 1; min-width: 0; padding-block: var(--page-padding-top) 48px; }
 .main-content.home-main { display: flex; flex-direction: column; justify-content: flex-start; padding-block: clamp(14px, 2.2vh, var(--page-padding-top)); container: home / inline-size; }
-.site-footer { position: sticky; bottom: 0; z-index: 3; flex: none; margin-top: auto; border-top: 1px solid var(--surface-line); background: var(--paper); color: var(--muted); font-size: .78rem; }
+/* Tips and the footer sit outside the page's scroll area at their natural height. */
+.page-end { position: relative; z-index: 3; flex: none; pointer-events: none; }
+.site-footer { border-top: 1px solid var(--surface-line); background: var(--paper); color: var(--muted); font-size: .78rem; pointer-events: auto; }
 .footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 10px 16px; min-height: 44px; padding-block: 6px; }
 .footer-nav { display: flex; flex: none; align-items: center; gap: 8px; }
 .settings-entry { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 4px 11px; border: 1px solid var(--surface-line-strong); border-radius: 8px; color: var(--ink); background: var(--surface-card); font-size: .82rem; font-weight: 800; text-decoration: none; white-space: nowrap; }
@@ -88,7 +90,7 @@ h1, h2, h3, p { margin: 0; }
 .footer-meta { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; margin-inline-start: auto; text-align: end; }
 .footer-meta > span { flex: none; color: var(--ink); font-weight: 800; letter-spacing: .04em; }
 .version { margin-inline-start: 5px; padding: 1px 6px; border-radius: 4px; color: var(--paper); background: var(--ink); font-variant-numeric: tabular-nums; }
-.storage-location { min-width: 0; max-width: min(46vw, 420px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storage-location { min-width: 0; overflow-wrap: anywhere; }
 
 .button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 40px; padding: 7px 15px; border: 1px solid var(--surface-line-strong); border-radius: 9px; color: var(--ink); background: var(--surface-card); font-size: .9rem; font-weight: 750; line-height: 1.4; white-space: nowrap; text-decoration: none; transition: transform 110ms ease, box-shadow 110ms ease, background-color 110ms ease, border-color 110ms ease; }
 .button:hover:not(:disabled) { border-color: var(--ink); box-shadow: 0 2px 5px -2px var(--surface-shade); }
@@ -200,8 +202,10 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .heatmap-grid-wrap::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--accent); }
 .heatmap-grid-wrap::-webkit-scrollbar-thumb:hover { background: var(--ink); }
 .heatmap-scroll { width: max-content; }
-.heatmap-months { display: flex; gap: 3px; height: 20px; margin-bottom: 3px; }
-.month { flex: 0 0 var(--heat-cell); min-width: 0; color: var(--muted); font-size: .66rem; font-weight: 700; line-height: 20px; white-space: nowrap; }
+.heatmap-months { display: grid; grid-auto-columns: var(--heat-cell); gap: 3px; height: 20px; margin-bottom: 3px; }
+.month-group { grid-row: 1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(var(--heat-cell), max-content); gap: 3px; width: max-content; }
+.month { justify-self: start; color: var(--muted); font-size: .66rem; font-weight: 700; line-height: 20px; white-space: nowrap; }
+.month[data-clipped] { visibility: hidden; }
 .heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, var(--heat-cell)); grid-auto-columns: var(--heat-cell); gap: 3px; }
 .heat-cell { width: var(--heat-cell); height: var(--heat-cell); border: 1px solid var(--surface-line); border-radius: 3px; background: var(--surface-well); }
 .heat-cell[data-level="1"] { background: color-mix(in srgb, var(--accent) 28%, var(--surface-card)); border-color: color-mix(in srgb, var(--accent) 26%, var(--surface-line)); }
@@ -308,7 +312,8 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .undo-close { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; color: var(--paper); background: transparent; }
 .undo-close:hover { color: var(--on-yellow); background: var(--yellow); }
 :root[data-theme="soft-paper"] .undo-toast .button:hover:not(:disabled) { background: var(--surface); border-color: var(--surface); }
-.corner-tips { position: fixed; z-index: 4; right: 16px; bottom: 62px; display: grid; justify-items: end; gap: 10px; width: min(340px, calc(100% - 32px)); pointer-events: none; }
+.corner-tips { display: grid; gap: 10px; width: min(340px, calc(100% - 32px)); margin-inline: auto 16px; padding-block-end: 16px; }
+.corner-tips:empty, .desktop .corner-tips { display: none; }
 .corner-tip { position: relative; width: 100%; padding: 12px 40px 12px 14px; border: 2px solid var(--ink); border-radius: 12px; color: var(--ink); background: var(--sheet); box-shadow: 3px 3px 0 var(--edge), 0 14px 30px -16px var(--pop-soft); font-size: .86rem; line-height: 1.5; pointer-events: auto; }
 .corner-tip[data-tip="version"] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-block: 10px; border-color: var(--ink); background: var(--yellow); color: var(--on-yellow); }
 .corner-tip[data-tip="version"] .corner-tip-text { flex: 1 1 auto; }
@@ -321,8 +326,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .corner-tip-close { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; color: inherit; background: transparent; }
 .corner-tip-close:hover { color: var(--on-yellow); background: var(--yellow); }
 .corner-tip[data-tip="version"] .corner-tip-close:hover { background: var(--sheet); color: var(--ink); }
-.focus-writing .corner-tips { bottom: 16px; }
-@media (max-width: 560px) { .corner-tips { right: 12px; left: 12px; width: auto; } }
+@media (max-width: 560px) { .corner-tips { width: auto; margin-inline: 12px; } }
 .web-storage-warning { margin: 18px 0 0; padding: 10px 14px; border: 2px solid var(--ink); border-radius: 10px; color: var(--on-yellow); background: var(--yellow); font-size: .9rem; font-weight: 700; line-height: 1.5; }
 .web-storage-warning a { color: inherit; text-underline-offset: 3px; }
 .web-storage-row { margin-top: 18px; padding-top: 16px; border-top: 2px solid var(--hair); }
@@ -377,7 +381,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .settings-nav-item[aria-current="page"] { border-color: transparent; color: var(--on-accent); background: var(--accent); font-weight: 800; }
 .settings-nav-item[aria-current="page"] svg { color: var(--on-accent); }
 .settings-nav-item[aria-disabled="true"] { opacity: .55; cursor: default; }
-.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: var(--page-padding-top) var(--page-gutter) calc(44px + var(--corner-tips-space, 0px)); scroll-padding-block: 24px; }
+.settings-content { min-width: 0; min-height: 0; overflow-y: auto; padding: var(--page-padding-top) var(--page-gutter) 44px; scroll-padding-block: 24px; }
 /* Focus can move to the scrolling pane when entering Settings; avoid a full-panel outline ring. */
 .settings-content:focus { outline: none; }
 .settings-content { container: settings-content / inline-size; }
@@ -452,7 +456,12 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
 .reading-image { display: grid; justify-items: center; gap: 12px; margin: 0; padding: 12px 0 22px; }
 .reading-image img { display: block; max-width: 100%; max-height: 75vh; width: auto; height: auto; object-fit: contain; }
 
-/* Desktop app: the header doubles as the window title bar, footer stays docked, and the page scrolls between them. */
+@media screen {
+  :where(html:not(.desktop, .fixed-page)) body:has(.app-column) { height: 100dvh; min-height: 0; overflow: hidden; }
+  :where(html:not(.desktop, .fixed-page)) .page { flex: 1; min-height: 0; overflow-y: auto; }
+}
+
+/* Desktop app: the header doubles as the window title bar. */
 @media screen {
   .desktop body { height: 100vh; min-height: 0; overflow: hidden; }
   .desktop .page { flex: 1; min-height: 0; overflow-y: auto; }
@@ -460,7 +469,6 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .desktop .site-header :is(a, button) { -webkit-app-region: no-drag; }
   .desktop .header-inner, .desktop .footer-inner { width: auto; min-height: var(--topbar-height); margin: 0; padding-inline: 14px; }
   .desktop .footer-inner { min-height: 42px; }
-  .desktop .site-footer { position: static; margin-top: 0; }
   .desktop.macos .header-inner { padding-inline: 84px 14px; }
   .desktop:not(.macos) .header-inner { padding-inline-end: 150px; }
   /* Full screen: the traffic lights are gone on a Mac; on Windows two buttons remain, leave full screen and close. */
@@ -501,7 +509,7 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .settings-page-title { font-size: 1.25rem; }
   .settings-nav { display: flex; min-width: 0; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-bottom: 2px; scrollbar-width: thin; }
   .settings-nav-item { flex: none; white-space: nowrap; min-height: 36px; padding: 6px 11px; }
-  .settings-content { padding: var(--page-padding-top) var(--page-gutter) calc(32px + var(--corner-tips-space, 0px)); overflow-y: visible; }
+  .settings-content { padding: var(--page-padding-top) var(--page-gutter) 32px; overflow-y: visible; }
   .settings-card, .settings-subgroup { padding: 15px 16px; }
 }
 
@@ -509,8 +517,8 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   :root { --page-gutter: 16px; --page-padding-top: 18px; --page-header-height: 56px; --page-header-gap: 16px; }
   .header-inner { min-height: var(--topbar-height); gap: 8px; }
   .brand img { width: 30px; height: 30px; }
-  .main-content { padding-block: var(--page-padding-top) calc(44px + var(--corner-tips-space, 0px)); }
-  .main-content.home-main { padding-block: var(--page-padding-top) calc(24px + var(--corner-tips-space, 0px)); }
+  .main-content { padding-block: var(--page-padding-top) 44px; }
+  .main-content.home-main { padding-block: var(--page-padding-top) 24px; }
   .home { gap: 12px; }
   .home-head { align-items: flex-start; }
   .shelf-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -520,7 +528,6 @@ h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 900; line-height: 1.2; le
   .stat-card { padding: 10px 12px; }
   .footer-inner { min-height: 40px; padding-block: 5px; gap: 8px; }
   .footer-meta { gap: 6px; font-size: .72rem; }
-  .storage-location { max-width: 120px; }
   .page-heading { align-items: flex-start; flex-direction: column; margin-block: 0 var(--page-header-gap); padding-bottom: 12px; }
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 18px; }
   .book-cover { padding: 14px 12px 44px 28px; }

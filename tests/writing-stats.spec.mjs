@@ -375,6 +375,52 @@ test('首尾日期在缩放和窄视口中完整可见，视口变化后聚焦�
   }
 })
 
+test('热力图在不同宽度下完整显示左侧月份标签', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.clock.setFixedTime(new Date('2026-11-23T12:00:00Z'))
+  const wrap = page.locator('.heatmap-grid-wrap')
+  const firstVisibleMonthFits = () => wrap.evaluate((node) => {
+    const bounds = node.getBoundingClientRect()
+    for (const label of node.querySelectorAll('.month')) {
+      if (!label.textContent || getComputedStyle(label).visibility === 'hidden') continue
+      const range = document.createRange()
+      range.selectNodeContents(label)
+      const text = range.getBoundingClientRect()
+      if (text.right > bounds.left && text.left < bounds.right) {
+        return text.left >= bounds.left && text.right <= bounds.right
+      }
+    }
+    return false
+  })
+
+  for (const width of [390, 804, 1280]) {
+    await page.setViewportSize({ width, height: 740 })
+    await page.goto('/')
+    await ready(page)
+    await page.evaluate(() => document.fonts.ready)
+    await expect.poll(firstVisibleMonthFits).toBe(true)
+    if (width < 1280) {
+      // Place the scroll edge in the middle of a month label.
+      await wrap.evaluate((node) => {
+        const labels = Array.from(node.querySelectorAll('.month')).filter((label) => label.textContent)
+        const range = document.createRange()
+        range.selectNodeContents(labels[2])
+        const text = range.getBoundingClientRect()
+        node.scrollLeft += text.left + text.width / 2 - node.getBoundingClientRect().left
+      })
+      await expect.poll(firstVisibleMonthFits).toBe(true)
+    }
+    await wrap.evaluate((node) => { node.scrollLeft = 0 })
+    const months = wrap.locator('.month')
+    await expect(months.first()).toBeVisible()
+    await expect(months.nth(1)).toBeVisible()
+    const first = await months.first().boundingBox()
+    const second = await months.nth(1).boundingBox()
+    expect(first.x + first.width).toBeLessThanOrEqual(second.x)
+    await expect.poll(firstVisibleMonthFits).toBe(true)
+  }
+})
+
 test.describe('手机视口', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 })
 

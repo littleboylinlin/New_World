@@ -106,11 +106,11 @@ On every launch the app checks this repository's GitHub Releases once in the bac
 
 After a normal update, the Windows installer removes old program files; both platforms reclaim update-download caches managed by the app and clean up older language packs after the new interface opens successfully. Version changes also refresh stale page and compilation caches without clearing the IndexedDB library. Mac also cleans recognizable interrupted old-version downloads from the default Downloads directory. Files temporarily locked by the system are retried and, if still failing, kept for a later launch. Libraries, settings, the current version's language pack, manually saved installers, and unknown files are all kept.
 
-Checks fetch only public version metadata anonymously. Novels, source files, and manuscripts stay on your machine.
+Checks fetch only public version metadata anonymously. Novels, original files, and manuscripts stay on your machine.
 
 ## Reading and editing
 
-A work page in the original library switches between the **source file** and each **edited version**. Convertible sources use "Convert to manuscript" to create an independent body of text; PDFs use "Extract text as manuscript". Works in any format can also get a new blank manuscript. "Save as independent version" copies the current chapter and text so you can try a different approach.
+A work page in the original library switches between the **original file** and each **edited version**. Convertible original files use "Convert to manuscript" to create an independent body of text; PDFs use "Extract text as manuscript". Works in any format can also get a new blank manuscript. "Save as independent version" copies the current chapter and text so you can try a different approach.
 
 After importing a source work into the continuation/imitation library, each work gets a project. The project's "Continuations" list creates and opens independent continuation drafts; the "Sources" list reads, downloads, and adds files for the same source work. When needed, choose "Continue from this source" on the source reading page. Source works and manuscripts imported by older versions appear directly in the corresponding lists, and previously standalone drafts can add sources within their project.
 
@@ -118,7 +118,7 @@ After importing a source work into the continuation/imitation library, each work
 - The editor provides paragraphs, headings, bold, italic, underline, lists, quotes, horizontal rules, and local images. Native browser selection, clipboard, and Chinese IME input are supported.
 - `Ctrl / ⌘ + S` saves, `Ctrl / ⌘ + F` finds within the chapter, `Ctrl / ⌘ + B/I/U` toggles inline styles, `Ctrl / ⌘ + Z` undoes, `Ctrl / ⌘ + Shift + Z` redoes. Find matches literally and can replace one or all occurrences. Undo history belongs to the current chapter's editing session.
 - "Reading mode" keeps the table of contents and find; editing can be restored with "Edit text". At phone widths the chapter list can be expanded and the toolbar scrolls horizontally.
-- Reading mode and text source previews let you select text to add annotations, with lightweight inline previews or color highlights, hover previews, click-to-pin, multiline editing, deletion, and persistence after reopening. Overlapping ranges retain every annotation. PDF canvas previews are currently unsupported; source or formatting changes invalidate old anchors and display a notice. See [Reading annotations](docs/reading-annotations.md).
+- Reading mode and text previews of original files let you select text to add annotations, with lightweight inline previews or color highlights, hover previews, click-to-pin, multiline editing, deletion, and persistence after reopening. Overlapping ranges retain every annotation. PDF canvas previews are currently unsupported; source or formatting changes invalidate old anchors and display a notice. See [Reading annotations](docs/reading-annotations.md).
 - "Focus" hides the chapter list, the buttons around the text and the footer, leaving only the chapter; the toolbar fades until pointed at. Press `Esc` or click again to leave; leaving the page also ends it.
 - Right-click a chapter in the chapter list to add, rename, move or delete chapters.
 - Page navigation, chapter switching, dialogs, and notices have transition animations. Animations are skipped when the system's "reduce motion" is enabled.
@@ -201,24 +201,24 @@ Open **Story settings** from the editor toolbar to work on a local whiteboard in
 
 ## Format support
 
-"Edit" means a source can be converted into an independent manuscript. "Export" means a manuscript can produce a new file in that format. Downloading the original is a separate operation that preserves the imported file name and bytes.
+"Edit" means an original file can be converted into an independent manuscript. "Export" means a manuscript can produce a new file in that format. Downloading the original file is a separate operation that preserves the imported file name and bytes.
 
 When exporting you can select chapters and preview the first selected one. PDF, DOCX, and HTML default to a standard black-on-white style, with compact and relaxed alternatives. TXT keeps paragraph spacing and Markdown keeps headings, lists, and other markup; both offer text previews. EPUB exports EPUB 3 (one file per chapter, with cover, local illustrations, title/author/language/unique identifier, and `toc.ncx` for older readers); fonts and colors are controlled by the reader.
 
-| Format | Import source | Source preview | Convert to manuscript | Export manuscript | Known limits |
+| Format | Import original file | Original file preview | Convert to manuscript | Export manuscript | Known limits |
 | --- | --- | --- | --- | --- | --- |
 | TXT | Yes | Text | Yes | UTF-8 TXT | Manually switch between UTF-8, GB18030/GBK, Big5, UTF-16 LE/BE, and Windows-1252. Long paragraphs are split into chapters; export simplifies rich text and images to plain text. |
 | Markdown | Yes | Source | Yes | Markdown | Keeps common headings, lists, quotes, and styles. Export simplifies underlines, images, and complex tables. |
 | HTML | Yes | Body text | Yes | Standalone HTML | Converts common structure and embedded raster images; strips scripts, web styles, and remote resources. |
-| RTF | Yes | Body text | Partial | — | Supports text, Unicode and common ANSI encodings, and basic inline styles. Images, complex lists, and tables stay in the source. |
+| RTF | Yes | Body text | Partial | — | Supports text, Unicode and common ANSI encodings, and basic inline styles. Images, complex lists, and tables stay in the original file. |
 | DOCX | Yes | Body text | Yes | DOCX | Common text styles, headings, lists, tables, and decodable embedded images. Pagination, footnotes, headers/footers, revisions, and complex layouts may be simplified. |
-| DOC | Yes | — | — | — | Stores and downloads legacy Word sources. |
+| DOC | Yes | — | — | — | Stores and downloads legacy Word original files. |
 | ODT | Yes | Body text | Partial | — | Extracts headings, paragraphs, basic lists, tables, common styles, and package images. Page layout, repeated cells, and complex styles may be simplified. |
-| EPUB | Yes | Text in reading order | Partial | EPUB 3 (with `toc.ncx`) | Import converts chapters, common styles, and package images while fixed layout, external resources, and DRM content stay in the source; export builds per-chapter e-books with metadata, cover, and local illustrations. |
+| EPUB | Yes | Text in reading order | Partial | EPUB 3 (with `toc.ncx`) | Import converts chapters, common styles, and package images while fixed layout, external resources, and DRM content stay in the original file; export builds per-chapter e-books with metadata, cover, and local illustrations. |
 | PDF | Yes | Page-by-page render | Partial | Desktop saves PDF directly; web uses print-to-save | Extracts readable text; order may need adjustment. Scans need OCR first, encrypted files need unlocking. Export re-paginates. |
-| MOBI, AZW3 | Yes | — | — | — | Stores and downloads e-book sources. |
+| MOBI, AZW3 | Yes | — | — | — | Stores and downloads original e-book files. |
 
-Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, individual text parts of regular text and compressed documents at 16 MiB, and RTF at 8 MiB. Each embedded PNG, JPEG, GIF, or WebP image is capped at 4 MiB, with a 24 MiB total for converted images. For oversized books or corrupted/encrypted files, the app reports the limit and keeps the source.
+Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, individual text parts of regular text and compressed documents at 16 MiB, and RTF at 8 MiB. Each embedded PNG, JPEG, GIF, or WebP image is capped at 4 MiB, with a 24 MiB total for converted images. For oversized books or corrupted/encrypted files, the app reports the limit and keeps the original file.
 
 ## Saving and privacy
 

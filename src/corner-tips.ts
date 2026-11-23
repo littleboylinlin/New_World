@@ -3,22 +3,9 @@ import { button, element } from './ui'
 
 export interface TipAction { label: string; primary?: boolean; run: () => void | Promise<void> }
 
-let stack: HTMLElement | undefined
-
-// Pages get matching room at the bottom, so the last controls can always scroll clear of the tips.
-function reserveSpace(container: HTMLElement) {
-  new ResizeObserver(() => {
-    const height = container.childElementCount ? container.getBoundingClientRect().height : 0
-    document.documentElement.style.setProperty('--corner-tips-space', `${Math.ceil(height)}px`)
-  }).observe(container)
-}
-
-/** Small notes in the lower corner that never cover the page or take focus. */
+/** Notes docked above the footer without taking focus. */
 export function cornerTip(kind: string, message: string, actions: TipAction[], onClose: () => void) {
-  if (!stack) {
-    stack = document.body.appendChild(element('div', 'corner-tips'))
-    reserveSpace(stack)
-  }
+  const stack = document.querySelector<HTMLDivElement>('.corner-tips')!
   stack.querySelector(`[data-tip="${kind}"]`)?.remove()
   const tip = element('section', 'corner-tip')
   tip.dataset.tip = kind

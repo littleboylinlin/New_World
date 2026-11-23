@@ -5,7 +5,7 @@
 .styles-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .styles-item-name { font-size: .95rem; overflow-wrap: anywhere; }
 .styles-tag { padding: 0 8px; border: 1px solid var(--surface-line); border-radius: 999px; color: var(--muted); font-size: .72rem; font-weight: 750; }
-.styles-item-summary { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.styles-item-summary { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.6; overflow-wrap: anywhere; }
 .styles-item-summary:empty { display: none; }
 .styles-item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .styles-delete { color: var(--danger-text); }

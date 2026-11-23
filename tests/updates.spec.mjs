@@ -91,3 +91,58 @@ test('刷新前先确认正文已保存：保存失败不刷新，保存后刷�
   await expect(editor).toHaveText('还没写入存储的段落。')
   await expect(page.locator('.save-status')).toHaveText('已保存')
 })
+
+test('底部更新提示为所有页面留出空间，新建作品按钮的底部可以点击', async ({ page, context }) => {
+  await serveVersion(context, () => 'next-build')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 390, height: 740 })
+  await page.goto('/')
+  const banner = tip(page)
+  await expect(banner).toBeVisible()
+
+  async function checkPageEnd() {
+    await expect.poll(async () => {
+      const bannerBox = await banner.boundingBox()
+      const contentBox = await page.locator('#page').boundingBox()
+      return contentBox.y + contentBox.height <= bannerBox.y + 1
+    }).toBe(true)
+  }
+
+  const create = page.getByRole('button', { name: '新建作品', exact: true })
+  await expect(create).toBeVisible()
+  await checkPageEnd()
+  await create.scrollIntoViewIfNeeded()
+  await expect(create).toBeInViewport({ ratio: 1 })
+  const box = await create.boundingBox()
+  const bannerBox = await banner.boundingBox()
+  expect(box.y + box.height).toBeLessThanOrEqual(bannerBox.y)
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height - 2)
+  await expect(page.getByRole('dialog', { name: '选择作品类型' })).toBeVisible()
+  await page.locator('.type-options button.mode-original').click()
+  await page.getByRole('textbox', { name: '作品名' }).fill('底部提示回归测试')
+  await page.getByRole('button', { name: '创建小说' }).click()
+  await expect(page.getByRole('textbox', { name: '章节正文' })).toBeVisible()
+  await checkPageEnd()
+
+  for (const [route, selector] of [
+    ['writing', '.writing-toolbar'], ['notes/ideas', '.ideas-page'], ['notes/tasks', '.task-layout'],
+    ['archive', '.archive-page'], ['trash', '.trash-page'], ['settings/storage', '.settings-content'],
+  ]) {
+    await page.goto(`/#/${route}`)
+    await expect(page.locator(selector)).toBeVisible()
+    await checkPageEnd()
+  }
+
+  await page.setViewportSize({ width: 804, height: 740 })
+  await checkPageEnd()
+  const pageBefore = await page.locator('#page').boundingBox()
+  const footer = await page.locator('.site-footer').boundingBox()
+  const tipSpace = footer.y - pageBefore.y - pageBefore.height
+  expect(tipSpace).toBeGreaterThanOrEqual((await banner.boundingBox()).height)
+  await banner.getByRole('button', { name: '关闭提示' }).click()
+  await expect(banner).toHaveCount(0)
+  await expect.poll(async () => {
+    const pageAfter = await page.locator('#page').boundingBox()
+    return pageAfter.height - pageBefore.height
+  }).toBeCloseTo(tipSpace, 0)
+})

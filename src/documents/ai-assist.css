@@ -38,7 +38,7 @@
 .ai-assist-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ai-assist-head > svg { flex: none; width: 18px; height: 18px; }
 .ai-assist-title { margin: 0; font-size: .95rem; font-weight: 850; }
-.ai-assist-via { min-width: 0; overflow: hidden; color: var(--muted); font-size: .78rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.ai-assist-via { min-width: 0; color: var(--muted); font-size: .78rem; font-weight: 650; overflow-wrap: anywhere; }
 .ai-assist-close { display: grid; place-items: center; flex: none; width: 32px; height: 32px; margin-inline-start: auto; padding: 0; border: 0; border-radius: 8px; color: var(--ink); background: transparent; cursor: pointer; }
 .ai-assist-close:hover { background: var(--menu-hover); }
 .ai-assist-close svg { width: 16px; height: 16px; }
@@ -70,5 +70,5 @@
 .ai-assist-style[hidden] { display: none; }
 .ai-assist-style-label { display: flex; flex: 1 1 240px; align-items: center; gap: 8px; min-width: 0; font-size: .84rem; font-weight: 750; }
 .ai-assist-style-select { flex: 1 1 auto; min-height: 36px; padding-block: 4px; }
-/* A proofreading note sits before its change as a small tag; the full text is on hover. */
-.ai-sg-note { display: inline-block; max-width: 12em; margin-inline: 2px; padding: 0 5px; overflow: hidden; border-radius: 5px; color: var(--muted); background: var(--field); font: 650 .7rem/1.6 system-ui, sans-serif; text-overflow: ellipsis; text-indent: 0; vertical-align: 2px; white-space: nowrap; }
+/* A proofreading note sits before its change. */
+.ai-sg-note { display: inline-block; max-width: min(24em, 100%); margin-inline: 2px; padding: 0 5px; border-radius: 5px; color: var(--muted); background: var(--field); font: 650 .7rem/1.6 system-ui, sans-serif; text-indent: 0; vertical-align: 2px; white-space: normal; overflow-wrap: anywhere; }

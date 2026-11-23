@@ -11,6 +11,8 @@
 - **AI 对话**　从编辑器侧栏的「AI 对话」或「⋯」菜单打开。每部作品可以保留多段本机对话，支持继续聊、查看历史、确认删除、中途停止、复制回复。回复可插入正文的光标处，插入可以撤销，插入前的正文保留在历史版本里。
 - **全书上下文**　AI 对话和浮动工具条的「自由提问」会带上当前章节、相关设定和已有的摘要。针对具体情节的问题可带上相关章的原文。设定卡只带当前章节及以前生效的状态。首次发送全书资料会提示确认，回复下方可以展开查看实际带入的资料。提问不会自动生成摘要，主动使用「总结整本」后就能复用结果。润色、改写等编辑功能仍只使用原有范围的文字。
 - **选项式提问**　有几种合理理解且选错会造成较多返工时，AI 会给出可点选的答案。侧栏和选中提问都支持，也可以自己输入回答。
+- **官网**　补齐「功能」「下载」「使用方法」的导航跳转，窄屏时三个链接可以换行显示。英文页脚显示「© 2026 Xiaonanhai」。
+- **在线版**　底部提示为页面留出实际占用的空间，关闭后立即收回。修复写作热力图左侧月份标签截断，存储位置和说明文字可换行，导入、回收站和存储说明统一使用「原文件」。
 
 ### 升级与回退
 
@@ -31,6 +33,8 @@
 - **AI Chat**　Open **AI Chat** from the editor sidebar or the **More** menu. Each work keeps its own conversations on this device. Resume a conversation, review or delete it, stop a reply as it streams, or copy the reply. Inserting a reply at the cursor is undoable and saves the previous text in chapter history.
 - **Book context**　AI Chat and **Ask AI** in the selection toolbar can include the current chapter, related story cards and cached summaries. Questions about specific plot details can also include relevant chapter text. Card states are included through the current chapter. The first request for book context asks for consent, and the sources used are listed under each reply. Use **Summarize book** to populate the cache. Editing features such as polishing and rewriting continue to use the original text scope.
 - **Questions with choices**　When several interpretations are plausible and a wrong guess would mean substantial rework, the AI can offer choices. Pick an answer or type your own in either AI Chat or **Ask AI**.
+- **Website**　The Features, Download, and How to use links jump to their sections and wrap on narrow screens. The English footer shows “© 2026 Xiaonanhai”.
+- **Web app**　Bottom notices reserve their own space and give it back when dismissed. Heatmap month labels at the left edge stay readable, storage and help text can wrap, and import, Trash, and storage copy consistently use “original file”.
 
 ### Upgrade and rollback
 

@@ -141,6 +141,12 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   panel.append(top, heatmap, statsFooter)
   host.append(panel)
 
+  // A label keeps its week column and only appears while the whole word fits in view.
+  const monthObserver = new IntersectionObserver((entries) => {
+    for (const { target, intersectionRatio } of entries) target.toggleAttribute('data-clipped', intersectionRatio < 1)
+  }, { root: gridWrap, threshold: 1 })
+  signal.addEventListener('abort', () => monthObserver.disconnect(), { once: true })
+
   const today = startOfDay(new Date())
   const todayKey = dayKey(today)
   const dow = (today.getDay() + 6) % 7
@@ -292,16 +298,26 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
     months.replaceChildren()
     grid.replaceChildren()
     active = undefined
+    let monthGroup: HTMLElement | undefined
     let lastMonth = -1
+    let previousLabelWeek = -1
+    const monthText = new Intl.DateTimeFormat(tag(), { month: 'short' })
     let todayCell: HTMLElement | undefined
     for (let week = 0; week < heatmapWeeks; week++) {
       const monday = addDays(firstMonday, week * 7)
-      const monthTag = element('span', 'month')
       if (monday.getMonth() !== lastMonth) {
-        monthTag.textContent = new Intl.DateTimeFormat(tag(), { month: 'short' }).format(monday)
+        // Consecutive labels can happen when the first month covers just one column.
+        if (!monthGroup || week !== previousLabelWeek + 1) {
+          monthGroup = element('span', 'month-group')
+          monthGroup.style.gridColumn = String(week + 1)
+          months.append(monthGroup)
+        }
+        const label = element('span', 'month', monthText.format(monday))
+        monthGroup.append(label)
+        monthObserver.observe(label)
         lastMonth = monday.getMonth()
+        previousLabelWeek = week
       }
-      months.append(monthTag)
       for (let row = 0; row < 7; row++) {
         const date = addDays(monday, row)
         const key = dayKey(date)
