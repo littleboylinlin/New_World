@@ -84,7 +84,12 @@ export function createWorkbench(options: { start?: SidePanelOptions; end?: SideP
         if (open && mode === 'overlay') for (const other of panels) if (other !== api && other.mode() === 'overlay') other.setOpen(false)
         paint(!instant)
         config.onToggle?.(open, byUser)
-        if (open && mode === 'overlay') requestAnimationFrame(() => aside.querySelector<HTMLElement>('[aria-current="true"], button, [tabindex="0"]')?.focus({ preventScroll: true }))
+        if (open && mode === 'overlay') requestAnimationFrame(() => {
+          if (!open || mode !== 'overlay' || aside.contains(document.activeElement)) return
+          const preferred = aside.querySelector<HTMLElement>('[aria-current="true"], [role="tab"][aria-selected="true"]')
+          const target = preferred ?? aside.querySelector<HTMLElement>('button, [tabindex="0"]')
+          target?.focus({ preventScroll: true })
+        })
       },
       toggle() { api.setOpen(!open, true) },
     }

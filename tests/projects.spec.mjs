@@ -307,7 +307,7 @@ test('现有 v7 书库升级到最新版本后完整保留数据和索引主键'
     const books = db.transaction('books').objectStore('books')
     const result = { version: db.version, unique: books.index('byLibraryDigest').unique, keyPath: books.keyPath }; db.close(); return result
   })
-  expect(version).toEqual({ version: 13, unique: false, keyPath: ['library', 'id'] })
+  expect(version).toEqual({ version: 14, unique: false, keyPath: ['library', 'id'] })
   for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments','writingStyles','storyBoards']) before[name] = []
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)
