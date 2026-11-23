@@ -92,7 +92,8 @@ async function exportTo(page, format) {
   const dialog = page.getByRole('dialog', { name: '导出编辑稿' })
   await dialog.getByRole('radio', { name: exportLabels[format] }).check()
   await dialog.getByRole('button', { name: '开始导出' }).click()
-  await expect(dialog).toBeHidden()
+  // The dialog closes after Electron finishes native printing and writes the PDF.
+  await expect(dialog).toBeHidden({ timeout: 30_000 })
 }
 
 async function expectCleanPdf(bytes, expectedText) {
@@ -156,8 +157,12 @@ test('桌面平滑写作：光标、输入法、打字机模式和长章节输�
 })
 
 test('桌面离线打开、读写和导出，关闭及重新安装后保留原文和续写', async ({}, testInfo) => {
-  const original = file('桌面续写原文.txt', '路旁亮着一盏灯。')
-  const savedText = '第一卷正文。Windows desktop export.'
+  // Installed Windows runs share the library with the preceding attempt.
+  const attempt = testInfo.retry ? `（重试 ${testInfo.retry}）` : ''
+  const originalTitle = '桌面续写原文' + attempt
+  const pdfTitle = '桌面 PDF' + attempt
+  const original = file(originalTitle + '.txt', '路旁亮着一盏灯。' + attempt)
+  const savedText = '第一卷正文。Windows desktop export.' + attempt
   let app = await launch(testInfo)
   try {
     let page = await app.firstWindow()
@@ -207,11 +212,14 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     await page.locator('[data-filter="reference"]').click()
     await page.locator('input[type=file]').setInputFiles(original)
     await chooseImportType(page, 'reference')
-    await page.getByRole('link', { name: '查看 桌面续写原文', exact: true }).click()
+    await page.getByRole('link', { name: `查看 ${originalTitle}`, exact: true }).click()
     const projectUrl = page.url()
     await page.getByRole('button', { name: '新建续写' }).click()
-    await page.getByRole('textbox', { name: '续写名称' }).fill('到达港口')
-    await page.getByRole('button', { name: '开始续写' }).click()
+    const continuation = page.getByRole('dialog', { name: '新建续写', exact: true })
+    await continuation.getByRole('textbox', { name: '续写名称' }).fill('到达港口' + attempt)
+    await continuation.getByRole('button', { name: '开始续写' }).click()
+    await expect(continuation).toBeHidden({ timeout: 30_000 })
+    await expect(editor(page)).toBeEditable({ timeout: 30_000 })
     await editor(page).fill('这段先保存。')
     const draftUrl = page.url()
     await expect(status(page)).toHaveText('已保存')
@@ -220,8 +228,10 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       dialog.showSaveDialog = async () => ({ canceled: false, filePath })
     }, pdfPath)
     await editor(page).fill(savedText)
+    const exporting = performance.now()
     await exportTo(page, 'pdf')
     const exportedPdf = await readFile(pdfPath)
+    console.info(`Desktop PDF export and write completed in ${Math.round(performance.now() - exporting)} ms`)
     expect(exportedPdf.subarray(0, 5).toString()).toBe('%PDF-')
     await expectCleanPdf(exportedPdf, savedText)
     await expect(page.locator('.print-edition')).toHaveCount(0)
@@ -242,9 +252,9 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
     app = await launch(testInfo)
     page = await app.firstWindow()
     await page.goto(draftUrl)
-    await expect(editor(page)).toHaveText(lastText)
+    await expect(editor(page)).toHaveText(lastText, { timeout: 30_000 })
     await page.goto(projectUrl)
-    await page.getByRole('link', { name: '查看原文 桌面续写原文' }).click()
+    await page.getByRole('link', { name: `查看原文 ${originalTitle}` }).click()
     await expect(page.getByRole('article')).toHaveText(original.buffer.toString())
 
     const originalPath = testInfo.outputPath(original.name)
@@ -252,17 +262,17 @@ test('桌面离线打开、读写和导出，关闭及重新安装后保留原�
       session.defaultSession.once('will-download', (_event, item) => item.setSavePath(savePath))
     }, originalPath)
     await page.getByRole('button', { name: '下载原文件' }).click()
-    await expect.poll(async () => readFile(originalPath).catch(() => null)).toEqual(original.buffer)
+    await expect.poll(async () => readFile(originalPath).catch(() => null), { timeout: 30_000 }).toEqual(original.buffer)
 
     await page.getByRole('link', { name: 'New World 书库首页' }).click()
     await page.getByRole('link', { name: '写作', exact: true }).click()
     await page.locator('[data-filter="original"]').click()
-    await expect(page.getByRole('link', { name: '查看 桌面续写原文', exact: true })).toHaveCount(0)
-    await page.locator('input[type=file]').setInputFiles(file('桌面 PDF.pdf', exportedPdf))
+    await expect(page.getByRole('link', { name: `查看 ${originalTitle}`, exact: true })).toHaveCount(0)
+    await page.locator('input[type=file]').setInputFiles(file(pdfTitle + '.pdf', exportedPdf))
     await chooseImportType(page, 'original')
-    await page.getByRole('link', { name: '查看 桌面 PDF', exact: true }).click()
+    await page.getByRole('link', { name: `查看 ${pdfTitle}`, exact: true }).click({ timeout: 30_000 })
     const canvas = page.getByRole('img', { name: 'PDF 第 1 页' })
-    await expect(canvas).toBeVisible()
+    await expect(canvas).toBeVisible({ timeout: 30_000 })
     const marginsAreWhite = await canvas.evaluate((page) => {
       const context = page.getContext('2d')
       const x = Math.floor(page.width / 2)
