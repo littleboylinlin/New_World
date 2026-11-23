@@ -107,7 +107,10 @@ export function openMenu(items: MenuItem[], at: { x: number; y: number } | HTMLE
     frame = requestAnimationFrame(follow)
   } else {
     window.addEventListener('resize', dismiss)
-    document.addEventListener('scroll', scrolled, { capture: true, passive: true })
+    // The page may already have scrolled to the clicked item, with the scroll event still queued.
+    frame = requestAnimationFrame(() => {
+      document.addEventListener('scroll', scrolled, { capture: true, passive: true })
+    })
     window.addEventListener('wheel', scrolled, { passive: true })
     window.addEventListener('touchmove', scrolled, { passive: true })
   }
