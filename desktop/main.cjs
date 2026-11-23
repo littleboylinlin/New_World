@@ -99,7 +99,11 @@ function trustedAppRenderer(event) {
 
 function trustedSecondaryRenderer(event) {
   return isTrustedSecondaryRenderer(event, appUrl, readingWindows)
-    || isTrustedSecondaryRenderer(event, appUrl, allStoryWindows())
+    || trustedStoryRenderer(event)
+}
+
+function trustedStoryRenderer(event) {
+  return isTrustedSecondaryRenderer(event, appUrl, allStoryWindows())
 }
 
 function rejectPendingAiDispatches(reason) {
@@ -393,9 +397,16 @@ const maxBackupBytes = 2 * 1024 * 1024 * 1024
 function backupState() {
   const config = backups.readConfig(appData)
   const documents = app.getPath('documents')
+  const folder = backups.folderOf(config, documents)
+  const excess = (kind) => {
+    try { return backups.excessBackups(folder, kind, config.retention[kind]).length }
+    catch { return 0 } // The stored location can still be changed if a drive became unavailable.
+  }
   return {
-    frequency: config.frequency, folder: backups.folderOf(config, documents), defaultFolder: backups.defaultFolder(documents),
+    frequency: config.frequency, folder, defaultFolder: backups.defaultFolder(documents),
     custom: Boolean(config.folder), encrypt: config.encrypt, lastAutomatic: config.lastAutomatic,
+    retention: config.retention,
+    excess: Object.fromEntries(backups.managedKinds.map((kind) => [kind, excess(kind)])),
     // Asking the macOS keychain can show a prompt, so only Linux, where it may be missing, is checked up front.
     due: backups.due(config), canEncrypt: process.platform !== 'linux' || safeStorage.isEncryptionAvailable(),
   }
@@ -419,6 +430,23 @@ ipcMain.handle('new-world:backup-set-frequency', (event, frequency) => {
   backupRequest(event)
   if (!backups.frequencies.includes(frequency)) throw new Error(t('main.invalidSettingsRequest'))
   return updateBackups({ frequency })
+})
+
+ipcMain.handle('new-world:backup-retention-plan', (event, kind, limit) => {
+  backupRequest(event)
+  if (!backups.validRetention(kind, limit)) throw new Error(t('main.invalidSettingsRequest'))
+  const folder = backups.folderOf(backups.readConfig(appData), app.getPath('documents'))
+  const { files, token } = backups.retentionPlan(folder, kind, limit)
+  return { files, token }
+})
+
+ipcMain.handle('new-world:backup-retention-apply', (event, kind, limit, token) => {
+  backupRequest(event)
+  if (!backups.validRetention(kind, limit) || typeof token !== 'string') throw new Error(t('main.invalidSettingsRequest'))
+  const config = backups.readConfig(appData)
+  const folder = backups.folderOf(config, app.getPath('documents'))
+  if (!backups.pruneConfirmed(folder, kind, limit, token)) throw new Error(t('backup.retentionChanged'))
+  return updateBackups({ retention: { ...config.retention, [kind]: limit } })
 })
 
 ipcMain.handle('new-world:backup-choose-folder', async (event) => {
@@ -450,14 +478,14 @@ ipcMain.handle('new-world:backup-password', (event) => {
   return safeStorage.decryptString(Buffer.from(config.password, 'base64'))
 })
 
-ipcMain.handle('new-world:backup-save', (event, name, bytes, automatic) => {
+ipcMain.handle('new-world:backup-save', (event, name, bytes) => {
   backupRequest(event)
   if (typeof name !== 'string' || !(bytes instanceof Uint8Array) || bytes.length > maxBackupBytes) throw new Error(t('main.invalidSettingsRequest'))
-  const folder = backupState().folder
-  const path = backups.saveBackup(folder, name, bytes)
-  if (automatic === true) {
-    backups.writeConfig(appData, { ...backups.readConfig(appData), lastAutomatic: Date.now() })
-    backups.pruneAutomatic(folder)
+  const config = backups.readConfig(appData)
+  const folder = backups.folderOf(config, app.getPath('documents'))
+  const path = backups.saveBackup(folder, name, bytes, config.retention)
+  if (backups.backupKind(name) === 'auto-backup') {
+    backups.writeConfig(appData, { ...config, lastAutomatic: Date.now() })
   }
   return { path, state: backupState() }
 })
@@ -664,7 +692,8 @@ ipcMain.handle('new-world:open-story-settings', async (event, hash) => {
   if (existing) {
     // Every window on the work learns the editor's chapter; the one used last comes to the front.
     for (const window of open) {
-      const update = () => { if (!window.isDestroyed()) window.webContents.send('new-world:story-context', hash) }
+      const context = window === existing ? hash : hash.replace(/[?&]card=[^&]+$/, '')
+      const update = () => { if (!window.isDestroyed()) window.webContents.send('new-world:story-context', context) }
       if (window.webContents.isLoadingMainFrame()) window.webContents.once('did-finish-load', update)
       else update()
     }
@@ -682,6 +711,19 @@ ipcMain.handle('new-world:new-story-window', async (event, hash) => {
     throw new Error(t('main.invalidSettingsRequest'))
   }
   await createStoryWindow(key, hash)
+})
+
+ipcMain.handle('new-world:story-editor', (event, hash) => {
+  if (!trustedStoryRenderer(event) || typeof hash !== 'string') throw new Error(t('main.invalidSettingsRequest'))
+  if (hash !== '#/settings/ai') {
+    const sender = BrowserWindow.fromWebContents(event.sender)
+    const scope = [...storyWindows].find(([, windows]) => windows.includes(sender))?.[0].split('/')
+    const target = /^#\/(original|reference)\/([0-9a-f-]{36})\/(original|[0-9a-f-]{36})\?storyJump=[0-9a-f-]{36}$/.exec(hash)
+    if (!target || !scope || target[1] !== scope[2] || (target[2] !== scope[3] && target[3] !== 'original')) {
+      throw new Error(t('main.invalidSettingsRequest'))
+    }
+  }
+  command({ type: 'open', hash })
 })
 
 ipcMain.handle('new-world:capture-state', (event) => {
@@ -1063,7 +1105,7 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     protocol.handle('new-world', serveApp)
-    installAiProvider({ ipcMain, profile, safeStorage, trustedMainRenderer })
+    installAiProvider({ ipcMain, profile, safeStorage, trustedMainRenderer, trustedStoryRenderer })
     aiStore = createAiStore(appData)
     const testConfirmTimeout = !app.isPackaged && Number(process.env.NEW_WORLD_AI_TEST_TIMEOUT_MS) >= 500
       ? Number(process.env.NEW_WORLD_AI_TEST_TIMEOUT_MS)

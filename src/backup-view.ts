@@ -7,6 +7,8 @@ import { storageError } from './library'
 import { button, element } from './ui'
 
 const frequencies: BackupFrequency[] = ['off', 'daily', 'weekly']
+const retainedKinds: RetainedBackup[] = ['auto-backup', 'before-restore']
+const backupLimits: BackupLimit[] = [5, 10, 20, null]
 const webEncryptKey = 'new-world:backup-encrypt'
 let automaticFailure = ''
 let running: Promise<unknown> | undefined
@@ -62,7 +64,7 @@ export async function backUpToFolder() {
   const desktop = window.newWorldDesktop!
   const state = await desktop.getBackupState!()
   const { blob, summary } = await build(await desktopPassword(state))
-  const saved = await desktop.saveBackup!(backupName(new Date()), new Uint8Array(await blob.arrayBuffer()), false)
+  const saved = await desktop.saveBackup!(backupName(new Date()), new Uint8Array(await blob.arrayBuffer()))
   window.dispatchEvent(new CustomEvent('new-world:backup-change'))
   return t('backup.saved', [summary.works, saved.path])
 }
@@ -78,7 +80,7 @@ export function startAutomaticBackups() {
       if (!state.due) return
       running = (async () => {
         const { blob } = await build(await desktopPassword(state))
-        await desktop.saveBackup!(backupName(new Date(), 'auto-backup'), new Uint8Array(await blob.arrayBuffer()), true)
+        await desktop.saveBackup!(backupName(new Date(), 'auto-backup'), new Uint8Array(await blob.arrayBuffer()))
         automaticFailure = ''
         window.dispatchEvent(new CustomEvent('new-world:backup-change'))
       })()
@@ -129,6 +131,27 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
   const folderActions = element('div', 'settings-actions')
   folderActions.append(chooseFolder, resetFolder, showFolder)
 
+  const retention = element('div', 'backup-retention')
+  const retentionRows = retainedKinds.map((kind) => {
+    const row = element('div', 'backup-retention-row')
+    const label = element('label', 'field-label', t(`backup.retain.${kind}`))
+    const select = element('select', 'title-input')
+    for (const limit of backupLimits) select.add(new Option(limit === null ? t('backup.unlimited') : t('backup.copies', [limit]), String(limit)))
+    label.append(select)
+    const excess = element('div', 'settings-actions backup-excess')
+    const description = element('span', 'dialog-help')
+    const clean = button(t('backup.clean'), 'button button-quiet button-small', 'trash')
+    excess.append(description, clean)
+    row.append(label, excess)
+    retention.append(row)
+    select.onchange = () => {
+      const limit = backupLimits.find((choice) => String(choice) === select.value)
+      if (limit !== undefined) void changeRetention(kind, limit)
+    }
+    clean.onclick = () => { if (state) void changeRetention(kind, state.retention[kind]) }
+    return { kind, select, excess, description }
+  })
+
   const encryption = radios(t('backup.encryption'), 'backup-encryption', ['plain', 'encrypted'] as const,
     (value) => value === 'plain' ? t('backup.plain') : t('backup.encrypted'))
   encryption.group.classList.remove('choice-options')
@@ -147,6 +170,9 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
 
   if (desktop) {
     section.append(heading(t('backup.automatic')), frequency.group, heading(t('backup.location')), location, folderActions)
+    if (desktop.planBackupRetention && desktop.applyBackupRetention) {
+      section.append(heading(t('backup.retention')), retention, element('p', 'dialog-help', t('backup.manualRetained')))
+    }
   }
   section.append(heading(t('backup.encryption')), encryption.group, changePassword, last, actions, status, error,
     ...(desktop ? [] : [element('p', 'dialog-help', t('backup.webHint'))]))
@@ -184,6 +210,13 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
     locationBadge.textContent = state?.custom ? t('backup.customBadge') : t('backup.defaultBadge')
     locationPath.textContent = state?.folder ?? ''
     resetFolder.disabled = !state?.custom
+    for (const { kind, select, excess, description } of retentionRows) {
+      const count = state?.excess[kind] ?? 0
+      select.value = String(state ? state.retention[kind] : 10)
+      select.disabled = !state
+      excess.hidden = !count
+      description.textContent = t('backup.excess', [count])
+    }
     last.hidden = false
     last.textContent = automaticFailure
       ? t('backup.automaticFailed', [automaticFailure])
@@ -209,6 +242,28 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
       setBusy(false)
       await refresh()
     }
+  }
+
+  async function changeRetention(kind: RetainedBackup, limit: BackupLimit) {
+    await task(async () => {
+      const plan = await desktop!.planBackupRetention!(kind, limit)
+      const apply = async () => {
+        state = await desktop!.applyBackupRetention!(kind, limit, plan.token)
+        status.textContent = t('editor.saved')
+        paint()
+      }
+      if (!plan.files.length) { await apply(); return }
+      const files = element('ul', 'backup-prune-files')
+      for (const name of plan.files) {
+        const item = element('li')
+        item.append(element('code', '', name))
+        files.append(item)
+      }
+      formDialog(document.body, {
+        title: t('backup.cleanTitle'), action: t('backup.clean'),
+        description: t('backup.cleanConfirm', [plan.files.length]), fields: [files], danger: true,
+      }, apply)
+    })
   }
 
   for (const input of frequency.inputs) {
@@ -264,7 +319,7 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
       const name = backupName(new Date())
       if (desktop) {
         const { blob, summary } = await build(await desktopPassword(state ?? await desktop.getBackupState!()))
-        const saved = await desktop.saveBackup!(name, new Uint8Array(await blob.arrayBuffer()), false)
+        const saved = await desktop.saveBackup!(name, new Uint8Array(await blob.arrayBuffer()))
         state = saved.state
         status.textContent = t('backup.saved', [summary.works, saved.path])
       } else {
@@ -296,7 +351,7 @@ export function mountBackupView(section: HTMLElement, saveBeforeLeaving: () => P
         if (desktop) {
           const current = state ?? await desktop.getBackupState!()
           const { blob } = await build(await desktopPassword(current))
-          await desktop.saveBackup!(backupName(new Date(), 'before-restore'), new Uint8Array(await blob.arrayBuffer()), false)
+          await desktop.saveBackup!(backupName(new Date(), 'before-restore'), new Uint8Array(await blob.arrayBuffer()))
         }
         await restoreBackup(contents)
         try { sessionStorage.setItem('new-world:restored', String(summary.works)) } catch { /* Only the notice is lost. */ }

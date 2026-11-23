@@ -15,6 +15,8 @@ type LoginItemState = 'off' | 'on' | 'approval'
 type CloseBehavior = 'quit' | 'background'
 
 type BackupFrequency = 'off' | 'daily' | 'weekly'
+type RetainedBackup = 'auto-backup' | 'before-restore'
+type BackupLimit = 5 | 10 | 20 | null
 
 type DesktopCommand = { type: 'project'; token: string } | { type: 'open'; hash: string } | { type: 'ideas' } | { type: 'new-novel' } | { type: 'backup' } | { type: 'idea'; text: string }
 
@@ -34,6 +36,8 @@ interface BackupState {
   custom: boolean
   encrypt: boolean
   lastAutomatic: number | null
+  retention: Record<RetainedBackup, BackupLimit>
+  excess: Record<RetainedBackup, number>
   due: boolean
   /** False when the system keychain cannot protect a saved password. */
   canEncrypt: boolean
@@ -107,6 +111,7 @@ interface Window {
     /** Opens a separate window that shows one reading route (#/compare/…) and nothing else. */
     openReadingWindow?: (hash: string) => Promise<void>
     openStorySettings?: (hash: string) => Promise<void>
+    openStoryEditor?: (hash: string) => Promise<void>
     /** Opens one more window on the same work, from a story settings window. */
     newStoryWindow?: (hash: string) => Promise<void>
     onStoryContext?: (listener: (hash: string) => void) => void
@@ -117,11 +122,13 @@ interface Window {
     onCommand?: (listener: (command: DesktopCommand) => void) => void
     getBackupState?: () => Promise<BackupState>
     setBackupFrequency?: (frequency: BackupFrequency) => Promise<BackupState>
+    planBackupRetention?: (kind: RetainedBackup, limit: BackupLimit) => Promise<{ files: string[]; token: string }>
+    applyBackupRetention?: (kind: RetainedBackup, limit: BackupLimit, token: string) => Promise<BackupState>
     chooseBackupFolder?: () => Promise<BackupState | null>
     resetBackupFolder?: () => Promise<BackupState>
     setBackupPassword?: (password: string | null) => Promise<BackupState>
     getBackupPassword?: () => Promise<string | null>
-    saveBackup?: (name: string, bytes: Uint8Array, automatic: boolean) => Promise<{ path: string; state: BackupState }>
+    saveBackup?: (name: string, bytes: Uint8Array) => Promise<{ path: string; state: BackupState }>
     openBackup?: () => Promise<{ name: string; bytes: Uint8Array } | null>
     showBackupFolder?: () => Promise<void>
     getSpellingDictionaries?: () => Promise<SpellingState>

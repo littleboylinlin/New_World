@@ -1,4 +1,8 @@
 import { t } from '../i18n'
+import { openStoryAnalysis } from '../ai/story-analysis-view'
+import { openStoryJump, storyJumpFor } from '../ai/story-jump'
+import type { StoryJump } from '../ai/story-jump'
+import { findStoryQuote } from '../ai/story-manuscript'
 import { Editor } from '@tiptap/core'
 import { closeHistory } from '@tiptap/pm/history'
 import { Fragment, Slice } from '@tiptap/pm/model'
@@ -35,7 +39,7 @@ import { mountAiChat } from './ai-chat'
 import { summarizeWeb } from './web-summary'
 import { AiSuggestions } from './ai-suggest'
 import { showRevisionsDialog } from './revisions-view'
-import { SearchHighlight } from './search'
+import { highlightMatch, SearchHighlight } from './search'
 import { mountFindPanel } from './find-panel'
 import { chapterDirectory } from './chapter-directory'
 import { selectionToolbar } from './selection-toolbar'
@@ -108,10 +112,10 @@ const isLongChapter = (record: ChapterRecord) => JSON.stringify(record.content).
 
 export async function renderEdition(
   host: HTMLElement, root: HTMLElement, book: Book, initial: Edition, signal: AbortSignal, registerLeave: RegisterLeave,
-  work: WorkContext = { title: book.title, menu: () => [] },
+  work: WorkContext = { title: book.title, menu: () => [] }, storyJump?: StoryJump,
 ) {
   let edition = initial
-  const remembered = lastChapter(edition)
+  const remembered = storyJump?.chapterId ?? lastChapter(edition)
   let chapter = await readChapter(edition, edition.chapters.some(({ id }) => id === remembered) ? remembered : edition.chapters[0].id)
   signal.throwIfAborted()
   let editor!: Editor
@@ -602,6 +606,34 @@ export async function renderEdition(
     void refreshHistoryCount()
   }
 
+  async function goToStoryQuote(jump: StoryJump) {
+    if (!edition.chapters.some(({ id }) => id === jump.chapterId)) throw new Error(t('storyAi.quoteMoved'))
+    if (jump.fix && !editing) await toggleMode()
+    if (!await switchChapter(jump.chapterId)) throw new Error(t('storyAi.quoteMoved'))
+    const range = findStoryQuote(editor.state.doc, jump.anchor)
+    if (!range) throw new Error(t('storyAi.quoteMoved'))
+    highlightMatch(editor, range)
+    editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, range.from)).scrollIntoView())
+    if (jump.fix && !assist.reviewStoryFix({ ...range, ...jump.fix, original: jump.anchor.quote })) throw new Error(t('storyAi.quoteMoved'))
+  }
+
+  function checkStory(scope: 'selection' | 'chapter' | 'book') {
+    if (editor.view.composing) { showNotice(t('editor.finishTheCurrentInputFirst')); return }
+    const { from, to } = editor.state.selection
+    const current = { editionId: edition.id, chapterId: chapter.id }
+    openStoryAnalysis({
+      mode: 'check', work: storyWork, current, scope, signal,
+      live: { ...current, content: editor.getJSON() as DocumentContent, selection: from < to ? { from, to } : undefined },
+      async jump(source, conflict, profileName, fix) {
+        const target = storyJumpFor(storyWork, conflict, profileName, fix)
+        if (!signal.aborted && source.kind === 'edition' && source.edition.id === edition.id) await goToStoryQuote(target)
+        else await openStoryJump(source, target)
+      },
+      card: (source, conflict) => openStorySettings(storyWork, source.kind === 'edition'
+        ? { editionId: source.edition.id, chapterId: conflict.chapter.id } : undefined, conflict.cardId),
+    })
+  }
+
   async function insertChatAtCaret(text: string, profileName: string) {
     const target = editor
     if (!editing) return
@@ -623,7 +655,10 @@ export async function renderEdition(
     target.view.focus()
   }
   /** The menu's entries first put the selection tools away. */
-  const assistMenu = (): ShellMenuItem[] => assist.menuItems().map(function wrap(item): ShellMenuItem {
+  const assistMenu = (): ShellMenuItem[] => [
+    ...assist.menuItems(),
+    { label: t('storyAi.check'), action: () => checkStory('selection') },
+  ].map(function wrap(item: ShellMenuItem): ShellMenuItem {
     return {
       ...item,
       ...(item.action ? { action: () => { selection.hide(); item.action!() } } : {}),
@@ -1217,7 +1252,13 @@ export async function renderEdition(
       { label: t('editor.export'), icon: 'download', action: () => exportVersion() },
       { label: t('revisions.button'), icon: 'history', hint: historyTotal ? String(historyTotal) : undefined, action: showHistory },
       { label: t('tasks.addChapterTask'), icon: 'check', action: chapterTask },
-      { label: t('aiAssist.chapterMenu'), icon: 'ai', children: assist.chapterItems },
+      { label: t('aiAssist.chapterMenu'), icon: 'ai', children: () => [
+        ...assist.chapterItems(),
+        { label: t('storyAi.check'), children: () => (['selection', 'chapter', 'book'] as const).map((scope) => ({
+          label: t(`storyAi.scope.${scope}`), disabled: scope === 'selection' && editor.state.selection.empty,
+          action: () => checkStory(scope),
+        })) },
+      ] },
       ...(edition.notes.length ? [{ label: t('editor.viewConversionNotes'), icon: 'file' as const, action: () => { information.hidden = false; information.open = true } }] : []),
       { label: formatCollapsed ? t('editor.showFormatting') : t('editor.hideFormatting'), icon: 'format', action: () => {
         formatCollapsed = !formatCollapsed
@@ -1309,6 +1350,9 @@ export async function renderEdition(
   const waiting = takeOpenRequest()
   if (waiting) splitEditor.open(waiting.source, waiting.placement)
   registerLeave(flush)
+  if (storyJump) {
+    try { await goToStoryQuote(storyJump) } catch (cause) { if (!signal.aborted) showNotice(storageError(cause)) }
+  }
   const jump = takeTaskJump(edition)
   if (jump?.chapterId) {
     await switchChapter(jump.chapterId)

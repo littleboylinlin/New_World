@@ -1,4 +1,6 @@
 import { locale, t } from '../i18n'
+import { openStoryAnalysis } from '../ai/story-analysis-view'
+import { openStoryJump, storyJumpFor } from '../ai/story-jump'
 import { formDialog } from '../dialogs'
 import { storageError, trashEntry } from '../library'
 import type { TrashEntry } from '../library'
@@ -57,6 +59,7 @@ function mount(route: NonNullable<typeof work>) {
   const signal = new AbortController().signal
   fixedPage(main, signal)
   let chapter = route.chapter
+  let pendingCard = route.cardId
   let board = emptyStoryBoard(scope)
   let snapshot: Snapshot | undefined
   let opened = false
@@ -81,6 +84,8 @@ function mount(route: NonNullable<typeof work>) {
   let revealed = ''
 
   const stage = element('div', 'story-stage')
+  const extractOnEmpty = button(t('storyAi.extract'), 'button button-small story-ai-empty story-canvas-control', 'ai')
+  extractOnEmpty.onclick = () => extractStory()
   const message = element('p', 'story-banner')
   message.setAttribute('role', 'alert')
   message.hidden = true
@@ -254,8 +259,8 @@ function mount(route: NonNullable<typeof work>) {
   menu.setAttribute('role', 'menu')
   menu.setAttribute('aria-label', t('story.menu'))
   menu.hidden = true
-  const menuItem = (key: string, symbol: IconName, run: () => void) => {
-    const item = button(t(`story.${key}`), 'story-menu-item', symbol)
+  const menuItem = (key: string, symbol: IconName, run: () => void, group = 'story') => {
+    const item = button(t(`${group}.${key}`), 'story-menu-item', symbol)
     item.setAttribute('role', 'menuitem')
     item.onclick = () => { closeMenu(); run() }
     return item
@@ -263,6 +268,7 @@ function mount(route: NonNullable<typeof work>) {
   menu.append(
     menuItem('find', 'search', () => sidebarTo('find')), menuItem('tags', 'list', () => sidebarTo('tags')),
     menuItem('trash', 'trash', () => sidebarTo('trash')), menuItem('newWindow', 'window', () => openNewWindow()), element('hr'),
+    menuItem('extract', 'ai', extractStory, 'storyAi'), menuItem('check', 'check', checkStory, 'storyAi'), element('hr'),
     menuItem('exportImage', 'image', () => exportImage()), menuItem('exportProject', 'download', () => {
       if (snapshot?.book) showProjectExport({ library: scope.library, id: scope.bookId }, snapshot.book.title)
     }), element('hr'),
@@ -421,13 +427,14 @@ function mount(route: NonNullable<typeof work>) {
     if (file) void addImage(file, file.name, imagePoint).catch(report)
   }
 
-  stage.append(canvas.surface, menuIsland, defaults, menu, toolbar, modes, viewIsland, props, left, right, message)
+  stage.append(canvas.surface, extractOnEmpty, menuIsland, defaults, menu, toolbar, modes, viewIsland, props, left, right, message)
   main.append(stage, imageFile)
   main.classList.toggle('story-no-grid', !grid)
   ready = true
 
   function paintControls() {
     const unavailable = !editable()
+    extractOnEmpty.hidden = unavailable || !!board.scene.nodes.length
     undoButton.disabled = unavailable || !undo.length
     redoButton.disabled = unavailable || !redo.length
     for (const [tool, control] of toolButtons) control.disabled = unavailable && tool !== 'select' && tool !== 'lasso' && tool !== 'hand'
@@ -436,6 +443,35 @@ function mount(route: NonNullable<typeof work>) {
   function activeChapter(): StoryChapter | undefined {
     const edition = snapshot?.editions.find(({ id }) => id === chapter?.editionId)
     return edition?.chapters.some(({ id }) => id === chapter?.chapterId) ? chapter : undefined
+  }
+
+  function extractStory() {
+    if (!editable() || !finishPanel()) return
+    const current = activeChapter()
+    openStoryAnalysis({
+      mode: 'extract', work: scope, current, scope: current ? 'chapter' : 'book', signal,
+      board: () => board.scene, origin: spawn,
+      async apply(scene, changed) {
+        if (!finishPanel() || !await commit(scene)) return false
+        closePanel()
+        canvas.select(changed)
+        return true
+      },
+    })
+  }
+
+  function checkStory() {
+    if (!editable() || !finishPanel()) return
+    const current = activeChapter()
+    openStoryAnalysis({
+      mode: 'check', work: scope, current, scope: current ? 'chapter' : 'book', signal,
+      jump: (source, conflict, profileName, fix) => openStoryJump(source, storyJumpFor(scope, conflict, profileName, fix)),
+      async card(_source, conflict) {
+        if (!finishPanel() || !board.scene.nodes.some(({ id }) => id === conflict.cardId)) throw new Error(t('storyAi.cardMoved'))
+        edit(conflict.cardId)
+        canvas.reveal(conflict.cardId)
+      },
+    })
   }
 
   /** The link new cards get: chosen here, or else the chapter open in the editor. */
@@ -463,9 +499,22 @@ function mount(route: NonNullable<typeof work>) {
   function routeChanged(hash: string) {
     const next = parseStoryRoute(hash)
     if (!next || next.library !== scope.library || next.bookId !== scope.bookId) return
-    chapter = next.chapter
-    history.replaceState(null, '', hash)
+    if (next.chapter || !next.cardId) chapter = next.chapter
+    pendingCard = next.cardId ?? pendingCard
+    history.replaceState(null, '', storyRoute(scope, chapter))
     paintDefaults()
+    openPendingCard()
+  }
+
+  function openPendingCard() {
+    if (!pendingCard || !opened) return
+    const cardId = pendingCard
+    pendingCard = undefined
+    history.replaceState(null, '', storyRoute(scope, chapter))
+    if (board.scene.nodes.some(({ id, kind }) => id === cardId && kind === 'card')) {
+      edit(cardId)
+      canvas.reveal(cardId)
+    } else report(new Error(t('storyAi.cardMoved')))
   }
 
   /** Another window on the same work, with its own view. */
@@ -1157,6 +1206,7 @@ function mount(route: NonNullable<typeof work>) {
       paintControls()
       paintProps()
       paintSidebar()
+      openPendingCard()
     } catch (error) {
       if (request === turn) report(error)
     }

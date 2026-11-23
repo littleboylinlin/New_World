@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   setRecentWorks: (works) => ipcRenderer.invoke('new-world:set-recent-works', works),
   openReadingWindow: (hash) => ipcRenderer.invoke('new-world:open-reading-window', hash),
   openStorySettings: (hash) => ipcRenderer.invoke('new-world:open-story-settings', hash),
+  openStoryEditor: (hash) => ipcRenderer.invoke('new-world:story-editor', hash),
   newStoryWindow: (hash) => ipcRenderer.invoke('new-world:new-story-window', hash),
   onStoryContext: (listener) => {
     onStoryContext = listener
@@ -59,11 +60,13 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   onCommand: (listener) => { ipcRenderer.on('new-world:command', (_event, command) => listener(command)) },
   getBackupState: () => ipcRenderer.invoke('new-world:backup-state'),
   setBackupFrequency: (frequency) => ipcRenderer.invoke('new-world:backup-set-frequency', frequency),
+  planBackupRetention: (kind, limit) => ipcRenderer.invoke('new-world:backup-retention-plan', kind, limit),
+  applyBackupRetention: (kind, limit, token) => ipcRenderer.invoke('new-world:backup-retention-apply', kind, limit, token),
   chooseBackupFolder: () => ipcRenderer.invoke('new-world:backup-choose-folder'),
   resetBackupFolder: () => ipcRenderer.invoke('new-world:backup-reset-folder'),
   setBackupPassword: (password) => ipcRenderer.invoke('new-world:backup-set-encryption', password),
   getBackupPassword: () => ipcRenderer.invoke('new-world:backup-password'),
-  saveBackup: (name, bytes, automatic) => ipcRenderer.invoke('new-world:backup-save', name, bytes, automatic),
+  saveBackup: (name, bytes) => ipcRenderer.invoke('new-world:backup-save', name, bytes),
   openBackup: () => ipcRenderer.invoke('new-world:backup-open'),
   showBackupFolder: () => ipcRenderer.invoke('new-world:backup-show-folder'),
   getSpellingDictionaries: () => ipcRenderer.invoke('new-world:spelling-state'),

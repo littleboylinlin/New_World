@@ -101,7 +101,8 @@ export async function fakeAiService({ reply } = {}) {
     }
 
     const protocol = protocolFor(path)
-    const answer = reply?.(request) ?? text
+    const answer = await reply?.(request) ?? text
+    if (res.destroyed) return
     if (request.body?.stream !== true && !path.includes(':streamGenerateContent')) return jsonResponse(res, responsesFor(answer)[protocol])
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
     const frames = eventsFor(answer)[protocol].map(encode)

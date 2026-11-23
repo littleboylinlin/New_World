@@ -3,6 +3,7 @@ import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
 import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { desktopStorySettingsFlow } from './story-settings-flow.mjs'
 import { desktopBookChatFlow } from './book-chat-flow.mjs'
+import { desktopStoryAiFlow } from './story-ai-flow.mjs'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
@@ -958,6 +959,75 @@ test('自动备份和立即备份写入自选文件夹，可加密，并能从�
   } finally { await stop(app) }
 })
 
+test('备份保留份数只在确认名单后清理升级遗留和缩减份数的旧备份', async ({}, info) => {
+  const folder = info.outputPath('retention')
+  await mkdir(folder, { recursive: true })
+  const names = (kind, count) => Array.from({ length: count }, (_, index) =>
+    `New-World-${kind}-2026-01-${String(index + 1).padStart(2, '0')}-000000.zip`)
+  const automatic = names('auto-backup', 7)
+  const restored = names('before-restore', 12)
+  const others = [...names('backup', 2), 'user-backup.zip', 'New-World-before-restore-KEEP.zip']
+  const all = [...automatic, ...restored, ...others]
+  await Promise.all(all.map((name) => writeFile(join(folder, name), 'test fixture')))
+  const app = await launch(info)
+  try {
+    const page = await app.firstWindow()
+    const section = await openSettingsCategory(page, 'backup')
+    const prior = await page.evaluate(() => window.newWorldDesktop.getBackupState())
+    await page.evaluate(() => window.newWorldDesktop.setBackupFrequency('off'))
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+    }, folder)
+    await section.getByRole('button', { name: '选择文件夹…' }).click()
+    await expect(section.locator('.backup-location')).toContainText(folder)
+    const auto = section.getByLabel('自动备份保留份数')
+    const before = section.getByLabel('恢复前备份保留份数')
+    const clean = page.getByRole('dialog', { name: '清理旧备份？' })
+    const onDisk = async () => (await readdir(folder)).sort()
+    try {
+      await expect(auto).toHaveValue('10')
+      await expect(before).toHaveValue('10')
+      await expect(section.getByText('有 2 份旧备份超出保留份数。')).toBeVisible()
+      expect(await onDisk()).toEqual(all.toSorted())
+      await auto.selectOption('5')
+      await expect(clean.getByRole('listitem')).toHaveText(automatic.slice(0, 2))
+      await clean.getByRole('button', { name: '取消' }).click()
+      await expect(clean).toBeHidden()
+      await expect(auto).toHaveValue('10')
+      expect(await onDisk()).toEqual(all.toSorted())
+      await auto.selectOption('5')
+      await clean.getByRole('button', { name: '清理', exact: true }).click()
+      await expect(auto).toHaveValue('5')
+      await expect(clean).toBeHidden()
+      expect(await onDisk()).toEqual([...automatic.slice(2), ...restored, ...others].sort())
+      await section.getByRole('button', { name: '清理', exact: true }).click()
+      await expect(clean.getByRole('listitem')).toHaveText(restored.slice(0, 2))
+      await clean.getByRole('button', { name: '清理', exact: true }).click()
+      await expect(clean).toBeHidden()
+      await expect(section.getByText('有 2 份旧备份超出保留份数。')).toBeHidden()
+      expect(await onDisk()).toEqual([...automatic.slice(2), ...restored.slice(2), ...others].sort())
+      await before.selectOption('null')
+      await expect.poll(() => page.evaluate(async () => (await window.newWorldDesktop.getBackupState()).retention['before-restore'])).toBeNull()
+    } finally {
+      await page.evaluate(async (previous) => {
+        const desktop = window.newWorldDesktop
+        for (const [kind, limit] of Object.entries(previous.retention)) {
+          const plan = await desktop.planBackupRetention(kind, limit)
+          await desktop.applyBackupRetention(kind, limit, plan.token)
+        }
+        await desktop.setBackupFrequency(previous.frequency)
+        if (!previous.custom) await desktop.resetBackupFolder()
+      }, prior)
+      if (prior.custom) {
+        await app.evaluate(({ dialog }, path) => {
+          dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+        }, prior.folder)
+        await page.evaluate(() => window.newWorldDesktop.chooseBackupFolder())
+      }
+    }
+  } finally { await stop(app) }
+})
+
 test('灵感速记：全局快捷键可在设置里更换，任务栏的速记任务打开小窗并存进书库', async ({}, testInfo) => {
   const app = await launch(testInfo)
   const shortcutFile = ({ app }) => {
@@ -1335,4 +1405,8 @@ test('Windows 故事设定独立窗口可重开，编辑器与设定实时同步
 
 test('Windows AI 对话走主进程流式请求，能点选并在重开后保留', async ({}, info) => {
   await desktopBookChatFlow(() => launch(info), stop, 'Windows AI 对话验收')
+})
+
+test('Windows 设定窗口通过主进程提取与检查并定位主窗口正文', async ({}, info) => {
+  await desktopStoryAiFlow(() => launch(info), stop, 'Windows 设定检查验收')
 })

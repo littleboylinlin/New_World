@@ -13,7 +13,7 @@ export async function navigateTo(page, hash) {
   else await page.evaluate((target) => { location.hash = target }, hash)
 }
 
-export async function configureChatProvider(page, url, { preset = 'OpenAI Chat Completions', contextTokens } = {}) {
+export async function configureChatProvider(page, url, { preset = 'OpenAI Chat Completions', contextTokens, rememberKey = false } = {}) {
   await navigateTo(page, '#/settings/ai')
   const settings = page.locator('.settings-card').filter({ has: page.getByRole('heading', { name: 'AI 服务', exact: true }) })
   await settings.getByRole('button', { name: '新建配置' }).click()
@@ -21,6 +21,7 @@ export async function configureChatProvider(page, url, { preset = 'OpenAI Chat C
   await expect(settings.locator('.aip-presets')).toBeHidden()
   await settings.getByLabel('Base URL').fill(url)
   await settings.getByLabel('API Key').fill('fake-key')
+  if (rememberKey) await settings.getByLabel('在此设备记住密钥').check()
   await settings.getByLabel('模型', { exact: true }).fill('example')
   if (contextTokens) {
     await settings.getByRole('button', { name: '生成参数' }).click()

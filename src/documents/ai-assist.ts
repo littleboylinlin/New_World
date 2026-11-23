@@ -32,7 +32,7 @@ import {
   acceptAll, acceptSuggestion, blocksText, clearSuggestions, currentSuggestions, insertParagraphsAfter,
   readBlocks, rejectSuggestion, replyParagraphs, showSuggestions, suggestionsFor, suggestionsFromEdits,
 } from './ai-suggest'
-import type { TextBlock } from './ai-suggest'
+import type { Suggestion, TextBlock } from './ai-suggest'
 import './ai-assist.css'
 
 const tones: Tone[] = ['formal', 'casual', 'gentle', 'cold', 'humorous', 'tense']
@@ -54,7 +54,7 @@ export interface AssistOptions {
    * Runs once per panel before its first change to the text: the editor saves, and the chapter as
    * it was is kept in its history.
    */
-  beforeChange: (input: { action: AssistAction; profileName: string }) => Promise<void>
+  beforeChange: (input: { action: AssistAction | 'storyCheck'; profileName: string }) => Promise<void>
   signal: AbortSignal
 }
 
@@ -70,7 +70,8 @@ interface Session {
   mapping: Mapping
   /** The selected text was edited after the request, so its suggestions no longer fit. */
   touched: boolean
-  profile: SavedProfile | ResolvedProfile
+  profile?: SavedProfile | ResolvedProfile
+  storyFix?: { profileName: string }
   /** Earlier questions and replies in this selection panel. */
   history: ChatTurn[]
   run?: AiRun
@@ -362,7 +363,8 @@ export function aiAssist(options: AssistOptions) {
   })
 
   async function run(current: Session) {
-    if (session !== current) return
+    const profile = current.profile
+    if (session !== current || !profile) return
     current.run?.cancel()
     const turn = ++current.turn
     const alive = () => session === current && current.turn === turn
@@ -394,29 +396,29 @@ export function aiAssist(options: AssistOptions) {
     if (current.action === 'proofread') { await proofread(current, alive, fail, halt); return }
     let book: { title: string; summary: string }[] | undefined
     let bookCacheToken: string | undefined
-    let profileRevision = 'revision' in current.profile ? current.profile.revision : undefined
+    let profileRevision = 'revision' in profile ? profile.revision : undefined
     if (current.action === 'summary' && current.scope === 'book') {
       // Chapters are split to fit the model, which needs its context size.
-      if (!current.profile?.config.generation?.contextTokens) {
+      if (!profile.config.generation?.contextTokens) {
         outputText.classList.remove('ai-assist-streaming')
         showOutput(false)
-        setMessage(t('aiAssist.needContext', [current.profile?.config.name ?? '']), 'warning')
+        setMessage(t('aiAssist.needContext', [profile.config.name]), 'warning')
         setActions(settingsLink(), dismiss())
         return
       }
       const chapters = (await options.chapters()).map((chapter) => ({ title: chapter.title, text: chapterText(chapter.content, '\n') }))
       if (!alive()) return
-      const resolved = await ai.resolveProfile({ feature: 'bookSummary', profileId: current.profile.id })
+      const resolved = await ai.resolveProfile({ feature: 'bookSummary', profileId: profile.id })
       if (!alive()) return
       if (current.halted) { halt(); return }
       if (!resolved.ok) { fail(resolved.error); return }
       profileRevision = resolved.data.revision
-      const cached = await cachedBookSummaries(options.titles().book, chapters, { profileId: current.profile.id, expectedProfileRevision: profileRevision })
+      const cached = await cachedBookSummaries(options.titles().book, chapters, { profileId: profile.id, expectedProfileRevision: profileRevision })
       if (!alive()) return
       if (current.halted) { halt(); return }
       if (cached.ok) bookCacheToken = cached.data.bookCacheToken
       const result = await chapterSummaries(chapters, {
-        profileId: current.profile.id,
+        profileId: profile.id,
         track: (live) => { current.run = live },
         stopped: () => !alive() || current.halted,
         progress: ({ done, total, cached, title: name }) => {
@@ -433,7 +435,7 @@ export function aiAssist(options: AssistOptions) {
     let messages: GenerateRequest['messages']
     if (current.action === 'ask') {
       try {
-        const request = await buildBookQuestion(options.context(), current.profile.config, current.question ?? '', current.history,
+        const request = await buildBookQuestion(options.context(), profile.config, current.question ?? '', current.history,
           blocksText(current.blocks), () => !alive() || current.halted)
         if (!alive()) return
         if (!request || current.halted) { halt(); return }
@@ -463,7 +465,7 @@ export function aiAssist(options: AssistOptions) {
     }
     if (current.halted) { halt(); return }
     const live = ai.generate({
-      feature: featureOf(current.action, current.scope), profileId: current.profile.id, expectedProfileRevision: profileRevision, messages,
+      feature: featureOf(current.action, current.scope), profileId: profile.id, expectedProfileRevision: profileRevision, messages,
       ...(current.action === 'ask' ? { stream: true } : {}),
     })
     current.run = live
@@ -502,7 +504,7 @@ export function aiAssist(options: AssistOptions) {
     }
     if (current.action === 'ask' || current.action === 'continue') {
       if (sources && current.question) current.history.push({ id: crypto.randomUUID(), question: current.question, reply: {
-        text: current.reply, profileName: current.profile.config.name, context: sources, status: truncated ? 'truncated' : 'complete',
+        text: current.reply, profileName: profile.config.name, context: sources, status: truncated ? 'truncated' : 'complete',
       } })
       finishAnswer(current, truncated)
       return
@@ -555,7 +557,6 @@ export function aiAssist(options: AssistOptions) {
       setActions(action(t('aiAssist.retry'), () => { void restart(current) }), action(t('common.close'), () => closePanel()))
       return
     }
-    const editor = options.editor()
     const items = suggestionsFromEdits(current.blocks, edits).map((item) => {
       const from = current.mapping.map(item.from, 1)
       return { ...item, from, to: Math.max(from, current.mapping.map(item.to, -1)) }
@@ -566,12 +567,7 @@ export function aiAssist(options: AssistOptions) {
         ...(unreadable ? [action(t('common.close'), () => closePanel())] : []))
       return
     }
-    showSuggestions(editor.view, items, {
-      accept: (id) => { void adopt(current, () => acceptSuggestion(editor.view, id)) },
-      reject: (id) => rejectSuggestion(editor.view, id),
-      changed: () => { if (session === current) paintReview(current) },
-    })
-    paintReview(current)
+    reviewSuggestions(current, items)
   }
 
   function finishSummary(current: Session, truncated: boolean) {
@@ -636,12 +632,43 @@ export function aiAssist(options: AssistOptions) {
       return
     }
     showOutput(false)
+    reviewSuggestions(current, items)
+  }
+
+  function reviewSuggestions(current: Session, items: Suggestion[]) {
+    const editor = options.editor()
     showSuggestions(editor.view, items, {
       accept: (id) => { void adopt(current, () => acceptSuggestion(editor.view, id)) },
       reject: (id) => rejectSuggestion(editor.view, id),
       changed: () => { if (session === current) paintReview(current) },
     })
     paintReview(current)
+  }
+
+  function reviewStoryFix(input: { from: number; to: number; original: string; replacement: string; reason: string; profileName: string }) {
+    const editor = options.editor()
+    if (!options.editing() || editor.view.composing) return false
+    const { from, to, original, replacement, reason, profileName } = input
+    const blocks = readBlocks(editor.state.doc, from, to)
+    if (blocks.length !== 1 || blocks[0].text !== original) return false
+    const items = suggestionsFromEdits(blocks, [{ block: 0, original, replacement, reason }])
+    if (!items.length) return false
+    closePanel()
+    finish?.()
+    const current: Session = {
+      action: 'proofread', storyFix: { profileName }, blocks, from, to, mapping: new Mapping(), touched: false,
+      reply: '', prepared: false, accepted: 0, turn: 0, scope: 'selection', halted: false, history: [],
+    }
+    session = current
+    title.textContent = t('storyAi.check')
+    via.textContent = profileName
+    styleRow.hidden = true
+    setExpanded(ask, false)
+    showOutput(false)
+    reviewSuggestions(current, items)
+    openPanel()
+    actions.querySelector('button')?.focus({ preventScroll: true })
+    return true
   }
 
   /** Builds the request again from the selection as it is now. */
@@ -676,7 +703,7 @@ export function aiAssist(options: AssistOptions) {
     if (items.length) {
       setActions(
         action(t('aiAssist.acceptAll'), () => { void adopt(current, () => acceptAll(editor.view), items.length) }, true),
-        action(t('aiAssist.insertParagraphs'), () => { void insertAfter(current) }),
+        ...(current.storyFix ? [] : [action(t('aiAssist.insertParagraphs'), () => { void insertAfter(current) })]),
         undo,
         action(t('aiAssist.discard'), () => { closePanel(); backToText() }),
       )
@@ -691,7 +718,10 @@ export function aiAssist(options: AssistOptions) {
       setActions()
       setMessage(t('aiAssist.saving'))
       try {
-        await options.beforeChange({ action: current.action, profileName: current.profile.config.name })
+        await options.beforeChange({
+          action: current.storyFix ? 'storyCheck' : current.action,
+          profileName: current.storyFix?.profileName ?? current.profile?.config.name ?? '',
+        })
       } catch (cause) {
         if (session !== current) return false
         setMessage(t('aiAssist.saveFailed', [cause instanceof Error ? cause.message : String(cause)]), 'error')
@@ -754,6 +784,7 @@ export function aiAssist(options: AssistOptions) {
     menuItems,
     chapterItems,
     start,
+    reviewStoryFix,
     /** Ends the panel, e.g. when the chapter or the mode changes. */
     close: closePanel,
     isOpen: () => Boolean(session),

@@ -24,6 +24,10 @@ import type { LibraryId } from './library'
 import { mountWebVersionCheck } from './web-version'
 import { mountWebStorage } from './web-storage'
 import { mountFolderSync } from './web-folder'
+import { takeStoryJump } from './ai/story-jump'
+import { handleStoryWebRequests } from './ai/story-web-provider'
+
+handleStoryWebRequests()
 
 for (const node of document.querySelectorAll<HTMLElement>('[data-i18n]')) node.textContent = t(node.dataset.i18n!)
 for (const node of document.querySelectorAll<HTMLElement>('[data-i18n-label]')) node.setAttribute('aria-label', t(node.dataset.i18nLabel!))
@@ -64,6 +68,11 @@ settingsEntry.addEventListener('click', (event) => {
 })
 
 function render(moveFocus = false) {
+  const { hash: readingHash, jump: storyJump } = takeStoryJump(activeHash)
+  if (readingHash !== activeHash) {
+    activeHash = readingHash
+    history.replaceState(null, '', readingHash)
+  }
   view?.abort()
   showNotes = undefined
   const scope = new AbortController()
@@ -104,7 +113,7 @@ function render(moveFocus = false) {
     if (library === 'reference' && match[2] && !match[3]) renderContinuation(main, match[2], scope.signal)
     else if (match[2]) void renderReader(main, library, match[2], match[3] === 'original' ? undefined : match[3], scope.signal, (guard) => {
       if (view === scope) leaveGuard = guard
-    })
+    }, storyJump)
   } else if (/^#\/writing\/?$/.test(activeHash)) {
     sidebar.active('writing')
     document.title = t('navigation.writing') + ' · New World'

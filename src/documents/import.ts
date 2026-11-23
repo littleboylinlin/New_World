@@ -8,8 +8,10 @@ import { maxChapters, maxEditionImageBytes, maxImageBytes } from './model'
 import type { ChapterInput, DocumentContent } from './model'
 import { checkDocument, fromMarkup } from './schema'
 
+type ConvertedChapter = ChapterInput & { previewSection?: number }
+
 interface Conversion {
-  chapters: ChapterInput[]
+  chapters: ConvertedChapter[]
   notes: string[]
 }
 
@@ -123,7 +125,7 @@ async function convertEpub(blob: Blob, signal: AbortSignal): Promise<Conversion>
   const { openEpub } = await import('../archive-preview')
   const book = await openEpub(blob, signal)
   if (book.length > maxChapters) throw new Error(t('import.thisEpubExceedsTheConversionLimitOfSections', [maxChapters]))
-  const chapters: ChapterInput[] = []
+  const chapters: ConvertedChapter[] = []
   const notes: string[] = []
   const budget = imageBudget()
   const cached = new Map<string, string | undefined>()
@@ -150,7 +152,7 @@ async function convertEpub(blob: Blob, signal: AbortSignal): Promise<Conversion>
     }
     const doc = fromMarkup(cleanMarkup(template, budget))
     const chapterTitle = titleOf(firstHeading, t('import.section', [index + 1]))
-    chapters.push(...structuredChapters(doc, chapterTitle, false))
+    chapters.push(...structuredChapters(doc, chapterTitle, false).map((chapter) => ({ ...chapter, previewSection: index })))
   }
   if (budget.omitted) notes.push(t('import.externalProtectedOrOversizedImageSWereNot', [budget.omitted]))
   return { chapters, notes }
@@ -162,14 +164,15 @@ async function convertPdf(blob: Blob, signal: AbortSignal): Promise<Conversion> 
   try {
     const pdf = await openPdf(blob, AbortSignal.any([controller.signal, signal]))
     if (pdf.length > maxChapters) throw new Error(t('import.thisPdfExceedsTheConversionLimitOfPages', [maxChapters]))
-    const chapters: ChapterInput[] = []
+    const chapters: ConvertedChapter[] = []
     let skipped = 0
     let length = 0
     for (let index = 0; index < pdf.length; index++) {
       const text = await pdf.readText(index)
       length += text.length
       if (length > maxTextPreviewSize) throw new Error(t('import.theExtractedPdfTextExceedsTheConversionLimit'))
-      if (text.trim()) chapters.push(...textChapters(text, t('import.page', [index + 1]), false))
+      if (text.trim()) chapters.push(...textChapters(text, t('import.page', [index + 1]), false)
+        .map((chapter) => ({ ...chapter, previewSection: index })))
       else skipped++
     }
     if (!chapters.length) throw new Error(t('import.thisPdfHasNoExtractableTextScannedDocuments'))
