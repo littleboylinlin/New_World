@@ -29,6 +29,7 @@ const { createWindowsUpdater, UpdateError } = require('./windows-update.cjs')
 const { createMacUpdater, MacUpdateError } = require('./macos-update.cjs')
 const { createMacInstaller } = require('./macos-install.cjs')
 const { releasePages, windowsReleaseList, mirrorLatest } = require('./windows-release.mjs')
+const { desktopFeedbackPlatform, feedbackLinks } = require('../shared/feedback.mjs')
 
 const appId = 'com.littleboylinlin.newworld'
 const appUrl = 'new-world://app/'
@@ -762,8 +763,11 @@ function harden(contents, window, ideas) {
     if (template && !window.isDestroyed()) Menu.buildFromTemplate(template).popup({ window })
   })
   contents.setWindowOpenHandler(({ url }) => {
-    // Only the app's own release pages may leave this window.
-    if (url.startsWith(releasePages + 'tag/') && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice((releasePages + 'tag/').length))) {
+    const isReleasePage = url.startsWith(releasePages + 'tag/') && /^v?[a-zA-Z0-9.%+\-]+$/.test(url.slice((releasePages + 'tag/').length))
+    // Match the feedback links built from the running app's version, platform, and language.
+    const platform = desktopFeedbackPlatform(process.platform) ?? t('feedback.platformDesktop')
+    const feedback = feedbackLinks(`v${app.getVersion()}`, platform, t)
+    if (isReleasePage || url === feedback.github || url === feedback.email) {
       void shell.openExternal(url).catch(() => {})
     }
     return { action: 'deny' }

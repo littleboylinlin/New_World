@@ -106,12 +106,20 @@ test.describe('language', () => {
     await expect(page).toHaveTitle(/writing workbench/)
     const year = new Date().getUTCFullYear()
     await expect(page.locator('.foot-inner')).toContainText(`© ${year} Xiaonanhai`, { useInnerText: true })
+    const footer = page.locator('footer')
+    const issueChooser = 'https://github.com/littleboylinlin/New_World/issues/new/choose'
+    await expect(footer.getByRole('link', { name: 'Feedback', exact: true })).toHaveAttribute('href', issueChooser)
+    const email = footer.getByRole('link', { name: 'feedback@writenewworld.com', exact: true })
+    await expect(email).toHaveAttribute('href', 'mailto:feedback@writenewworld.com')
+    await expect(email).toHaveAttribute('id', 'feedback')
 
     await page.getByRole('button', { name: '中文' }).click()
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
     await expect(page.locator('.lede')).toHaveText('本地小说管理器与写作工作台', { useInnerText: true })
     await expect(page).toHaveTitle(/写作工作台/)
     await expect(page.locator('.foot-inner')).toContainText(`© ${year} 小男孩`, { useInnerText: true })
+    await expect(footer.getByRole('link', { name: '反馈', exact: true })).toHaveAttribute('href', issueChooser)
+    await expect(email).toBeVisible()
 
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')

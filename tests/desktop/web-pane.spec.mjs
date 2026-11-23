@@ -178,6 +178,32 @@ test('弹出窗口在同一个网页块里打开，不新建窗口', async () =>
   } finally { await app.close() }
 })
 
+test('反馈链接交给系统浏览器和邮件客户端，应用窗口留在设置页', async () => {
+  const { app, page } = await launch()
+  try {
+    await app.evaluate(({ shell }) => {
+      globalThis.openedFeedbackLinks = []
+      shell.openExternal = async (url) => { globalThis.openedFeedbackLinks.push(url) }
+    })
+    await page.evaluate(() => { location.hash = '#/settings/updates' })
+    const settings = page.getByRole('region', { name: '更新与关于', exact: true })
+    await settings.getByText('反馈与建议', { exact: true }).click()
+    const github = settings.getByRole('link', { name: '在 GitHub 提交', exact: true })
+    const email = settings.getByRole('link', { name: '发邮件', exact: true })
+    const githubUrl = new URL(await github.getAttribute('href'))
+    const version = await app.evaluate(({ app }) => app.getVersion())
+    const platform = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }[process.platform]
+    expect([...githubUrl.searchParams]).toEqual([['version', `v${version}`], ['platform', platform]])
+
+    await github.click()
+    await email.click()
+    await expect.poll(() => app.evaluate(() => globalThis.openedFeedbackLinks))
+      .toEqual([githubUrl.href, await email.getAttribute('href')])
+    await expect(page).toHaveURL(/#\/settings\/updates$/)
+    expect(await windowCount(app)).toBe(1)
+  } finally { await app.close() }
+})
+
 async function selectInPage(app) {
   await inWebView(app, `(() => { const range = document.createRange(); range.selectNodeContents(document.getElementById('text')); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); document.body.focus() })()`)
 }

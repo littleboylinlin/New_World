@@ -1,0 +1,46 @@
+name: 功能建议 / Feature request
+description: 建议一项新功能或改进。 / Suggest a new feature or improvement.
+title: "[功能建议 / Feature] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 版本号 / Version
+      placeholder: vX.Y.Z
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: 平台 / Platform
+      description: Windows / macOS / Linux / 网页 (Web) / 手机浏览器 (Mobile browser)
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 建议内容 / Suggestion
+      description: 描述你想增加或改进的功能，以及使用场景。 / Describe the change you want and when you would use it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果 / Expected result
+      description: 你希望改进后能做到什么？ / What would you like to be able to do after the change?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果（当前体验） / Actual result (current behavior)
+      description: 目前你是怎么做的，遇到了什么问题？ / What do you do today, and where do you run into problems?
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图（可选） / Screenshots (optional)
+      description: 可粘贴或拖入已遮盖隐私信息的截图。 / Paste or drop screenshots with private information redacted.
+    validations:
+      required: false
