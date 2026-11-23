@@ -205,6 +205,7 @@ test('已发布 v8 升级中断原子回滚，再次升级保留元数据、原�
     'taskAttachments',
     'writingStyles',
     'storyBoards',
+    'bookChats',
   ])
     expected[name] = []
   expect(await state(page)).toEqual(expected)

@@ -308,7 +308,7 @@ test('现有 v7 书库升级到最新版本后完整保留数据和索引主键'
     const result = { version: db.version, unique: books.index('byLibraryDigest').unique, keyPath: books.keyPath }; db.close(); return result
   })
   expect(version).toEqual({ version: 14, unique: false, keyPath: ['library', 'id'] })
-  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments','writingStyles','storyBoards']) before[name] = []
+  for (const name of ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskSettings','taskFilters','taskTemplates','taskAttachments','writingStyles','storyBoards','bookChats']) before[name] = []
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
   await page.goto(`/#/reference/${seeded.root}/${seeded.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText('灯塔亮了。')
