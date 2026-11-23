@@ -15,6 +15,11 @@ import { fixedPage } from '../shell/fixed-page'
 import { closeAllPopovers, menuButton } from '../shell/popover'
 import type { ShellMenuItem } from '../shell/popover'
 import { priorityToolbar } from '../shell/toolbar'
+import { announceEditorChapter, watchStoryChanges } from '../story-settings/changes'
+import { openStorySettings } from '../story-settings/route'
+import { listStoryCards } from '../story-settings/store'
+import { storyCardApplies } from '../story-settings/model'
+import type { StoryCard } from '../story-settings/model'
 import { createTabs, createWorkbench } from '../shell/workbench'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
@@ -325,8 +330,18 @@ export async function renderEdition(
   const ideasCount = element('span', 'trash-count side-count ideas-count')
   sideButton.append(ideasCount)
   const moreButton = tool(t('editor.moreActions'), 'more', () => {}, undefined, 'more-toggle')
+  const storyWork = { library: edition.library, bookId: edition.bookId }
+  const openSettings = () => { void openStorySettings(storyWork, { editionId: edition.id, chapterId: chapter.id }).catch(report) }
+  const storyButton = tool(t('story.entry'), 'cards', openSettings, undefined, 'story-toggle')
+  const storyCount = element('span', 'trash-count')
+  storyCount.setAttribute('aria-hidden', 'true')
+  storyButton.append(element('span', '', t('story.entry')), storyCount)
+  let storyCards: StoryCard[] = []
+  let storyRequest = 0
   const right = element('div', 'toolbar-group toolbar-end')
   right.append(
+    bar.add({ id: 'story', node: storyButton, priority: 64,
+      menu: () => [{ label: t('story.entry'), icon: 'cards', hint: storyCount.textContent || undefined, action: openSettings }] }),
     bar.add({ id: 'find', node: findButton, priority: 88, menu: () => [{ label: t('editor.findReplace'), icon: 'search', hint: 'Ctrl/⌘ F', action: () => find.open() }] }),
     bar.add({ id: 'appearance', node: aa, priority: 66, menu: () => [{ label: t('appearance.title'), icon: 'appearance', action: () => aa.openPanel(moreButton) }] }),
     bar.add({ id: 'focus', node: focusButton, priority: 40, menu: () => [{ label: t('editor.focusMode'), icon: 'focus', checked: focused, action: () => setFocus(!focused) }] }),
@@ -746,6 +761,29 @@ export async function renderEdition(
   // The chapter list is rebuilt only when the chapters or the mode change, never for a change of
   // focus or a pane beside the text loading: a rebuild would pull the entry out from under a press,
   // a drag or an open menu.
+  function paintStoryLinks() {
+    // Cards for the whole work count in every chapter.
+    const linked = storyCards.filter((card) => storyCardApplies(card, { editionId: edition.id, chapterId: chapter.id }))
+    // The badge counts the cards linked to the open chapter, and is hidden when there are none.
+    storyCount.textContent = linked.length ? String(linked.length) : ''
+    const names = linked.slice(0, 5).map((card) => card.name)
+    if (linked.length > names.length) names.push('…')
+    storyButton.title = linked.length ? t('story.chapterCards', [linked.length, names.join(t('story.nameSeparator'))]) : t('story.entry')
+    if (linked.length) storyButton.setAttribute('aria-description', t('story.chapterCardsBadge', [linked.length]))
+    else storyButton.removeAttribute('aria-description')
+    bar.layout()
+  }
+
+  async function refreshStoryLinks() {
+    const turn = ++storyRequest
+    try {
+      const next = await listStoryCards(storyWork)
+      if (signal.aborted || turn !== storyRequest) return
+      storyCards = next
+      paintStoryLinks()
+    } catch { /* A card count never blocks the editor. */ }
+  }
+
   function refreshChapters() {
     paintChapterName()
     navLabel.textContent = t('editor.chapterList105', [edition.chapters.length])
@@ -810,6 +848,8 @@ export async function renderEdition(
     editor?.destroy()
     paper.replaceChildren()
     chapter = next
+    paintStoryLinks()
+    announceEditorChapter(storyWork, { editionId: edition.id, chapterId: chapter.id })
     // The comparison list marks the chapter being edited; the tasks put this chapter's first.
     splitEditor.refreshPanel()
     sideTasks.repaint()
@@ -1014,6 +1054,10 @@ export async function renderEdition(
   }
   libraryChanges.addEventListener('update', () => { void refreshIdeas() }, { signal })
   void refreshIdeas()
+  watchStoryChanges(storyWork, () => { void refreshStoryLinks() }, signal)
+  window.addEventListener('focus', () => { void refreshStoryLinks() }, { signal })
+  void refreshStoryLinks()
+  announceEditorChapter(storyWork, { editionId: edition.id, chapterId: chapter.id })
 
   // ——— Chapter actions ———
   function renameChapter(id: string) {
@@ -1098,7 +1142,7 @@ export async function renderEdition(
   const formatIds = [...textTools, ...insertTools, ...noteTools]
   let formatCollapsed = preferences.formatCollapsed
   bar.setCollapsed(formatIds, formatCollapsed)
-  const viewTools = new Set(['find', 'appearance', 'focus', 'side', 'compare'])
+  const viewTools = new Set(['story', 'find', 'appearance', 'focus', 'side', 'compare'])
   menuButton(moreButton, t('editor.moreActions'), () => {
     const reference = splitEditor.focusedReference()
     if (reference) {

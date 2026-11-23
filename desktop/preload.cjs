@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
+// This may arrive while the story window is still loading its language pack.
+let storyHash
+let onStoryContext
+ipcRenderer.on('new-world:story-context', (_event, hash) => {
+  storyHash = hash
+  onStoryContext?.(hash)
+})
+
 contextBridge.exposeInMainWorld('newWorldDesktop', {
   platform: process.platform,
   arch: process.arch,
@@ -39,6 +47,12 @@ contextBridge.exposeInMainWorld('newWorldDesktop', {
   onCaptureShown: (listener) => { ipcRenderer.on('new-world:capture-shown', () => listener()) },
   setRecentWorks: (works) => ipcRenderer.invoke('new-world:set-recent-works', works),
   openReadingWindow: (hash) => ipcRenderer.invoke('new-world:open-reading-window', hash),
+  openStorySettings: (hash) => ipcRenderer.invoke('new-world:open-story-settings', hash),
+  newStoryWindow: (hash) => ipcRenderer.invoke('new-world:new-story-window', hash),
+  onStoryContext: (listener) => {
+    onStoryContext = listener
+    if (storyHash) listener(storyHash)
+  },
   web: (action, id, ...args) => ipcRenderer.invoke('new-world:web', action, id, ...args),
   onWebState: (listener) => { ipcRenderer.on('new-world:web-state', (_event, state) => listener(state)) },
   onWebKeep: (listener) => { ipcRenderer.on('new-world:web-keep', (_event, entry) => listener(entry)) },

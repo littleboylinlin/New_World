@@ -1,8 +1,8 @@
-# New_World 工程格式规范（Schema 1 / 2 / 3）
+# New_World 工程格式规范（Schema 1 / 2 / 3 / 4）
 
 状态：本仓库原生工程交换格式，扩展名 `.newworld`，MIME `application/vnd.newworld.project+zip`。
 
-工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。v0.19.0 正式写入 **Schema 3**，显式读取 Schema 1、2、3。v0.18.1 及更旧应用不能读取 Schema 3。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
+工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。v0.19.0 正式写入 **Schema 3**，显式读取 Schema 1、2、3。v0.18.1 及更旧应用不能读取 Schema 3。故事设定库引入 Schema 4，读取 Schema 1–4，写入 Schema 4。升级、回退和全库备份格式见[未发布版本说明](releases/unreleased.md)。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
 
 ## v0.19.0 升级与回退
 
@@ -35,15 +35,16 @@ revisions/payloads/<resource-key>.bin
 revisions/ideas.json
 revisions/baselines.json
 trash/index.json                  # 只包含当前作品的回收记录
-tasks/index.json                  # 以下六项仅 Schema 3，均必需
+tasks/index.json                  # 以下六项自 Schema 3 起均必需
 tasks/projects.json
 tasks/sections.json
 tasks/labels.json
 tasks/completions.json
 tasks/attachments.json
+story/boards.json            # 自 Schema 4 起必需
 ```
 
-Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项，均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
+Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项。Schema 4 再增加一个画布索引。各项均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
 
 ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只能使用小写字母、数字、`-`、`.`、`/`。路径分段不得为空、`.`、`..`；禁止反斜线、驱动器、绝对路径、NUL、URI 和百分号编码。永远不将归档解压到本机路径，也不执行其中任何内容。
 
@@ -54,15 +55,15 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 | 字段 | 类型与含义 |
 | --- | --- |
 | `format` | 固定字符串 `new-world-project` |
-| `schemaVersion` | 整数 `1`、`2` 或 `3`；v0.19.0 写入器写 `3` |
+| `schemaVersion` | 整数 `1`、`2`、`3` 或 `4`，当前写入 `4` |
 | `appVersion` | 字符串，导出时应用版本，仅作来源信息 |
 | `createdAt` | 非负安全整数，导出时间，Unix 毫秒 |
 | `root` | `{ "library": "original" 或 "reference", "id": "作品 UUID" }` |
 | `records` | 下述固定表名与索引路径的对象 |
-| `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[], tasks: string[] }`（tasks 仅 Schema 3） |
+| `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[], tasks: string[], canvas: string[] }`（`tasks` 自 Schema 3 起必需，`canvas` 自 Schema 4 起必需） |
 | `resources` | 全部索引及二进制资源的清单（不含 manifest 自身） |
 
-`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。
+`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。Schema 4 还要求 `storyBoards → story/boards.json`。
 
 每项资源必填：
 
@@ -78,7 +79,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 
 `kind` 只允许 `json`、`blob`、`bytes`；`bytes` 是精确字节数，不是压缩后长度。`mediaType` 是原 Blob 的类型，允许空字符串。索引文件必须是 `json`。
 
-`detached` 是**真实引用但已不存在记录**的 ID 集合，每组排序且唯一。读取器根据全部数据重新计算并比对，不接受多余或遗漏项。它保存已删除原文的 `originalId`、已删版本的 `copiedFrom`、旧历史的目标以及灵感历史的外部作品引用；不是补造的作品/章节记录。当前存活章节必须与编辑版本目录双向一致，不能以 detached 豁免缺失正文。历史目标仍在本作品回收站时，导入后可先恢复真实的父版本/章节再恢复历史；若原库早已没有目标记录，保留历史与断开的身份，不能承诺凭空恢复原来不存在的父级。
+`detached` 是**真实引用但已不存在记录**的 ID 集合，每组排序且唯一。读取器根据全部数据重新计算并比对，不接受多余或遗漏项。它保存已删除原文的 `originalId`、已删版本的 `copiedFrom`、旧历史的目标以及灵感历史的外部作品引用。Schema 4 也保留已永久删除的画布元素引用和章节锚点。当前存活章节必须与编辑版本目录双向一致，不能以 detached 豁免缺失正文。历史目标仍在本作品回收站时，导入后可先恢复真实的父版本/章节再恢复历史；若原库早已没有目标记录，保留历史与断开的身份，不能承诺凭空恢复原来不存在的父级。
 
 ## 3. 索引记录与类型
 
@@ -161,7 +162,7 @@ Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 S
 
 ### trash
 
-只导出 `library/bookId` 归属当前根作品（灵感也包含附属原文）的 `original | edition | chapter | idea` 记录，保证可恢复的已删父级与其正文仍完整存在。整个作品的回收记录不与存活根作品混用。
+只导出 `library/bookId` 归属当前根作品（灵感也包含附属原文）的 `original | edition | chapter | idea` 记录，自 Schema 4 起也包含 `storyCard`，保证可恢复的已删父级与其正文仍完整存在。整个作品的回收记录不与存活根作品混用。
 
 字段为 `id, kind, library, bookId, title, deletedAt, books, files, editions, chapters`，可选 `ideas, position`。内嵌记录遵循同一类型。`position = { editionId, index }` 保留已删章节位置。按种类要求原文一组 book/file、版本一个 edition 及其章节、章节一个 chapter 和 position、灵感一个 idea，不允许混入其他作品数据。
 
@@ -180,14 +181,14 @@ Schema 2 内增加这种有界、可选、惰性的普通元数据无需升级 S
 - 逐项校验 ZIP CRC、本地/中央目录、声明及实际流入字节数、SHA-256、UTF-8 JSON、类型、唯一键、章节双向引用、原文件摘要、历史载荷及 detached 集合；全部成功后才显示摘要。Manifest 自身由 ZIP CRC 与严格解析保护；清单 SHA-256 能发现损坏，不提供发布者身份认证或数字签名。
 - 物理归档 ≤512 MiB，累计解压 ≤512 MiB，单项 ≤128 MiB，JSON 索引/manifest ≤32 MiB，条目 ≤10000，顶层记录总量 ≤50000；JSON 最大 64 层、1000000 个遍历值；大于 1 MiB 的条目压缩率不得超过 200:1。
 - 章节历史 gzip 单项原始 JSON ≤32 MiB，累计解码 ≤512 MiB；原文件沿用 ≤128 MiB，封面 ≤32 MiB，插图沿用单图 ≤4 MiB、文档预算 ≤24 MiB。声明偏小也不能绕过流式限额。
-- v0.19.0 读取器明确支持 Schema 1 / 2 / 3，写入器始终写 Schema 3。Schema 1 直接按原规则验证、恢复，缺少 metadata 不做填充；再次导出生成 Schema 3。更高/更低/无版本均明确拒绝，不能按应用版本猜测。已发布 v0.18.0 **无法读取 Schema 2/3**，v0.18.1 **无法读取 Schema 3**。读旧文件时新增任务表正规化为空数组、断开的 tasks 为空，不填造任务；不承诺旧软件兼容未来格式。未来升级须显式实现迁移并测试；只有 metadata 内符合本规范的未知 JSON 值允许保留，其他未知持久化字段仍拒绝。
+- 当前读取器接受 Schema 1–4，写入器始终写 Schema 4。更高、更低或缺少版本的文件会被拒绝。v0.18.0 仅支持 Schema 1，v0.18.1 支持 Schema 1–2，v0.19.0 至 v0.30.0 支持 Schema 1–3。导入旧工程时，未提供的 metadata 继续省略，新增索引和对应的 detached 字段在内存中填为空数组。只有 metadata 内符合本规范的未知 JSON 值允许保留。
 - 无网络资源加载、代码执行或原文件自动打开；原文件只按现有受限预览器读取。安全检查失败不会打开写事务。
 
 ## 5. 导入、冲突与本地存储
 
 在预览中显示作品、所属书库、章节/版本/原文件/历史/灵感/本作品回收记录数。导入前可取消、跳过、保持身份导入或导入副本。
 
-保留身份仅在没有作品 ID/标题、原文件摘要和身份冲突时提供。冲突不仅检查存活作品，还检查版本、章节、灵感、历史、回收记录及断开的历史引用，防止旧引用错误绑定到本地其他作品。原文件摘要按同书库检测。
+保留身份仅在没有作品 ID/标题、原文件摘要和身份冲突时提供。冲突不仅检查存活作品，还检查版本、章节、灵感、设定卡片、历史、回收记录及断开的引用，防止旧引用错误绑定到本地其他作品。原文件摘要按同书库检测。
 
 副本导入为全部作品/原文/版本/章节/灵感/历史/回收/批注身份以及 detached 身份生成新 UUID，修正 `workId, bookId, editionId, chapterId, ideaId, originalId, copiedFrom`、目录和回收位置；正文、作品信息与批注内容/锚点哈希不变。metadata 不属于身份引用图，详见上文。历史载荷使用现有去重键，不为同字节再建一套数据。
 
@@ -215,9 +216,7 @@ Windows 安装器通过 electron-builder 注册 `.newworld` 文件关联；macOS
 
 上述示例保持已发布 Schema 1 的原字节，用于旧文件回归。新增 [雾港-作品信息.newworld](examples/雾港-作品信息.newworld) 为 Schema 2，含作者、多段简介、副标题、标签、状态及安全未知扩展。`tests/work-information.spec.mjs` 通过实际 UI 导出、干净书库导入、数据库全部相关记录及字节对比、再次导出、副本冲突、编辑后保留扩展、并发修改冲突、错误/超限数据拒绝验证。Windows/macOS 安装测试还验证作品信息重启持久化及真实 PDF 标题页。
 
-运行 `npm test`；平台安装及系统文件关联在 `npm run test:desktop` 和 `npm run test:macos` 中验证。已发布 Schema 1/2 样本保持不可覆盖；新任务示例使用独立的 Schema 3 生成命令，见任务文档。示例为测试数据，不包含真实用户信息。
-
-已发布 Schema 1/2 样本不可由新写入器替换。Schema 3 样本生成及任务验收见 [任务文档](tasks.md)。
+运行 `npm test`。平台安装及系统文件关联在 `npm run test:desktop` 和 `npm run test:macos` 中验证。已发布的 Schema 1–3 示例保留原字节，供测试读取旧格式。
 
 ## 8. Schema 3 任务记录（正式结构升级）
 
@@ -247,4 +246,25 @@ Schema 3 在 Schema 2 的作品/元数据规范之上增加六个任务表及 `d
 
 `detached.tasks` 仅声明周期历史成员的断开任务身份，重新计算并严格比对，不包含任务当前的个人描述、评论或附件，也不能代替存活任务关系。这样原成员后来移出作品时可保留真实历史，而不把它当前的其他个人内容混入小说。保留原身份导入也检查这些历史身份冲突；副本同步重映射历史身份、周期成员、父/项目/分区/标签、评论和附件引用。
 
-Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再在内存中正规化六个空任务表和空 detached.tasks。原文件字节不改写，不虚构任务；再次导出用 Schema 3。旧版本不能读取新的六表结构，界面和文档明确提示，不承诺前向兼容。
+Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再在内存中正规化六个空任务表和空 detached.tasks。原文件字节和任务数据保持原样。v0.18.1 及更早版本不能读取六个任务表。
+
+
+## 9. Schema 4 故事设定画布
+
+`storyBoards` 每部作品最多有一行，字段为 `library, bookId, revision, scene, view`。`scene` 包含 `nodes, edges, tags`。`view` 是 `{ x, y, zoom }`。节点使用画布坐标，视角的 `x, y` 为屏幕偏移，缩放在 0.15 到 4 之间。工程副本保留几何和视角，重映射作品、章节、画布元素、连线和标签 ID。
+
+| 元素 | 字段及语义 |
+| --- | --- |
+| 节点共有 | `id, kind, x, y, width, height` |
+| `kind: "card"` | `name, aliases, tagIds, fields, body, wholeBook, chapters, states`。名称必填。别名按 Unicode NFKC 和大小写去重。字段为有序的 `{ key, value }` 纯文本数组。`wholeBook` 为 `true` 时卡片对全书有效、在任何章节都算关联，此时 `chapters` 必须为空；为 `false` 时 `chapters` 列出关联的一个或多个章节，空数组表示不关联章节 |
+| `kind: "text"` | `text` |
+| `kind: "group"` | `name`。拖动分组框时，其内部完整落在框内的元素随框一起移动 |
+| `kind: "image"` | `name, src`。`src` 为本地嵌入的 PNG、JPEG、GIF 或 WebP 数据，单张最多 4 MiB |
+| 标签 | `id, name, color`，颜色为六位十六进制色值 |
+| 连线（箭头） | `id, from, to, name, direction, stroke, color, bend`。端点有三种：绑定到卡片、文字或图片的 `{ nodeId }`，画在该对象朝向另一端的边缘上，对象移动或改变大小时跟随；绑定到另一条线的 `{ edgeId, at }`，`at` 为从那条线起点算起的曲线参数（0 到 1）；悬空的 `{ x, y }`，为画布坐标。分组框不能作为端点，两端不能绑定到同一个对象，线与线之间不能循环依赖。`bend` 是曲线中点偏离两端连线的距离（画布单位，正值在起点到终点方向的左手边），为 0 时是直线。方向可为 `forward`、`back`、`both` 或 `none`。线型可为 `solid`、`dash` 或 `dot` |
+
+章节链接为 `{ editionId, chapterId }`，同一张卡不重复。章节状态在此基础上含有 `text`。状态按照同一编辑版本的目录顺序，从锚点所在章节生效。章名变化与章节重排使用同一章节 ID。
+
+卡片删除时，`kind: "storyCard"` 的回收记录携带 `storyCard`，含原始位置和内容。连线留在画布中，端点恢复后可再次显示。永久删除造成的缺失端点 ID 纳入 `detached.canvas`；尚在回收站的端点保持对应的卡片 ID。备份中的整部作品回收记录可以携带完整 `storyBoard`。
+
+Schema 1–3 导入时，`storyBoards` 和 `detached.canvas` 在内存中为空。Schema 4 保存这两个字段，空内容对应空数组。

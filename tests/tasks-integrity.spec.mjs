@@ -204,6 +204,7 @@ test('已发布 v8 升级中断原子回滚，再次升级保留元数据、原�
     'taskTemplates',
     'taskAttachments',
     'writingStyles',
+    'storyBoards',
   ])
     expected[name] = []
   expect(await state(page)).toEqual(expected)
@@ -218,7 +219,7 @@ test('已发布 v8 升级中断原子回滚，再次升级保留元数据、原�
       q.result.close()
       return result
     }),
-  ).toEqual({ version: 11, unique: false })
+  ).toEqual({ version: 13, unique: false })
   await page.goto(`/#/reference/${work.root}/${work.firstEdition}`)
   await expect(page.getByRole('textbox', { name: '章节正文', exact: true })).toContainText(
     '灯塔亮了。',

@@ -2,9 +2,12 @@ import { announced, committed, openDatabase, resultOf, writing } from '../librar
 import type { RevisionBlobRecord } from '../library'
 import { synchronousContentHash } from '../confirm-state'
 import { packProject } from './archive'
-import { projectStores, projectTaskStores, readableProjectSchemas, ProjectError, requireValid as ok } from './model'
+import { projectStores, projectTaskStores, isReadableProjectSchema, ProjectError, requireValid as ok } from './model'
 import { taskIdentities, remapTasks, projectTaskData } from '../tasks/model'
 import { announceTasks } from '../tasks/store'
+import { announceStoryChange } from '../story-settings/changes'
+import { repairStoryRows } from '../story-settings/model'
+import { t } from '../i18n'
 import type { ProjectContents, ProjectData, ProjectRoot } from './model'
 import { detachedIds, referencedIds, validateData, validatePayloads } from './validate'
 
@@ -69,6 +72,8 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
       }
     }
   }
+  const board = tx.objectStore('storyBoards').get([root.library, root.id])
+  board.onsuccess = () => { if (board.result) data.storyBoards.push(board.result) }
   await committed(tx)
   // Task ownership is explicit and uniform throughout each subtree. Never pull a personal parent.
   data.tasks=data.tasks.filter(t=>t.link&&!t.link.unconfirmed&&t.link.library===root.library&&t.link.bookId===root.id)
@@ -79,6 +84,10 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
   data.revisionBlobs.sort((a, b) => a.hash.localeCompare(b.hash))
   data.files.sort((a, b) => a.id.localeCompare(b.id))
   ok(data.books.some((b) => b.id === root.id && !b.workId), 'work not found')
+  // A canvas left by an earlier build of the story canvas is exported in the current format.
+  const repaired = repairStoryRows(data.storyBoards, data.trash, t('story.untitledCard'))
+  data.storyBoards = repaired.boards
+  data.trash = repaired.trash
   return data
 }
 export async function exportProject(root: ProjectRoot) { return packProject(await collectProject(root), root) }
@@ -129,9 +138,10 @@ export function copyProject(contents: ProjectContents, reserved = new Set<string
     if (!value || typeof value !== 'object' || value instanceof Blob || value instanceof Uint8Array) return
     if (Array.isArray(value)) { value.forEach(walk); return }
     for (const [k, v] of Object.entries(value)) {
+      if (k === 'tagIds' && Array.isArray(v)) { value[k] = v.map(mapped); continue }
       if (k === 'metadata') continue // Unknown metadata may contain literal IDs; it is not a reference graph.
       if((projectTaskStores as readonly string[]).includes(k))continue
-      if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
+      if (['id', 'bookId', 'workId', 'editionId', 'chapterId', 'ideaId', 'nodeId', 'edgeId', 'originalId', 'copiedFrom'].includes(k) && typeof v === 'string') value[k] = mapped(v)
       else walk(v)
     }
   }
@@ -147,7 +157,7 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
   if (mode === 'skip') return null
   // Clone before async verification, preventing UI callers mutating already-validated records.
   const prepared = structuredClone(contents)
-  if (!readableProjectSchemas.includes(prepared.manifest.schemaVersion as 1 | 2 | 3)) throw new ProjectError('version')
+  if (!isReadableProjectSchema(prepared.manifest.schemaVersion)) throw new ProjectError('version')
   validateData(prepared.data, prepared.manifest.root, prepared.manifest.detached, prepared.manifest.schemaVersion)
   await validatePayloads(prepared.data)
   const db = await openDatabase()
@@ -175,5 +185,8 @@ export async function importProject(contents: ProjectContents, mode: 'preserve' 
     }
     return incoming.manifest.root
   })
-  const imported=await announced(done());announceTasks();return imported
+  const imported = await announced(done())
+  announceTasks()
+  announceStoryChange({ library: imported.library, bookId: imported.id })
+  return imported
 }

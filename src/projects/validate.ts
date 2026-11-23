@@ -8,11 +8,12 @@ import { formats, maxImportSize } from '../formats'
 import { maxCoverSize, maxTitleLength } from '../library'
 import type { Book, ChapterRevision, IdeaRevision } from '../library'
 import { synchronousContentHash } from '../confirm-state'
-import { limits, projectStores, requireValid as ok, ProjectError } from './model'
+import { limits, projectStores, requireValid as ok, ProjectError, projectSchemaVersion } from './model'
 import { validateTasks, projectTaskData } from '../tasks/model'
 import { validateTaskAssets } from '../tasks/resources'
 import type { Detached, ProjectData, ProjectRoot } from './model'
 import { MetadataError, validateWorkMetadata } from '../work-metadata'
+import { storyCards, storyEndRefs, validStoryRows } from '../story-settings/model'
 
 const schema = getSchema(documentExtensions)
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 255 && !/[\x00-\x1f]/.test(v)
@@ -143,7 +144,7 @@ function annotationsValid(v: NonNullable<ProjectData['chapters'][number]['readin
 
 /** All references must resolve to stored data or to an explicit detached identity. */
 export function referencedIds(data: ProjectData) {
-  const refs = { books: new Set<string>(), editions: new Set<string>(), chapters: new Set<string>(), ideas: new Set<string>(),tasks:new Set<string>() }
+  const refs = { books: new Set<string>(), editions: new Set<string>(), chapters: new Set<string>(), ideas: new Set<string>(),tasks: new Set<string>(), canvas: new Set<string>() }
   const visit = (d: Pick<ProjectData, 'books' | 'editions' | 'chapters' | 'ideas'>) => {
     d.books.forEach((v) => { refs.books.add(v.id); if (v.workId) refs.books.add(v.workId) })
     d.editions.forEach((v) => { refs.books.add(v.bookId); refs.editions.add(v.id); if (v.originalId) refs.books.add(v.originalId); if (v.copiedFrom) refs.editions.add(v.copiedFrom); v.chapters.forEach((c) => refs.chapters.add(c.id)) })
@@ -157,6 +158,24 @@ export function referencedIds(data: ProjectData) {
   data.aiBaselines.forEach((v) => { refs.books.add(v.bookId); refs.editions.add(v.editionId); refs.chapters.add(v.chapterId) })
   data.tasks.forEach(t=>{refs.tasks.add(t.id);if(t.link){refs.books.add(t.link.bookId);if(t.link.editionId)refs.editions.add(t.link.editionId);if(t.link.chapterId)refs.chapters.add(t.link.chapterId)}})
   data.taskCompletions.forEach(e=>e.cycle?.forEach(c=>refs.tasks.add(c.taskId)))
+  const boards = [...data.storyBoards, ...data.trash.flatMap((entry) => entry.storyBoard ? [entry.storyBoard] : [])]
+  const cards = boards.flatMap((board) => storyCards(board.scene))
+  cards.push(...data.trash.flatMap((entry) => entry.storyCard ? [entry.storyCard] : []))
+  for (const card of cards) {
+    refs.canvas.add(card.id)
+    for (const tagId of card.tagIds) refs.canvas.add(tagId)
+    for (const chapter of [...card.chapters, ...card.states]) {
+      refs.editions.add(chapter.editionId)
+      refs.chapters.add(chapter.chapterId)
+    }
+  }
+  for (const board of boards) {
+    for (const node of [...board.scene.nodes, ...board.scene.tags]) refs.canvas.add(node.id)
+    for (const edge of board.scene.edges) {
+      refs.canvas.add(edge.id)
+      for (const id of storyEndRefs(edge)) refs.canvas.add(id)
+    }
+  }
   return refs
 }
 export function detachedIds(data: ProjectData): Detached {
@@ -166,7 +185,11 @@ export function detachedIds(data: ProjectData): Detached {
     editions: [...data.editions, ...data.trash.flatMap((v) => v.editions)],
     chapters: [...data.chapters, ...data.trash.flatMap((v) => v.chapters)],
     ideas: [...data.ideas, ...data.trash.flatMap((v) => v.ideas ?? [])],
-    tasks:data.tasks,
+    tasks: data.tasks,
+    canvas: [
+      ...data.storyBoards.flatMap(({ scene }) => [...scene.nodes, ...scene.edges, ...scene.tags]),
+      ...data.trash.flatMap((entry) => entry.storyCard ? [entry.storyCard] : []),
+    ],
   }
   return Object.fromEntries(Object.entries(refs).map(([key, ids]) => {
     const stored = new Set(all[key as keyof Detached].map((v) => v.id))
@@ -174,7 +197,7 @@ export function detachedIds(data: ProjectData): Detached {
   })) as unknown as Detached
 }
 
-export function validateData(data: ProjectData, root: ProjectRoot, detached: Detached, schemaVersion = 3) {
+export function validateData(data: ProjectData, root: ProjectRoot, detached: Detached, schemaVersion = projectSchemaVersion) {
   fields(data, projectStores.join(' '))
   safeJson(data)
   ok(lib(root.library) && uuid(root.id), 'root')
@@ -218,19 +241,22 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
     rows.ideas.forEach((v) => { validateIdea(v); ok(belongsIdea(v), 'unrelated idea') })
   }
   validateRows(data, true)
+  if (schemaVersion < 4) ok(!data.storyBoards.length, 'story boards require Schema 4')
   for (const v of data.trash) {
-    fields(v, 'id kind library bookId title deletedAt books files editions chapters', 'ideas position')
-    ok(uuid(v.id) && (belongs(v) || (v.kind === 'idea' && belongsIdea(v))) && ['original', 'edition', 'chapter', 'idea'].includes(v.kind) && str(v.title) && num(v.deletedAt), 'trash ownership')
+    fields(v, 'id kind library bookId title deletedAt books files editions chapters', 'ideas position' + (schemaVersion >= 4 ? ' storyCard' : ''))
+    ok(uuid(v.id) && (belongs(v) || (v.kind === 'idea' && belongsIdea(v))) && (['original', 'edition', 'chapter', 'idea'].includes(v.kind) || (schemaVersion >= 4 && v.kind === 'storyCard')) && str(v.title) && num(v.deletedAt), 'trash ownership')
     for (const k of ['books', 'files', 'editions', 'chapters'] as const) ok(Array.isArray(v[k]), 'trash list')
     if (v.ideas !== undefined) ok(Array.isArray(v.ideas), 'trash ideas')
     if (v.position) { fields(v.position, 'editionId index'); ok(id(v.position.editionId) && num(v.position.index), 'trash position') }
     ok((v.kind === 'chapter' && v.chapters.length === 1 && !!v.position && !v.editions.length && !v.books.length && !v.files.length && !v.ideas?.length)
       || (v.kind === 'edition' && v.editions.length === 1 && !v.books.length && !v.files.length && !v.ideas?.length)
       || (v.kind === 'original' && v.books.length === 1 && v.files.length === 1 && !v.editions.length && !v.chapters.length && !v.ideas?.length)
-      || (v.kind === 'idea' && v.ideas?.length === 1 && !v.books.length && !v.files.length && !v.editions.length && !v.chapters.length), 'trash shape')
+      || (v.kind === 'idea' && v.ideas?.length === 1 && !v.books.length && !v.files.length && !v.editions.length && !v.chapters.length)
+      || v.kind === 'storyCard', 'trash shape')
     if (v.position && v.kind === 'chapter') ok(v.position.editionId === v.chapters[0].editionId, 'trash chapter edition')
     validateRows({ ...v, ideas: v.ideas ?? [] }, false)
   }
+  ok(validStoryRows(data.storyBoards, data.books, data.chapters, data.trash), 'story cards')
   const unique = <T>(rows: T[], key: (v: T) => string) => ok(new Set(rows.map(key)).size === rows.length, 'duplicate record')
   unique(data.books, (v) => v.id); unique(data.files, (v) => v.id)
   unique(data.editions, (v) => v.id); unique(data.editions, (v) => v.name)
@@ -263,7 +289,7 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
     fields(v, 'clientId library bookId editionId chapterId peakWords anchorWords anchorText updatedAt')
     ok(belongs(v) && id(v.clientId) && id(v.editionId) && id(v.chapterId) && num(v.peakWords) && num(v.anchorWords) && str(v.anchorText) && num(v.updatedAt), 'work safety baseline')
   }
-  fields(detached, 'books editions chapters ideas tasks')
+  fields(detached, 'books editions chapters ideas tasks canvas')
   const expected = detachedIds(data)
   for (const key of Object.keys(expected) as (keyof Detached)[]) {
     ok(Array.isArray(detached[key]) && detached[key].every(id) && new Set(detached[key]).size === detached[key].length

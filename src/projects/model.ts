@@ -2,13 +2,18 @@ import type { AiChapterBaseline, Book, BookFile, ChapterRevision, IdeaRevision, 
 import type { ChapterRecord, Edition } from '../documents/model'
 import type { Idea } from '../ideas'
 import type { TaskData } from '../tasks/model'
+import type { StoryBoard } from '../story-settings/model'
 
 export const projectFormat = 'new-world-project'
-export const projectSchemaVersion = 3
-export const readableProjectSchemas = [1, 2, 3] as const
+export const projectSchemaVersion = 4
+const readableProjectSchemas: readonly number[] = [1, 2, 3, 4]
+export const isReadableProjectSchema = (version: number) => readableProjectSchemas.includes(version)
 export const legacyProjectStores = ['books', 'files', 'editions', 'chapters', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', 'trash'] as const
 export const projectTaskStores = ['tasks','taskProjects','taskSections','taskLabels','taskCompletions','taskAttachments'] as const
-export const projectStores = [...legacyProjectStores,...projectTaskStores] as const
+const taskSchemaStores = [...legacyProjectStores, ...projectTaskStores] as const
+export const projectStores = [...taskSchemaStores, 'storyBoards'] as const
+export const projectStoresAt = (version: number) =>
+  version >= 4 ? projectStores : version >= 3 ? taskSchemaStores : legacyProjectStores
 export type ProjectStore = typeof projectStores[number]
 export interface ProjectData extends Pick<TaskData,typeof projectTaskStores[number]> {
   books: Book[]
@@ -21,10 +26,11 @@ export interface ProjectData extends Pick<TaskData,typeof projectTaskStores[numb
   ideaRevisions: IdeaRevision[]
   aiBaselines: AiChapterBaseline[]
   trash: TrashEntry[]
+  storyBoards: StoryBoard[]
 }
 export interface ProjectRoot { library: LibraryId; id: string }
 /** IDs referenced by history/provenance whose live records no longer exist. Never fabricated rows. */
-export interface Detached { books: string[]; editions: string[]; chapters: string[]; ideas: string[]; tasks:string[] }
+export interface Detached { books: string[]; editions: string[]; chapters: string[]; ideas: string[]; tasks: string[]; canvas: string[] }
 export interface Resource {
   path: string
   bytes: number
@@ -66,6 +72,7 @@ export function requireValid(condition: unknown, detail: string): asserts condit
 }
 export const recordPaths: Record<ProjectStore, string> = {
   books: 'books.json', files: 'originals/index.json', editions: 'editions/index.json', chapters: 'chapters/index.json',
+  storyBoards: 'story/boards.json',
   ideas: 'ideas/index.json', revisions: 'revisions/chapters.json', revisionBlobs: 'revisions/blobs.json',
   ideaRevisions: 'revisions/ideas.json', aiBaselines: 'revisions/baselines.json', trash: 'trash/index.json',
   tasks:'tasks/index.json',taskProjects:'tasks/projects.json',taskSections:'tasks/sections.json',taskLabels:'tasks/labels.json',taskCompletions:'tasks/completions.json',taskAttachments:'tasks/attachments.json',

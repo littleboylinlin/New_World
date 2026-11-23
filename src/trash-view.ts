@@ -6,6 +6,7 @@ import type { TrashItem } from './trash'
 import { button, element, icon, libraries, notice } from './ui'
 import { stagger } from './motion'
 import { trashKinds } from './undo'
+import { watchStoryChanges } from './story-settings/changes'
 
 function trashRow(root: HTMLElement, { entry, place }: TrashItem, report: (message: string, error?: boolean) => void) {
   const row = element('li', 'book-row trash-row')
@@ -96,6 +97,7 @@ export function renderTrash(root: HTMLElement, signal: AbortSignal) {
     report(t('trash.theTrashIsNowEmpty'))
   }))
   libraryChanges.addEventListener('update', () => { void refresh() }, { signal })
+  watchStoryChanges(undefined, () => { void refresh() }, signal)
   window.addEventListener('focus', () => { void refresh() }, { signal })
   void refresh()
 }

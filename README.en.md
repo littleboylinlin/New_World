@@ -30,7 +30,7 @@ Editing continues in the local library. Export again to save an updated project 
 
 v0.18.1 adds optional author, subtitle, multiline synopsis, tags and creative status to original and continuation works. Enter them during creation or use “Edit work information” from the work menu or details to update or clear them. Existing works receive no default author or status. TXT, Markdown, HTML, DOCX, PDF and EPUB exports offer three optional work-information switches, all off by default, using the existing converters.
 
-v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; the current database is v11, projects write Schema 3, and full-library backups write format 3 (see compatibility below). See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
+v0.18.1 reads Schema 1 and 2, and writes Schema 2. Work information and safe, bounded unknown JSON extensions survive project round trips; unsupported structures are explicitly rejected. Older v0.18.0 only reads Schema 1 and cannot read Schema 2. That release used database v8 without rewriting existing records; see the [unreleased notes](docs/releases/unreleased.md) for compatibility on this branch. See the [compatibility rules](docs/newworld-format.md), [Schema 2 metadata sample](docs/examples/雾港-作品信息.newworld) and [v0.18.1 release notes](docs/releases/v0.18.1.md).
 
 ## Windows desktop
 
@@ -182,9 +182,13 @@ Since v0.15.1, complete pre-edit chapter and idea revision snapshots (`revisions
 - **Writing styles library**: Create, edit, import, and export writing styles, summarize a style from sample chapters, assign default styles per work, and carry styles in full-library backups (v0.27.0).
 - **Local AI integration API (`v1`)**: Desktop settings offer an optional loopback-only HTTP JSON API (off by default) for external local tools with per-client Bearer tokens, granular permissions and work scopes, mandatory manual confirmation for deletions and major reductions, and local audit logs; see `AI_INTEGRATION.md`.
 
+## Story settings
+
+Open **Story settings** from the editor toolbar to work on a local whiteboard in a separate window or web tab. Double-click to add a card and drag from its edge to draw a connection. Cards support custom tags and fields, body text and chapter links. Arrange cards, text, images and frames, then use the card list to locate a card by name or alias. The canvas remembers your layout and view. Restore deleted cards from Trash.
+
 ## Backup and restore
 
-"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes, writing stats, chapter and idea revision history, writing styles, AI cumulative-loss baselines (`aiBaselines`), and all task data (including projects, labels, templates, filters, completion history and attachments) into one `.zip` file.
+"Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes, story canvases, writing stats, chapter and idea revision history, writing styles, AI cumulative-loss baselines (`aiBaselines`), and all task data (including projects, labels, templates, filters, completion history and attachments) into one `.zip` file.
 
 - Back Up Now: the desktop app saves to the backup folder; the web version downloads the file.
 - Automatic backups (desktop): daily (default), weekly or off. When one is due it runs while the app is open; the newest 10 are kept, and backups made by hand or before a restore are never deleted automatically.
@@ -192,6 +196,7 @@ Since v0.15.1, complete pre-edit chapter and idea revision snapshots (`revisions
 - Encryption: none, or a password (AES-256, which tools such as 7-Zip can open). The desktop app keeps the password encrypted with the system keychain, so automatic backups are encrypted too; the web version asks for a password with each backup. A forgotten password cannot be recovered.
 - Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
 - v0.30.0 writes backup format 3, packing AI cumulative-loss baselines (`aiBaselines`) and restoring them together; it continues reading formats 1 and 2 (format 1 keeps existing tasks; legacy formats 1 and 2 without `aiBaselines` clear local baselines to empty instead of attaching mismatched local baselines to restored chapters). Older apps reject format 3; keep a pre-upgrade backup if you might roll back.
+- This branch writes backup format 4 and reads formats 1–4. See the [unreleased notes](docs/releases/unreleased.md) for compatibility and rollback details.
 - Local-only data such as appearance, language, storage location, AI service configurations, API keys, and chapter summary caches are not included in backups.
 
 ## Format support
@@ -219,7 +224,7 @@ Single-file import is capped at 128 MiB, PDF preview and conversion at 64 MiB, i
 
 Text is auto-saved after about 500 ms without changes, and saving is also attempted before switching chapters or returning to the library. Save status is visible. When saving fails (such as when storage is full), the last committed content and current in-memory changes are kept, and the failure banner offers Retry and Export this chapter directly while demoting Discard unsaved changes behind secondary confirmation. Editing the same chapter from different pages raises a conflict notice; you can save as an independent version. If the browser or device is force-quit, uncommitted input may need to be re-entered.
 
-The current database is IndexedDB v11 (v0.19.0 adds task stores in v9, v0.21.0 adds a trash deletion-time index in v10, and v0.27.0 adds writing styles in v11). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, and chapters to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
+This branch uses IndexedDB v13 for story canvases and their trash records (v0.19.0 adds task stores in v9, v0.21.0 adds a trash deletion-time index in v10, and v0.27.0 adds writing styles in v11). Historical upgrade rules: IndexedDB v4 adds a global `writingDays` store alongside the works, files, edited versions, chapters, and trash stores; v3 libraries upgrade automatically on open. The trash store was introduced in v3, and upgraded libraries require v0.5.0 or newer to open. The two libraries are isolated by composite keys, and source files are deduplicated per library by SHA-256. Manuscripts and sources are stored separately; deleting a work moves its local copy, edited versions, chapters and story cards to the trash in a single transaction. The desktop version uses a fixed local directory and app address; web data is isolated by browser profile and site address. Clearing browser site data also deletes that browser's library.
 
 Import, conversion, editing, and export all happen locally. Illustrations are stored in manuscripts; HTML import and rich-text paste strip executable content and remote addresses.
 

@@ -2,6 +2,9 @@ import { t } from './i18n'
 import { maxChapters } from './documents/model'
 import type { Edition } from './documents/model'
 import { announceIdeas } from './ideas'
+import { emptyStoryBoard, isStoryScene, repairStoryScene } from './story-settings/model'
+import type { StoryBoard } from './story-settings/model'
+import { announceStoryChange } from './story-settings/changes'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
 import type { Book, TrashEntry } from './library'
 
@@ -39,6 +42,7 @@ export async function restoreTrash(id: string) {
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
   const ideas = tx.objectStore('ideas')
+  const boards = tx.objectStore('storyBoards')
   const trash = tx.objectStore('trash')
   const { step, done } = writing<{ entry: TrashEntry; edition?: Edition }>(tx)
   const request = trash.get(id)
@@ -58,10 +62,28 @@ export async function restoreTrash(id: string) {
       for (const file of entry.files) files.add(file)
       for (const edition of entry.editions) editions.add(edition)
       for (const chapter of entry.chapters) chapters.add(chapter)
+      if (entry.storyBoard) boards.add({ ...entry.storyBoard, revision: crypto.randomUUID() })
       return { entry }
     }
 
     const owner = books.get(key)
+    if (entry.kind === 'storyCard') {
+      const stored = boards.get(key)
+      const recycled = trash.index('byWorkKind').getAll([entry.library, entry.bookId, 'storyCard'])
+      recycled.onsuccess = step(() => {
+        if (!owner.result || owner.result.workId) throw new Error(t('trash.theParentWorkIsNoLongerInThe'))
+        const card = entry.storyCard
+        if (!card) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
+        const board: StoryBoard = stored.result ?? emptyStoryBoard({ library: entry.library, bookId: entry.bookId })
+        // Restoring into a board left by an earlier build of the canvas brings it up to date as well.
+        const trashed = new Set((recycled.result as TrashEntry[]).flatMap((other) => other.storyCard ? [other.storyCard.id] : []))
+        const { scene } = repairStoryScene({ ...board.scene, nodes: [...board.scene.nodes, card] }, { trashedCards: trashed, untitled: t('story.untitledCard') })
+        if (!isStoryScene(scene)) throw new Error(t('story.invalidScene'))
+        boards.put({ ...board, scene, revision: crypto.randomUUID() })
+        return { entry }
+      })
+      return { entry }
+    }
     if (entry.kind === 'original') {
       owner.onsuccess = step(() => {
         const work: Book | undefined = owner.result
@@ -113,7 +135,11 @@ export async function restoreTrash(id: string) {
   try {
     const restored = await done()
     if (restored.entry.kind === 'idea') announceIdeas()
-    else libraryChanges.dispatchEvent(new Event('update'))
+    else {
+      const { library, bookId, kind } = restored.entry
+      if (kind !== 'storyCard') libraryChanges.dispatchEvent(new Event('update'))
+      if (kind !== 'original') announceStoryChange({ library, bookId })
+    }
     return restored
   } catch (error) {
     // Ids are unique, so a constraint can only come from an identical original imported after the deletion.
@@ -156,13 +182,11 @@ export async function emptyTrash(id?: string) {
   const ideaRevsReq = ideaRevsStore.getAll()
 
   let stepError: unknown
+  let cardsRemoved = false
   ideaRevsReq.onsuccess = () => {
     try {
-      const allTrash = trashReq.result as Array<{
-        id: string
-        chapters?: Array<{ library: string; bookId: string; editionId: string; id: string }>
-        ideas?: Array<{ id: string }>
-      }>
+      const allTrash: TrashEntry[] = trashReq.result
+      cardsRemoved = allTrash.some((entry) => entry.kind === 'storyCard' && (!id || id === entry.id))
       const remainingTrash = id ? allTrash.filter((entry) => entry.id !== id) : []
       if (id) trashStore.delete(id)
       else trashStore.clear()
@@ -236,4 +260,5 @@ export async function emptyTrash(id?: string) {
     throw stepError ?? error
   }
   libraryChanges.dispatchEvent(new Event('update'))
+  if (cardsRemoved) announceStoryChange()
 }

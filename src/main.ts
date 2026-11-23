@@ -3,6 +3,7 @@ import './appearance'
 import { initializeLanguage } from './i18n'
 import { installFieldTyping } from './typing/field-typing'
 import { introReady } from './intro'
+import { storyRoutePrefix } from './story-settings/route'
 
 // Every text field, in the main window and the quick note window, shares one caret and reading box.
 installFieldTyping()
@@ -30,6 +31,7 @@ async function start() {
   if (window.newWorldDesktop && location.hash === '#/capture') await import('./capture-app')
   // A reading window (opened by the desktop app) shows one chapter or file on its own.
   else if (location.hash.startsWith('#/compare/')) await import('./reading-window')
+  else if (location.hash.startsWith(storyRoutePrefix)) await import('./story-settings/window')
   else await import('./app')
 }
 

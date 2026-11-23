@@ -10,6 +10,8 @@
 .toolbar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; height: var(--editor-topbar-height, 52px); padding: 0 8px; overflow: hidden; }
 .toolbar-group { display: flex; flex: none; flex-wrap: nowrap; align-items: center; gap: 2px; }
 .toolbar-group:not(:has(> :not([hidden]))) { display: none; }
+.editor-toolbar .story-toggle { gap: 5px; padding-inline: 8px; }
+.editor-toolbar .story-toggle .trash-count { position: static; }
 .toolbar-end { margin-inline-start: auto; padding-inline-start: 6px; gap: 2px; }
 .toolbar-title { display: grid; flex: 0 1 auto; min-width: 6.5em; max-width: 34vw; gap: 0; padding-inline: 4px 6px; }
 .toolbar-names { display: flex; align-items: baseline; gap: 2px; min-width: 0; }
