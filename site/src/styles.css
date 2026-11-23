@@ -46,10 +46,12 @@ a { color: inherit; }
 /* Header */
 .bar { color: var(--bar-text); background: var(--bar); }
 .bar :focus-visible { outline-color: var(--yellow); }
-.bar-inner { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 64px; }
+.bar-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; min-height: 64px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-size: 1.05rem; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; text-decoration: none; }
 .brand img { border-radius: 8px; }
-.bar-links { display: flex; gap: 8px; }
+.bar-links, .bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.bar-links a { padding: 8px 12px; border-radius: 9px; font-size: .86rem; font-weight: 800; text-decoration: none; }
+.bar-links a:hover { color: var(--on-yellow); background: var(--yellow); }
 .chip { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 6px 13px; border: 2px solid currentColor; border-radius: 9px; color: inherit; background: transparent; font: inherit; font-size: .86rem; font-weight: 800; text-decoration: none; cursor: pointer; transition: transform 120ms var(--ease-out); }
 .chip:hover { color: var(--on-yellow); background: var(--yellow); border-color: var(--yellow); }
 .chip:active { transform: translateY(2px); }
@@ -57,6 +59,7 @@ a { color: inherit; }
 
 /* Hero */
 main { flex: 1; outline: none; }
+:is(#features, #downloads, #how) { scroll-margin-top: 1rem; }
 .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: center; gap: 56px; padding-block: clamp(48px, 9vh, 104px) clamp(56px, 10vh, 112px); }
 .title { display: flex; flex-direction: column; margin: 0; font-family: var(--display); font-size: clamp(3.4rem, 9vw, 6.6rem); font-weight: 900; line-height: .92; letter-spacing: -.035em; text-transform: uppercase; }
 .title-word { display: block; width: fit-content; }
@@ -187,6 +190,10 @@ main { flex: 1; outline: none; }
   .panel { top: calc(76px + var(--k) * 12px); margin-bottom: 18vh; }
   .panel-card { grid-template-columns: 1fr; gap: 26px; min-height: 0; }
   .panel-art { min-height: 220px; }
+}
+@media (max-width: 640px) {
+  .bar-inner { padding-block: 8px; }
+  .bar-links { order: 1; flex-basis: 100%; justify-content: center; }
 }
 @media (max-width: 520px) {
   .chip-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

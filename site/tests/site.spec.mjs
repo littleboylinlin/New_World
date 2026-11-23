@@ -25,7 +25,7 @@ async function openAs(browser, userAgent, hints) {
   return page
 }
 
-const downloads = (page) => page.locator('#downloads a.btn')
+const downloads = (page) => page.locator('#downloads a[data-download]')
 
 test.describe('download button', () => {
   test('Windows gets the x64 installer', async ({ browser }) => {
@@ -104,11 +104,14 @@ test.describe('language', () => {
     await expect(page.locator('html')).toHaveAttribute('lang', 'en')
     await expect(page.locator('.lede')).toHaveText('A local novel manager and writing workbench', { useInnerText: true })
     await expect(page).toHaveTitle(/writing workbench/)
+    const year = new Date().getUTCFullYear()
+    await expect(page.locator('.foot-inner')).toContainText(`© ${year} Xiaonanhai`, { useInnerText: true })
 
     await page.getByRole('button', { name: '中文' }).click()
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
     await expect(page.locator('.lede')).toHaveText('本地小说管理器与写作工作台', { useInnerText: true })
     await expect(page).toHaveTitle(/写作工作台/)
+    await expect(page.locator('.foot-inner')).toContainText(`© ${year} 小男孩`, { useInnerText: true })
 
     await page.reload()
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
@@ -121,6 +124,69 @@ test.describe('language', () => {
     await expect(page.getByRole('button', { name: 'English' })).toBeVisible()
     await expect(page.locator('.sheet-tag')).toContainText('第', { useInnerText: true })
   })
+})
+
+test.describe('section navigation', () => {
+  test.use({ reducedMotion: 'reduce' })
+
+  const sections = [
+    ['功能', 'Features', 'features', '#features-title'],
+    ['下载', 'Download', 'downloads', '#downloads [data-download]'],
+    ['使用方法', 'How to use', 'how', '#how summary'],
+  ]
+
+  async function checkLinks(page, lang) {
+    await page.evaluate(() => scrollTo(0, 0))
+    for (const [zh, en, id] of sections) {
+      const link = page.locator('.bar-links').getByRole('link', { name: lang === 'en' ? en : zh, exact: true })
+      await expect(link).toHaveAttribute('href', `#${id}`)
+      await expect(link).toBeInViewport({ ratio: 1 })
+    }
+  }
+
+  async function followLink(page, name, id, selector) {
+    await page.locator('.bar-links').getByRole('link', { name, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`#${id}$`))
+    await expect(page.locator(`#${id}`)).toHaveCount(1)
+    await expect(page.locator(selector).first()).toBeInViewport({ ratio: 1 })
+    expect(await page.locator(selector).first().evaluate((node) =>
+      node.getBoundingClientRect().top >= Math.max(0, document.querySelector('.bar').getBoundingClientRect().bottom),
+    )).toBe(true)
+  }
+
+  test('all three links jump to their visible targets', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/')
+    for (const [zh, , id, selector] of sections) {
+      await page.evaluate(() => scrollTo(0, 0))
+      await followLink(page, zh, id, selector)
+    }
+  })
+
+  for (const width of [804, 390]) {
+    test(`section links stay usable at ${width}px through reload, back and language changes`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 740 })
+      await page.goto('/')
+      await checkLinks(page, 'zh')
+      await page.reload()
+      await checkLinks(page, 'zh')
+      await followLink(page, '功能', 'features', '#features-title')
+
+      await page.goto('/notice')
+      await page.goBack()
+      await expect(page.locator('#features-title')).toBeInViewport()
+      await checkLinks(page, 'zh')
+      await followLink(page, '下载', 'downloads', '#downloads [data-download]')
+
+      await page.evaluate(() => scrollTo(0, 0))
+      await page.getByRole('button', { name: 'English' }).click()
+      await checkLinks(page, 'en')
+      await followLink(page, 'How to use', 'how', '#how summary')
+      await page.reload()
+      await expect(page.locator('#how summary')).toBeInViewport()
+      await checkLinks(page, 'en')
+    })
+  }
 })
 
 test.describe('motion', () => {

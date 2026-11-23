@@ -61,7 +61,7 @@ async function setUpDownloads() {
   keys = keys.filter((key) => data.latest.assets[key])
   if (!keys.length) return
   const tones = ['btn-primary', 'btn-primary btn-blue']
-  document.getElementById('downloads').replaceChildren(...keys.map((key, index) => downloadButton(key, tones[index])))
+  document.querySelector('.downloads').replaceChildren(...keys.map((key, index) => downloadButton(key, tones[index])))
 }
 
 const PASSAGES = {

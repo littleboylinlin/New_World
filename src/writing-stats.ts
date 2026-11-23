@@ -141,6 +141,12 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
   panel.append(top, heatmap, statsFooter)
   host.append(panel)
 
+  // A label keeps its week column and only appears while the whole word fits in view.
+  const monthObserver = new IntersectionObserver((entries) => {
+    for (const { target, intersectionRatio } of entries) target.toggleAttribute('data-clipped', intersectionRatio < 1)
+  }, { root: gridWrap, threshold: 1 })
+  signal.addEventListener('abort', () => monthObserver.disconnect(), { once: true })
+
   const today = startOfDay(new Date())
   const todayKey = dayKey(today)
   const dow = (today.getDay() + 6) % 7
@@ -296,10 +302,12 @@ export function renderWritingStats(host: HTMLElement, signal: AbortSignal) {
     let todayCell: HTMLElement | undefined
     for (let week = 0; week < heatmapWeeks; week++) {
       const monday = addDays(firstMonday, week * 7)
-      const monthTag = element('span', 'month')
+      const monthTag = element('span')
       if (monday.getMonth() !== lastMonth) {
+        monthTag.className = 'month'
         monthTag.textContent = new Intl.DateTimeFormat(tag(), { month: 'short' }).format(monday)
         lastMonth = monday.getMonth()
+        monthObserver.observe(monthTag)
       }
       months.append(monthTag)
       for (let row = 0; row < 7; row++) {

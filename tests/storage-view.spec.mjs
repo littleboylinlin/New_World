@@ -30,7 +30,7 @@ async function openStorageSettings(page) {
 
 test('Web 端显示由浏览器托管，隐藏更改与恢复按钮', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('#storage-location')).toHaveText('小说与原件保存在当前浏览器')
+  await expect(page.locator('#storage-location')).toHaveText('小说与原文件保存在当前浏览器')
   const section = await openStorageSettings(page)
   await expect(section).toBeVisible()
   await expect(section.locator('.storage-badge')).toHaveText('浏览器托管')
@@ -42,12 +42,38 @@ test('Web 端显示由浏览器托管，隐藏更改与恢复按钮', async ({ p
   await expect(page.locator('.settings-page')).toBeHidden()
 })
 
+test('804px 和 390px 的 Web 页脚完整显示存储位置，空间不足时换行', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('new-world:language', 'en'))
+  const storage = page.locator('#storage-location')
+  for (const width of [804, 390]) {
+    await page.setViewportSize({ width, height: 740 })
+    await page.goto('/')
+    await expect(storage).toHaveText('Novels and original files are stored in this browser')
+    await expect(storage).toHaveCSS('white-space', 'normal')
+    await expect(storage).toHaveCSS('text-overflow', 'clip')
+    await page.addStyleTag({ content: 'html { font-size: 175%; }' })
+    await page.evaluate(() => document.fonts.ready)
+    const lines = await storage.evaluate((node) => {
+      const bounds = node.getBoundingClientRect()
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      return Array.from(range.getClientRects(), (line) => ({
+        fits: line.left >= bounds.left - 1 && line.right <= bounds.right + 1,
+        top: line.top,
+      }))
+    })
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines.every(({ fits }) => fits)).toBe(true)
+    expect(new Set(lines.map(({ top }) => top)).size).toBeGreaterThan(1)
+  }
+})
+
 test('桌面端可更改位置并恢复默认，按钮状态随自定义状态变化', async ({ page }) => {
   await page.route('**/releases?*', (route) => route.fulfill({ status: 404, json: {} }))
   await page.addInitScript(desktopState)
   await page.goto('/')
 
-  await expect(page.locator('#storage-location')).toHaveText('小说与原件保存在本机书库')
+  await expect(page.locator('#storage-location')).toHaveText('小说与原文件保存在本机书库')
   const section = await openStorageSettings(page)
   await expect(section).toBeVisible()
   await expect(section.locator('.storage-badge')).toHaveText('默认位置')
@@ -62,7 +88,7 @@ test('桌面端可更改位置并恢复默认，按钮状态随自定义状态�
   await expect(section.locator('.storage-path')).toHaveText('D:\\我的书库\\New World')
   await expect(section.locator('.storage-state')).toHaveText('已更新存储位置')
   await expect(reset).toBeEnabled()
-  await expect(page.locator('#storage-location')).toHaveText('小说与原件保存在 D:\\我的书库\\New World')
+  await expect(page.locator('#storage-location')).toHaveText('小说与原文件保存在 D:\\我的书库\\New World')
 
   await reset.click()
   await expect(section.locator('.storage-badge')).toHaveText('默认位置')
