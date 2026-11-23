@@ -20,7 +20,7 @@ import { decodeTaskResources, encodeTaskResources } from './tasks/transfer'
 import { validateTaskAssets } from './tasks/resources'
 import { announceTasks } from './tasks/store'
 import { announceStoryChange } from './story-settings/changes'
-import { validStoryRows } from './story-settings/model'
+import { repairStoryRows, validStoryRows } from './story-settings/model'
 import type { StoryBoard } from './story-settings/model'
 
 const manifestName = 'new-world-backup.json'
@@ -181,7 +181,7 @@ export async function createBackup(password?: string) {
   const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', styleStore, ...taskStores])
   const styleRows: Promise<StyleRecord[]> = resultOf(tx.objectStore(styleStore).getAll())
   const taskReads = Promise.all(taskStores.map(async name => [name, await resultOf(tx.objectStore(name).getAll())]))
-  const [books, files, editions, chapters, trash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines, storyBoards]: [
+  const [books, files, editions, chapters, storedTrash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines, storedBoards]: [
     Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[], AiChapterBaseline[], StoryBoard[],
   ] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
@@ -198,6 +198,8 @@ export async function createBackup(password?: string) {
     resultOf(tx.objectStore('storyBoards').getAll()),
   ])
 
+  // Canvas rows saved by an earlier build of the story canvas are brought up to date, never left to block the backup.
+  const { boards: storyBoards, trash } = repairStoryRows(storedBoards, storedTrash, t('story.untitledCard'))
   const blobs: [string, Blob][] = []
   const store = (file: BookFile, folder: string): StoredFile => {
     const path = `${folder}/${file.library}/${file.id}`
@@ -361,6 +363,13 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
     for (const name of ['books', 'files', 'editions', 'chapters', 'trash'] as const) list(manifest[name])
     if (manifest.version < 4 && (manifest.storyBoards !== undefined
       || manifest.trash.some((entry) => entry?.kind === 'storyCard' || entry?.storyBoard !== undefined || entry?.storyCard !== undefined))) throw new BackupError('format')
+    // A backup made by an earlier build of the story canvas restores in the current format.
+    if (manifest.version >= 4 && Array.isArray(manifest.storyBoards) && manifest.storyBoards.every((board) => board && typeof board === 'object' && board.scene)
+      && manifest.trash.every((entry) => entry && typeof entry === 'object')) {
+      const repaired = repairStoryRows(manifest.storyBoards, manifest.trash, t('story.untitledCard'))
+      manifest.storyBoards = repaired.boards
+      manifest.trash = repaired.trash
+    }
     const storyBoards = manifest.version < 4 ? [] : manifest.storyBoards
     for (const record of [...manifest.books, ...manifest.editions, ...manifest.chapters]) {
       if (!record || (record.library !== 'original' && record.library !== 'reference') || typeof record.id !== 'string') {

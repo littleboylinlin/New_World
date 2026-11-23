@@ -15,8 +15,8 @@ import type { StoryTool } from './canvas'
 import { watchStoryChanges } from './changes'
 import { storyImage } from './export-image'
 import { bounds, center, freeBend, overlaps, selectedNodes } from './geometry'
-import { blankStoryCard, cardInput, defaultStoryColor, emptyStoryBoard, isNodeEnd, matchesStoryCard, maxStoryName, storyCards, storyDirections, storyStrokes } from './model'
-import type { Point, Rect, StoryCardInput, StoryChapter, StoryEdge, StoryNode, StoryScene, StoryTag } from './model'
+import { StorySceneError, blankStoryCard, cardInput, defaultStoryColor, emptyStoryBoard, isNodeEnd, matchesStoryCard, maxStoryName, storyCards, storyDirections, storyStrokes } from './model'
+import type { Point, Rect, StoryCardInput, StoryChapter, StoryEdge, StoryNode, StoryProblem, StoryScene, StoryTag } from './model'
 import { parseStoryRoute } from './route'
 import { copyStorySelection, parallelBends, pasteStorySelection, remainingStoryEdges } from './selection'
 import { readStorySettings, saveStoryScene, saveStoryView } from './store'
@@ -82,7 +82,49 @@ function mount(route: NonNullable<typeof work>) {
 
   function report(error?: unknown) {
     message.hidden = error === undefined
-    message.textContent = error === undefined ? '' : storageError(error)
+    message.textContent = error === undefined ? '' : error instanceof StorySceneError ? explain(error.problem) : storageError(error)
+    // Point at what needs fixing.
+    const id = error instanceof StorySceneError && 'id' in error.problem ? error.problem.id : ''
+    if (id && [...board.scene.nodes, ...board.scene.edges].some((item) => item.id === id)) {
+      canvas.select([id])
+      canvas.reveal(id)
+    }
+  }
+
+  function chapterName(ref?: StoryChapter) {
+    const edition = snapshot?.editions.find(({ id }) => id === ref?.editionId)
+    const index = edition?.chapters.findIndex(({ id }) => id === ref?.chapterId) ?? -1
+    return edition && index >= 0 ? t('story.chapterOption', [index + 1, edition.chapters[index].title]) : t('story.chapterUnavailable')
+  }
+
+  /** One sentence per reason a save was refused, naming the card, chapter or size involved. */
+  function explain(problem: StoryProblem) {
+    const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MiB`
+    switch (problem.kind) {
+      case 'cardName': return t('story.problem.cardName')
+      case 'aliases': case 'fields': case 'tagMissing': return t(`story.problem.${problem.kind}`, [problem.name])
+      case 'chapter': case 'state': return problem.chapter
+        ? t(`story.problem.${problem.kind}Repeat`, [problem.name, chapterName(problem.chapter)])
+        : t(`story.problem.${problem.kind}Invalid`, [problem.name])
+      case 'tag': return t('story.problem.tag', [problem.name])
+      case 'size': return t('story.problem.size', [megabytes(problem.bytes), megabytes(problem.limit)])
+      default: return t(`story.problem.${problem.kind}`)
+    }
+  }
+
+  let repairNoticed = false
+  /** A board left by an earlier build of the canvas is saved back in the current format, once, with a note. */
+  function saveRepair(repair: NonNullable<Snapshot['repair']>) {
+    void write(board.scene, [], []).then((saved) => {
+      if (!saved || repairNoticed) return
+      repairNoticed = true
+      const notes = [
+        repair.removedEdges ? t('story.repairedEdges', [repair.removedEdges]) : '',
+        repair.removedNodes ? t('story.repairedNodes', [repair.removedNodes]) : '',
+        repair.repairedCards ? t('story.repairedCards', [repair.repairedCards]) : '',
+      ].filter(Boolean)
+      if (notes.length) canvas.toast.show(notes.join(' '), { duration: 8000 })
+    })
   }
 
   const editable = () => Boolean(snapshot?.book) && !writing
@@ -920,6 +962,7 @@ function mount(route: NonNullable<typeof work>) {
           else closePanel()
         }
         report()
+        if (next.repair?.changed) saveRepair(next.repair)
       }
       panel?.refresh(next.editions, board.scene.tags)
       paintControls()

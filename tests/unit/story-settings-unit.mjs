@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { bendThrough, bindingGap, borderPoint, freeBend, snapRect, storyEdgePaths } from '../../src/story-settings/geometry.ts'
-import { blankStoryCard, defaultStoryColor, emptyStoryBoard, isStoryCard, isStoryScene, matchesStoryCard, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
+import { blankStoryCard, defaultStoryColor, emptyStoryBoard, isStoryCard, isStoryScene, matchesStoryCard, repairStoryRows, repairStoryScene, storySceneProblem, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
 
 const { isStorySettingsRoute, isTrustedSecondaryRenderer } = createRequire(import.meta.url)('../../desktop/ipc-guard.cjs')
 const node = (id, name) => ({ ...blankStoryCard(), id, name, kind: 'card', x: 12, y: 4, width: 210, height: 127 })
@@ -106,4 +106,67 @@ test('arrow ends glue to the outline facing the other end, follow resizes and sp
   assert.equal(snap.dx, -3)
   assert.deepEqual(snap.guides[0], { axis: 'x', at: 0, from: 0, to: 120 })
   assert.equal(snapRect({ x: 120, y: 100, width: 50, height: 20 }, [{ x: 0, y: 0, width: 80, height: 30 }], 8).dx, 0)
+})
+
+test('boards saved by the previous canvas build load in the current format without losing a card', () => {
+  const card = (id, name, extra = {}) => ({ ...node(id, name), x: 10, y: 20, width: 210, height: 140, ...extra })
+  const old = (id, from, to, extra = {}) => ({ id, from, to, name: '', direction: 'forward', stroke: 'solid', color: defaultStoryColor, ...extra })
+  const scene = {
+    tags: [{ id: 'lead', name: '主线', color: '#440033' }],
+    nodes: [
+      card('keeper', '守灯人', { tagIds: ['lead', 'deleted-tag'], chapters: [{ editionId: 'd', chapterId: 'c' }, { editionId: 'd', chapterId: 'c' }] }),
+      card('captain', '船长', { aliases: ['船长', '老船长'] }),
+      card('nameless', '  '),
+      { id: 'note', kind: 'text', x: 0, y: 0, width: 100, height: 40, text: '旁注' },
+      { id: 'broken', kind: 'image', x: 0, y: 0, width: 100, height: 40, src: 'https://example.com/a.png', name: '' },
+    ],
+    edges: [
+      old('kept', { nodeId: 'keeper', side: 'right' }, { nodeId: 'captain', side: 'left' }, { name: '师徒' }),
+      old('onLine', { nodeId: 'note', side: 'top' }, { edgeId: 'kept', at: .4 }),
+      old('toTrash', { nodeId: 'keeper', side: 'bottom' }, { nodeId: 'recycled', side: 'top' }),
+      old('dangling', { nodeId: 'keeper', side: 'bottom' }, { nodeId: 'gone', side: 'top' }),
+      old('onDangling', { nodeId: 'captain', side: 'top' }, { edgeId: 'dangling', at: .5 }),
+      old('self', { nodeId: 'captain', side: 'top' }, { nodeId: 'captain', side: 'left' }),
+      old('loopA', { nodeId: 'note', side: 'top' }, { edgeId: 'loopB', at: .5 }),
+      old('loopB', { nodeId: 'note', side: 'left' }, { edgeId: 'loopA', at: .5 }),
+    ],
+  }
+  assert.deepEqual(storySceneProblem(scene), { kind: 'tagMissing', id: 'keeper', name: '守灯人' })
+  const repair = repairStoryScene(scene, { trashedCards: new Set(['recycled']), untitled: '未命名卡片' })
+  assert.equal(isStoryScene(repair.scene), true)
+  assert.equal(repair.changed, true)
+  assert.deepEqual(repair.scene.nodes.map(({ id }) => id), ['keeper', 'captain', 'nameless', 'note'])
+  assert.equal(repair.removedNodes, 1)
+  assert.equal(repair.repairedCards, 3)
+  const [keeper, captain, nameless] = repair.scene.nodes
+  assert.deepEqual(keeper.tagIds, ['lead'])
+  assert.deepEqual(keeper.chapters, [{ editionId: 'd', chapterId: 'c' }])
+  assert.deepEqual(captain.aliases, ['老船长'])
+  assert.equal(nameless.name, '未命名卡片')
+  // Gone: the end that no longer exists, the link hanging on it, the self link and both halves of the loop.
+  assert.deepEqual(repair.scene.edges.map(({ id }) => id), ['kept', 'onLine', 'toTrash'])
+  assert.equal(repair.removedEdges, 5)
+  assert.deepEqual(repair.scene.edges[0], { id: 'kept', from: { nodeId: 'keeper' }, to: { nodeId: 'captain' }, name: '师徒', direction: 'forward', stroke: 'solid', color: defaultStoryColor, bend: 0 })
+  // A repaired board is stable: repairing again changes nothing.
+  assert.equal(repairStoryScene(repair.scene, { trashedCards: new Set(['recycled']), untitled: '未命名卡片' }).changed, false)
+  // Recycled cards and boards in exports are repaired the same way.
+  const board = { library: 'original', bookId: 'root', revision: 'r', view: { x: 0, y: 0, zoom: 1 }, scene }
+  const rows = repairStoryRows([board], [{ kind: 'storyCard', library: 'original', bookId: 'root', storyCard: { id: 'recycled', ...card('recycled', '旧卡'), aliases: ['旧卡'] } }], '未命名卡片')
+  assert.equal(isStoryScene(rows.boards[0].scene), true)
+  assert.ok(rows.boards[0].scene.edges.some(({ id }) => id === 'toTrash'))
+  assert.equal(isStoryCard(rows.trash[0].storyCard), true)
+})
+
+test('a refused save names the card, the repeated chapter or the size', () => {
+  const scene = (nodes, edges = []) => ({ tags: [], nodes, edges })
+  assert.deepEqual(storySceneProblem(scene([{ ...node('a', '甲'), name: '' }])), { kind: 'cardName', id: 'a', name: '' })
+  const twice = { ...node('a', '甲'), chapters: [{ editionId: 'e', chapterId: 'c' }, { editionId: 'e', chapterId: 'c' }] }
+  assert.deepEqual(storySceneProblem(scene([twice])), { kind: 'chapter', id: 'a', name: '甲', chapter: { editionId: 'e', chapterId: 'c' } })
+  const state = { ...node('a', '甲'), states: [{ editionId: 'e', chapterId: 'c', text: ' ' }] }
+  assert.deepEqual(storySceneProblem(scene([state])), { kind: 'state', id: 'a', name: '甲', chapter: { editionId: 'e', chapterId: 'c' } })
+  const big = { ...node('a', '甲'), body: 'x'.repeat(21 * 1024 * 1024) }
+  assert.deepEqual(storySceneProblem(scene([big])), { kind: 'size', bytes: new TextEncoder().encode(JSON.stringify(scene([big]))).length, limit: 20 * 1024 * 1024 })
+  assert.deepEqual(storySceneProblem(scene([node('a', '甲'), node('a', '乙')])), { kind: 'duplicate', id: 'a' })
+  const loop = [relation('x', { edgeId: 'y', at: .5 }), relation('y', { edgeId: 'x', at: .5 })]
+  assert.equal(storySceneProblem(scene([node('keeper', '甲')], loop)).kind, 'cycle')
 })

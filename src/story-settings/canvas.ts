@@ -1148,6 +1148,16 @@ export function storyCanvas(options: CanvasOptions) {
     toggleLock() { setTool(tool, !locked) },
     zoom(factor: number) { setView(zoomAt(view, atCenter(), view.zoom * factor)); saveView() },
     resetZoom() { setView(zoomAt(view, atCenter(), 1)); saveView() },
+    /** Scrolls the board so an object is in full view, centring it when it is not. */
+    reveal(id: string) {
+      const rect = selectionRect([id])
+      if (!rect) return
+      const margin = 80
+      if (rect.x >= margin && rect.y >= margin && rect.x + rect.width <= surface.clientWidth - margin && rect.y + rect.height <= surface.clientHeight - margin) return
+      const mid = atCenter()
+      setView({ ...view, x: view.x + mid.x - (rect.x + rect.width / 2), y: view.y + mid.y - (rect.y + rect.height / 2) })
+      saveView()
+    },
     /** Pans by a screen offset, e.g. to bring the selection out from under a panel. */
     panBy(dx: number, dy: number) { setView({ ...view, x: view.x + dx, y: view.y + dy }); saveView() },
     editing: () => Boolean(editor),

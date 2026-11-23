@@ -6,6 +6,8 @@ import { projectStores, projectTaskStores, isReadableProjectSchema, ProjectError
 import { taskIdentities, remapTasks, projectTaskData } from '../tasks/model'
 import { announceTasks } from '../tasks/store'
 import { announceStoryChange } from '../story-settings/changes'
+import { repairStoryRows } from '../story-settings/model'
+import { t } from '../i18n'
 import type { ProjectContents, ProjectData, ProjectRoot } from './model'
 import { detachedIds, referencedIds, validateData, validatePayloads } from './validate'
 
@@ -82,6 +84,10 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
   data.revisionBlobs.sort((a, b) => a.hash.localeCompare(b.hash))
   data.files.sort((a, b) => a.id.localeCompare(b.id))
   ok(data.books.some((b) => b.id === root.id && !b.workId), 'work not found')
+  // A canvas left by an earlier build of the story canvas is exported in the current format.
+  const repaired = repairStoryRows(data.storyBoards, data.trash, t('story.untitledCard'))
+  data.storyBoards = repaired.boards
+  data.trash = repaired.trash
   return data
 }
 export async function exportProject(root: ProjectRoot) { return packProject(await collectProject(root), root) }

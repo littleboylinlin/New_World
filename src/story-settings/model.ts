@@ -226,16 +226,227 @@ export function validStoryEdges(edges: readonly StoryEdge[]) {
   })
 }
 
+/** Why a scene cannot be saved, pointing at the object to fix when there is one. */
+export type StoryProblem =
+  | { kind: 'cardName' | 'aliases' | 'fields' | 'tagMissing'; id: string; name: string }
+  | { kind: 'chapter' | 'state'; id: string; name: string; chapter?: StoryChapter }
+  | { kind: 'tag'; id: string; name: string }
+  | { kind: 'node' | 'edge' | 'cycle' | 'duplicate'; id: string }
+  | { kind: 'size'; bytes: number; limit: number }
+  | { kind: 'format' }
+
+/** An arrow that is part of a loop of arrows glued to each other. */
+function loopedEdge(edges: readonly StoryEdge[]) {
+  const byId = new Map(edges.map((edge) => [edge.id, edge]))
+  const state = new Map<string, 'open' | 'done'>()
+  const visit = (edge: StoryEdge): string | undefined => {
+    if (state.get(edge.id) === 'open') return edge.id
+    if (state.get(edge.id) === 'done') return
+    state.set(edge.id, 'open')
+    for (const end of [edge.from, edge.to]) {
+      const next = isEdgeEnd(end) ? byId.get(end.edgeId) : undefined
+      const found = next && visit(next)
+      if (found) return found
+    }
+    state.set(edge.id, 'done')
+  }
+  for (const edge of edges) {
+    const found = visit(edge)
+    if (found) return found
+  }
+  return edges.find((edge) => isNodeEnd(edge.from) && isNodeEnd(edge.to) && edge.from.nodeId === edge.to.nodeId)?.id
+}
+
+const listOf = (value: unknown) => Array.isArray(value) ? value : undefined
+
+/** The first reason a card is invalid, or undefined. */
+function cardProblem(value: Record<string, unknown>, tags: ReadonlySet<string>): StoryProblem | undefined {
+  const id = text(value.id) ? value.id : ''
+  const name = text(value.name) ? value.name : ''
+  if (!line(value.name)) return { kind: 'cardName', id, name }
+  const aliases = listOf(value.aliases)
+  if (!uniqueList<string>(aliases, line, normalized) || aliases.some((alias) => normalized(alias) === normalized(name))) return { kind: 'aliases', id, name }
+  const tagIds = listOf(value.tagIds)
+  if (!uniqueList<string>(tagIds, line, (tag) => tag) || tagIds.some((tag) => !tags.has(tag))) return { kind: 'tagMissing', id, name }
+  if (!listOf(value.fields)?.every((field) => plain(field) && keys(field, ['key', 'value']) && text(field.key) && text(field.value)) || !text(value.body)) {
+    return { kind: 'fields', id, name }
+  }
+  for (const state of [false, true]) {
+    const refs = listOf(state ? value.states : value.chapters)
+    const seen = new Set<string>()
+    for (const ref of refs ?? [undefined]) {
+      if (!validChapter(ref, state)) return { kind: state ? 'state' : 'chapter', id, name, ...(plain(ref) && line(ref.editionId) && line(ref.chapterId) ? { chapter: { editionId: ref.editionId, chapterId: ref.chapterId } } : {}) }
+      const key = storyChapterKey(ref as StoryChapter)
+      if (seen.has(key)) return { kind: state ? 'state' : 'chapter', id, name, chapter: ref as StoryChapter }
+      seen.add(key)
+    }
+  }
+  return isStoryCard(value) ? undefined : { kind: 'node', id }
+}
+
+/** Checks a scene in the order a person can act on: cards first, then other objects, links, and size. */
+export function storySceneProblem(value: unknown): StoryProblem | undefined {
+  if (!plain(value) || !keys(value, ['nodes', 'edges', 'tags'])) return { kind: 'format' }
+  const nodes = listOf(value.nodes), edges = listOf(value.edges), tagRows = listOf(value.tags)
+  if (!nodes || !edges || !tagRows) return { kind: 'format' }
+  const seen = new Set<string>()
+  const unique = (id: unknown): StoryProblem | undefined => {
+    if (!line(id)) return { kind: 'format' }
+    if (seen.has(id)) return { kind: 'duplicate', id }
+    seen.add(id)
+  }
+  for (const tag of tagRows) {
+    if (!isTag(tag)) return { kind: 'tag', id: plain(tag) && text(tag.id) ? tag.id : '', name: plain(tag) && text(tag.name) ? tag.name : '' }
+    const clash = unique((tag as StoryTag).id)
+    if (clash) return clash
+  }
+  const tags = new Set((tagRows as StoryTag[]).map(({ id }) => id))
+  for (const node of nodes) {
+    if (!plain(node)) return { kind: 'format' }
+    const clash = unique(node.id)
+    if (clash) return clash
+    const problem = node.kind === 'card' ? cardProblem(node, tags) : isNode(node) ? undefined : { kind: 'node' as const, id: String(node.id) }
+    if (problem) return problem
+  }
+  for (const edge of edges) {
+    if (!plain(edge)) return { kind: 'format' }
+    const clash = unique(edge.id)
+    if (clash) return clash
+    if (!isEdge(edge)) return { kind: 'edge', id: String(edge.id) }
+  }
+  if (!validStoryEdges(edges as StoryEdge[])) return { kind: 'cycle', id: loopedEdge(edges as StoryEdge[]) ?? '' }
+  const bytes = new TextEncoder().encode(JSON.stringify({ nodes, edges, tags: tagRows })).length
+  if (bytes > maxSceneCharacters) return { kind: 'size', bytes, limit: maxSceneCharacters }
+}
+
 export function isStoryScene(value: unknown): value is StoryScene {
-  if (!plain(value) || !keys(value, ['nodes', 'edges', 'tags'])
-    || !uniqueList<StoryNode>(value.nodes, isNode, (node) => node.id)
-    || !uniqueList<StoryEdge>(value.edges, isEdge, (edge) => edge.id)
-    || !uniqueList<StoryTag>(value.tags, isTag, (tag) => tag.id)) return false
-  const scene = { nodes: value.nodes, edges: value.edges, tags: value.tags }
-  const tags = new Set(scene.tags.map((tag) => tag.id))
-  const ids = [...scene.nodes, ...scene.edges, ...scene.tags].map(({ id }) => id)
-  return new Set(ids).size === ids.length && storyCards(scene).every((card) => card.tagIds.every((id) => tags.has(id)))
-    && validStoryEdges(scene.edges) && new TextEncoder().encode(JSON.stringify(scene)).length <= maxSceneCharacters
+  return !storySceneProblem(value)
+}
+
+/** A scene a save refused, with the reason the window explains to the writer. */
+export class StorySceneError extends Error {
+  readonly problem: StoryProblem
+  constructor(problem: StoryProblem, message: string) {
+    super(message)
+    this.name = 'StorySceneError'
+    this.problem = problem
+  }
+}
+
+export interface StoryRepair {
+  scene: StoryScene
+  /** Links dropped because an end no longer exists, or because they formed a loop. */
+  removedEdges: number
+  /** Objects other than cards that could not be read at all. */
+  removedNodes: number
+  /** Cards whose fields were brought back into shape; their content stays. */
+  repairedCards: number
+  changed: boolean
+}
+
+const finite = (value: unknown, fallback: number, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
+const cleanLine = (value: unknown) => text(value) ? value.replace(/[\x00-\x1f]/g, ' ').trim().slice(0, maxStoryName).trim() : ''
+const newId = () => crypto.randomUUID()
+/** JSON with object keys sorted, so key order alone never counts as a change. */
+const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(',')}]`
+  : plain(value) ? `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`
+    : JSON.stringify(value) ?? 'null'
+
+function repairChapters(value: unknown, state: boolean) {
+  const seen = new Set<string>()
+  return (listOf(value) ?? []).flatMap((ref) => {
+    if (!plain(ref) || !line(ref.editionId) || !line(ref.chapterId)) return []
+    const chapter = { editionId: ref.editionId, chapterId: ref.chapterId }
+    const key = storyChapterKey(chapter)
+    if (seen.has(key) || (state && (!text(ref.text) || !ref.text.trim()))) return []
+    seen.add(key)
+    return [state ? { ...chapter, text: ref.text as string } : chapter]
+  })
+}
+
+/** Keeps every card: fills missing fields, drops unknown tags and duplicate chapter links, keeps the text. */
+function repairCard(value: Record<string, unknown>, tags: ReadonlySet<string>, untitled: string): StoryCard {
+  const name = cleanLine(value.name) || untitled
+  const aliases = uniqueAliases(name, (listOf(value.aliases) ?? []).map(cleanLine)).filter(Boolean)
+  return {
+    id: line(value.id) ? value.id : newId(), kind: 'card',
+    x: finite(value.x, 0, -100_000_000, 100_000_000), y: finite(value.y, 0, -100_000_000, 100_000_000),
+    width: finite(value.width, 168, 32, 100_000), height: finite(value.height, 60, 32, 100_000),
+    name, aliases,
+    tagIds: [...new Set((listOf(value.tagIds) ?? []).filter((id): id is string => text(id) && tags.has(id)))],
+    fields: (listOf(value.fields) ?? []).flatMap((field) => plain(field) && (text(field.key) || text(field.value))
+      ? [{ key: text(field.key) ? field.key : '', value: text(field.value) ? field.value : '' }] : []),
+    body: text(value.body) ? value.body : '',
+    chapters: repairChapters(value.chapters, false), states: repairChapters(value.states, true) as StoryState[],
+  }
+}
+
+/** Reads an arrow end in this or the previous canvas format ({ nodeId, side }), or returns undefined. */
+function repairEnd(value: unknown): StoryEndpoint | undefined {
+  if (!plain(value)) return
+  if (line(value.nodeId)) return { nodeId: value.nodeId }
+  if (line(value.edgeId) && typeof value.at === 'number' && Number.isFinite(value.at)) return { edgeId: value.edgeId, at: Math.min(1, Math.max(0, value.at)) }
+  if (typeof value.x === 'number' && typeof value.y === 'number' && validPosition(value)) return { x: value.x, y: value.y }
+}
+
+/**
+ * Brings a stored scene up to the current format without losing cards. Links in the previous format
+ * are converted; links whose ends are gone (not on the board and not a card in the recycle bin), or
+ * that loop, are dropped. Other unreadable objects are dropped too, and counted.
+ */
+export function repairStoryScene(value: unknown, options: { trashedCards?: ReadonlySet<string>; untitled: string }): StoryRepair {
+  const raw = plain(value) ? value : {}
+  const ids = new Set<string>()
+  const claim = (id: string) => { if (ids.has(id)) return false; ids.add(id); return true }
+  const tags = (listOf(raw.tags) ?? []).filter((tag): tag is StoryTag => isTag(tag) && claim((tag as StoryTag).id))
+  const tagIds = new Set(tags.map(({ id }) => id))
+  let removedNodes = 0, repairedCards = 0
+  const nodes: StoryNode[] = []
+  for (const node of listOf(raw.nodes) ?? []) {
+    if (plain(node) && node.kind === 'card') {
+      let card = repairCard(node, tagIds, options.untitled)
+      if (!claim(card.id)) { card = { ...card, id: newId() }; claim(card.id) }
+      if (canonical(card) !== canonical(node)) repairedCards++
+      nodes.push(card)
+    } else if (isNode(node) && claim((node as StoryNode).id)) nodes.push(node as StoryNode)
+    else removedNodes++
+  }
+  const endpoints = new Set(nodes.filter((node) => node.kind !== 'group').map(({ id }) => id))
+  const kept = (end: StoryEndpoint) => !isNodeEnd(end) || endpoints.has(end.nodeId) || Boolean(options.trashedCards?.has(end.nodeId))
+  let removedEdges = 0
+  let edges: StoryEdge[] = []
+  for (const edge of listOf(raw.edges) ?? []) {
+    const from = plain(edge) ? repairEnd(edge.from) : undefined
+    const to = plain(edge) ? repairEnd(edge.to) : undefined
+    if (!plain(edge) || !line(edge.id) || !from || !to || !kept(from) || !kept(to) || ids.has(edge.id)) { removedEdges++; continue }
+    if (isNodeEnd(from) && isNodeEnd(to) && from.nodeId === to.nodeId) { removedEdges++; continue }
+    const direction = storyDirections.find((item) => item === edge.direction) ?? 'forward'
+    const stroke = storyStrokes.find((item) => item === edge.stroke) ?? 'solid'
+    edges.push({
+      id: edge.id, from, to, name: text(edge.name) ? edge.name : '', direction, stroke,
+      color: color(edge.color) ? edge.color : defaultStoryColor, bend: finite(edge.bend, 0, -maxStoryBend, maxStoryBend),
+    })
+    ids.add(edge.id)
+  }
+  // Drop links glued to links that are gone, then break any loop one link at a time.
+  for (let changed = true; changed;) {
+    const present = new Set(edges.map(({ id }) => id))
+    const next = edges.filter((edge) => [edge.from, edge.to].every((end) => !isEdgeEnd(end) || (present.has(end.edgeId) && end.edgeId !== edge.id)))
+    changed = next.length !== edges.length
+    removedEdges += edges.length - next.length
+    edges = next
+  }
+  while (!validStoryEdges(edges)) {
+    const looped = loopedEdge(edges)
+    edges = edges.filter((edge) => edge.id !== looped)
+    removedEdges++
+    const present = new Set(edges.map(({ id }) => id))
+    const before = edges.length
+    edges = edges.filter((edge) => [edge.from, edge.to].every((end) => !isEdgeEnd(end) || present.has(end.edgeId)))
+    removedEdges += before - edges.length
+  }
+  const scene = { nodes, edges, tags }
+  return { scene, removedEdges, removedNodes, repairedCards, changed: canonical(scene) !== canonical({ nodes: raw.nodes, edges: raw.edges, tags: raw.tags }) }
 }
 
 export function isStoryView(value: unknown): value is StoryView {
@@ -294,3 +505,35 @@ export function validStoryRows(boards: unknown, books: Book[], chapters: Chapter
     return entry.storyBoard === undefined && entry.storyCard === undefined
   })
 }
+
+interface StoryRows<E> { boards: StoryBoard[]; trash: E[] }
+/**
+ * Repairs every stored board and recycled card or work before an export, so one board left over from an
+ * earlier build never blocks a backup or project file. Links to cards in the recycle bin are kept.
+ */
+export function repairStoryRows<E extends { kind: string; library: string; bookId: string; storyBoard?: StoryBoard; storyCard?: StoryCard }>(
+  boards: StoryBoard[], trash: E[], untitled: string,
+): StoryRows<E> {
+  const trashed = new Map<string, Set<string>>()
+  for (const entry of trash) if (entry.storyCard) {
+    const key = JSON.stringify([entry.library, entry.bookId])
+    trashed.set(key, (trashed.get(key) ?? new Set()).add(entry.storyCard.id))
+  }
+  const fix = (board: StoryBoard): StoryBoard => {
+    if (!plain(board) || !plain(board.scene)) return board
+    const repair = repairStoryScene(board.scene, { trashedCards: trashed.get(JSON.stringify([board.library, board.bookId])), untitled })
+    return repair.changed ? { ...board, scene: repair.scene } : board
+  }
+  return {
+    boards: boards.map(fix),
+    trash: trash.map((entry) => {
+      if (entry.storyBoard) return { ...entry, storyBoard: fix(entry.storyBoard) }
+      if (entry.storyCard && !isStoryCard(entry.storyCard)) {
+        const card = entry.storyCard as unknown as Record<string, unknown>
+        return { ...entry, storyCard: repairCard(card, new Set(listOf(card.tagIds)?.filter(line) ?? []), untitled) }
+      }
+      return entry
+    }),
+  }
+}
+

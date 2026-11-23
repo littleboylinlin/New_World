@@ -2,7 +2,7 @@ import { t } from './i18n'
 import { maxChapters } from './documents/model'
 import type { Edition } from './documents/model'
 import { announceIdeas } from './ideas'
-import { emptyStoryBoard, isStoryScene } from './story-settings/model'
+import { emptyStoryBoard, isStoryScene, repairStoryScene } from './story-settings/model'
 import type { StoryBoard } from './story-settings/model'
 import { announceStoryChange } from './story-settings/changes'
 import { libraryChanges, libraryStores, openDatabase, resultOf, committed, writing } from './library'
@@ -69,14 +69,15 @@ export async function restoreTrash(id: string) {
     const owner = books.get(key)
     if (entry.kind === 'storyCard') {
       const stored = boards.get(key)
-      stored.onsuccess = step(() => {
+      const recycled = trash.index('byWorkKind').getAll([entry.library, entry.bookId, 'storyCard'])
+      recycled.onsuccess = step(() => {
         if (!owner.result || owner.result.workId) throw new Error(t('trash.theParentWorkIsNoLongerInThe'))
         const card = entry.storyCard
         if (!card) throw new Error(t('trash.thisItemIsNoLongerInTheTrash'))
         const board: StoryBoard = stored.result ?? emptyStoryBoard({ library: entry.library, bookId: entry.bookId })
-        const tags = new Set(board.scene.tags.map(({ id }) => id))
-        const restored = { ...card, tagIds: card.tagIds.filter((id) => tags.has(id)) }
-        const scene = { ...board.scene, nodes: [...board.scene.nodes, restored] }
+        // Restoring into a board left by an earlier build of the canvas brings it up to date as well.
+        const trashed = new Set((recycled.result as TrashEntry[]).flatMap((other) => other.storyCard ? [other.storyCard.id] : []))
+        const { scene } = repairStoryScene({ ...board.scene, nodes: [...board.scene.nodes, card] }, { trashedCards: trashed, untitled: t('story.untitledCard') })
         if (!isStoryScene(scene)) throw new Error(t('story.invalidScene'))
         boards.put({ ...board, scene, revision: crypto.randomUUID() })
         return { entry }
