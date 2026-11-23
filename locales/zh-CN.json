@@ -1761,5 +1761,8 @@
   "story.problem.cycle": "有几条连线首尾相接成了环。",
   "story.problem.duplicate": "画布里有两个对象用了同一个编号。",
   "story.problem.size": "画布有 {0}，超过了 {1} 的上限。可以删掉一些图片后再保存。",
-  "story.problem.format": "画布数据的格式无效。"
+  "story.problem.format": "画布数据的格式无效。",
+  "story.tool.lasso": "套索",
+  "story.selectModes": "选择方式",
+  "story.selectModesHint": "再点一次在选择和套索之间切换，长按可直接选"
 }

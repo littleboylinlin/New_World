@@ -1761,5 +1761,8 @@
   "story.problem.cycle": "Some connections end on each other in a loop.",
   "story.problem.duplicate": "Two objects on the canvas share an ID.",
   "story.problem.size": "The canvas is {0}, over the {1} limit. Remove some images, then save again.",
-  "story.problem.format": "The canvas data is in an invalid format."
+  "story.problem.format": "The canvas data is in an invalid format.",
+  "story.tool.lasso": "Lasso",
+  "story.selectModes": "Selection mode",
+  "story.selectModesHint": "tap again to switch between Select and Lasso, or hold to choose"
 }

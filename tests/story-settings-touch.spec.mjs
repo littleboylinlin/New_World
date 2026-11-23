@@ -1,7 +1,7 @@
 import { devices } from '@playwright/test'
 import { test, expect } from './app-test.mjs'
 import {
-  action, arrow, boardState, canvas, card, edgeGeometry, edgeMiddle, expectOnOutline, inlineField, intersects, liveView, newStoryWork,
+  action, arrow, boardState, canvas, card, edgeGeometry, edgeMiddle, expectOnOutline, inlineField, intersects, liveView, midpoint, newStoryWork,
   openStoryWindow, props, seedBoard, status, storyCard, toPage, tool, toolbar,
 } from './story-settings-helpers.mjs'
 
@@ -124,7 +124,8 @@ test('手机工具岛一排放在底部，双击空白建卡、双击卡片改�
   const { story } = await startBoard(page, { nodes: [near] })
   const bar = toolbar(story)
   const layout = await bar.evaluate((element) => {
-    const items = [...element.querySelectorAll('button')].map((item) => item.getBoundingClientRect())
+    // Select and Lasso share one button on phones, so the separate lasso button is not shown.
+    const items = [...element.querySelectorAll('button')].filter((item) => getComputedStyle(item).display !== 'none').map((item) => item.getBoundingClientRect())
     const box = element.getBoundingClientRect()
     return {
       count: items.length, rows: new Set(items.map((item) => Math.round(item.top))).size, scroll: element.scrollWidth - element.clientWidth,
@@ -310,3 +311,50 @@ test('手机缩放到 50% 时线宽、箭头、关系名够大，线的可点区
   await tapAt(story, { x: along.x - (line.to.y - line.from.y) / length * 12, y: along.y + (line.to.x - line.from.x) / length * 12 })
   await expect(story.locator('[data-edge-id="link"]')).toHaveClass(/selected/)
 })
+
+test('手机套索：选择按钮再点一次切到套索，长按可直接选；手指画不规则路径只选中圈住的对象，再拖动整组 @webkit', async ({ page, browserName }) => {
+  const a = card('a', '守灯人', 30, 120, { width: 140, height: 80 })
+  const b = card('b', '船长', 220, 120, { width: 140, height: 80 })
+  const c = card('c', '雾港', 60, 330, { width: 140, height: 80 })
+  const { story } = await startBoard(page, { nodes: [a, b, c], edges: [arrow('ac', 'a', 'c')] })
+  const finger = await touchPath(story, browserName)
+  const shared = toolbar(story).locator('[data-tool="select"]')
+  await expect(toolbar(story).locator('[data-tool="lasso"]')).toBeHidden()
+  await expect(shared.locator('.story-tool-mark')).toBeVisible()
+  await expectTouchTarget(shared)
+  // Tap again to switch between the two modes; the button's name and icon follow.
+  await shared.tap()
+  await expect(shared).toHaveAttribute('aria-label', '套索')
+  await expect(shared).toHaveAttribute('aria-pressed', 'true')
+  await expect(shared.locator('.story-tool-alt')).toBeVisible()
+  await shared.tap()
+  await expect(shared).toHaveAttribute('aria-label', '选择')
+  // Hold the button to choose a mode directly.
+  await finger.start(await midpoint(shared))
+  await story.waitForTimeout(700)
+  await finger.end()
+  const modes = story.getByRole('menu', { name: '选择方式' })
+  await expect(modes).toBeVisible()
+  await expect(modes.getByRole('menuitemradio', { name: '选择' })).toHaveAttribute('aria-checked', 'true')
+  await modes.getByRole('menuitemradio', { name: '套索' }).tap()
+  await expect(modes).toBeHidden()
+  await expect(shared).toHaveAttribute('aria-label', '套索')
+
+  // Draw an irregular loop with one finger: only what it surrounds is picked.
+  const path = await Promise.all([[15, 100], [190, 105], [150, 260], [230, 300], [215, 440], [40, 430], [70, 290], [10, 230]].map(([x, y]) => toPage(story, { x, y })))
+  await finger.start(path[0])
+  for (const point of path.slice(1)) await finger.move(point)
+  await expect(story.locator('.story-lasso')).toHaveAttribute('data-drawing', 'true')
+  await finger.end()
+  await expect(storyCard(story, '守灯人')).toHaveAttribute('aria-pressed', 'true')
+  await expect(storyCard(story, '雾港')).toHaveAttribute('aria-pressed', 'true')
+  await expect(storyCard(story, '船长')).toHaveAttribute('aria-pressed', 'false')
+  await expect(story.locator('[data-edge-id="ac"]')).toHaveClass(/selected/)
+  await expect(shared).toHaveAttribute('aria-label', '选择')
+  expect((await boardState(story)).scene.nodes.map(({ x, y }) => [x, y])).toEqual([[a.x, a.y], [b.x, b.y], [c.x, c.y]])
+
+  // One finger on a selected card moves the whole group.
+  await finger.swipe(await middle(story, c), { ...(await middle(story, c)), x: (await middle(story, c)).x + 30, y: (await middle(story, c)).y + 20 })
+  await expect.poll(async () => (await boardState(story)).scene.nodes.map(({ x, y }) => [x, y])).toEqual([[a.x + 30, a.y + 20], [b.x, b.y], [c.x + 30, c.y + 20]])
+})
+

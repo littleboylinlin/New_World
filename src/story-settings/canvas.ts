@@ -4,7 +4,7 @@ import { canvasToast, cardDetails, inlineEditor } from './canvas-overlays'
 import type { InlineEditor } from './canvas-overlays'
 import {
   bendThrough, bindingDistance, bounds, center, clamp, contains, curveAt, curveTangent, distance, freeBend, nearestOnCurve,
-  overlaps, pathData, placeBeside, rectDistance, selectedNodes, snapDistance, snapRect, storyEdgePaths, worldPoint,
+  lassoPick, overlaps, pathData, placeBeside, rectDistance, selectedNodes, snapDistance, snapRect, storyEdgePaths, worldPoint,
 } from './geometry'
 import { zoomAt as zoomAtPoint } from './geometry'
 import type { EdgePath, Guide } from './geometry'
@@ -12,7 +12,7 @@ import { defaultStoryColor, isEdgeEnd, isNodeEnd, maxZoom, minZoom, validStoryEd
 import type { Point, Rect, StoryEdge, StoryEndpoint, StoryNode, StoryScene, StoryView } from './model'
 import { parallelBends, sameRelation } from './selection'
 
-export const storyTools = ['select', 'hand', 'card', 'arrow', 'text', 'group', 'image', 'eraser'] as const
+export const storyTools = ['select', 'lasso', 'hand', 'card', 'arrow', 'text', 'group', 'image', 'eraser'] as const
 export type StoryTool = typeof storyTools[number]
 
 interface CanvasOptions {
@@ -44,6 +44,7 @@ type Drag =
   | { kind: 'pan'; start: Point; view: StoryView }
   | { kind: 'pinch'; view: StoryView; center: Point; distance: number }
   | { kind: 'box'; start: Point; base: Set<string> }
+  | { kind: 'lasso'; start: Point; base: Set<string>; points: Point[] }
   | { kind: 'move'; start: Point; nodes: StoryNode[]; edges: StoryEdge[] }
   | { kind: 'size'; start: Point; node: StoryNode; corner: Corner }
   | { kind: 'arrow'; start: Point }
@@ -79,10 +80,15 @@ export function storyCanvas(options: CanvasOptions) {
   const nodesLayer = element('div', 'story-node-layer')
   const controls = element('div', 'story-controls')
   const marquee = element('div', 'story-marquee')
+  // The lasso's trail, drawn in screen pixels; its points are kept on the board so it follows a scroll.
+  const lasso = svg('svg', { class: 'story-lasso', 'aria-hidden': 'true' })
+  const lassoLine = svg('path', { class: 'story-lasso-path' })
+  lasso.append(lassoLine)
+  let lassoTimer = 0
   const hint = element('p', 'story-canvas-hint')
   marquee.hidden = true
   world.append(groups, edgesLayer, nodesLayer)
-  surface.append(world, controls, marquee, hint)
+  surface.append(world, controls, marquee, lasso, hint)
   const toast = canvasToast(surface)
   const peek = element('div', 'story-peek')
   peek.setAttribute('role', 'tooltip')
@@ -487,6 +493,35 @@ export function storyCanvas(options: CanvasOptions) {
     return target ?? { x: Math.round(point.x * 10) / 10, y: Math.round(point.y * 10) / 10 }
   }
 
+  // ——— Lasso ———
+
+  function paintLasso(points: readonly Point[]) {
+    clearTimeout(lassoTimer)
+    lasso.classList.remove('story-lasso-fade')
+    lasso.setAttribute('width', String(surface.clientWidth))
+    lasso.setAttribute('height', String(surface.clientHeight))
+    lassoLine.setAttribute('d', points.map((point, index) => {
+      const at = toScreen(point)
+      return `${index ? 'L' : 'M'} ${Math.round(at.x * 10) / 10} ${Math.round(at.y * 10) / 10}`
+    }).join(' '))
+    lasso.dataset.drawing = 'true'
+  }
+
+  /** Closes the trail and fades it out, or removes it at once. */
+  function clearLasso(fade: boolean) {
+    clearTimeout(lassoTimer)
+    if (!lasso.dataset.drawing) return
+    if (!fade || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      delete lasso.dataset.drawing
+      lasso.classList.remove('story-lasso-fade')
+      lassoLine.setAttribute('d', '')
+      return
+    }
+    lassoLine.setAttribute('d', `${lassoLine.getAttribute('d')} Z`)
+    lasso.classList.add('story-lasso-fade')
+    lassoTimer = window.setTimeout(() => clearLasso(false), 320)
+  }
+
   // ——— Gestures ———
 
   function cancelDrag() {
@@ -501,12 +536,13 @@ export function storyCanvas(options: CanvasOptions) {
     stopScroll()
     marquee.hidden = true
     marquee.classList.remove('story-draw-preview')
+    clearLasso(false)
     for (const node of surface.querySelectorAll('.story-erasing')) node.classList.remove('story-erasing')
     delete surface.dataset.gesture
   }
 
   function cancelGesture() {
-    const box = drag?.kind === 'box' ? drag.base : undefined
+    const box = drag?.kind === 'box' || drag?.kind === 'lasso' ? drag.base : undefined
     if (drag?.kind === 'pan' || drag?.kind === 'pinch') saveView()
     lastTap = undefined
     cancelDrag()
@@ -520,7 +556,7 @@ export function storyCanvas(options: CanvasOptions) {
   }
 
   function startPinch() {
-    const box = drag?.kind === 'box' ? drag.base : undefined
+    const box = drag?.kind === 'box' || drag?.kind === 'lasso' ? drag.base : undefined
     const fingers = new Map(touches)
     cancelDrag()
     for (const [id, point] of fingers) touches.set(id, point)
@@ -593,6 +629,10 @@ export function storyCanvas(options: CanvasOptions) {
     else if (tool === 'eraser') {
       drag = { kind: 'erase', start, ids: new Set() }
       eraseAt(start)
+    } else if (tool === 'lasso') {
+      // A drag draws the lasso wherever it starts; a tap still picks the object under the finger.
+      const base = event.shiftKey ? new Set(selection) : new Set<string>()
+      drag = { kind: 'lasso', start, base, points: [point] }
     } else if (node || edgeId) {
       const id = node?.id ?? edgeId
       if (event.shiftKey) {
@@ -691,6 +731,11 @@ export function storyCanvas(options: CanvasOptions) {
       paintControls()
     } else if (drag.kind === 'erase') {
       eraseAt(point)
+    } else if (drag.kind === 'lasso') {
+      const last = drag.points.at(-1)!
+      if (distance(last, at) * view.zoom >= 3) drag.points.push(at)
+      paintLasso(drag.points)
+      select([...drag.base, ...lassoPick(drag.points, scene.nodes, paths)])
     } else {
       const origin = toScreen(pressWorld)
       const left = Math.min(origin.x, point.x), top = Math.min(origin.y, point.y)
@@ -803,6 +848,12 @@ export function storyCanvas(options: CanvasOptions) {
       case 'pan': if (didMove) saveView(); else tap(point, event); break
       case 'tap': if (!didMove) tap(point, event); break
       case 'box': if (!didMove) tap(point, event); else paintControls(); break
+      case 'lasso':
+        if (!didMove || completed.points.length < 3) { tap(point, event); break }
+        select([...completed.base, ...lassoPick(completed.points, scene.nodes, paths)])
+        clearLasso(true)
+        finishTool()
+        break
       case 'move': case 'size':
         if (!didMove) { ghost.clear(); paintGeometry(); tap(point, event); break }
         settle(options.change({
@@ -903,7 +954,15 @@ export function storyCanvas(options: CanvasOptions) {
       else newText(at)
       return
     }
-    if (tool !== 'select') return
+    if (tool === 'lasso' && (node || edgeId)) {
+      // A tap with the lasso picks one object, like the select tool.
+      const id = node?.id ?? edgeId
+      const next = new Set(event.shiftKey ? selection : [])
+      if (event.shiftKey && next.has(id)) next.delete(id)
+      else next.add(id)
+      select(next)
+    }
+    if (tool !== 'select' && tool !== 'lasso') return
     const key = node?.id ?? edgeId ?? 'blank'
     const time = performance.now()
     const previous = lastTap

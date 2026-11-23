@@ -245,3 +245,26 @@ export function placeBeside(target: Rect, size: { width: number; height: number 
   }
   return { rect: fit(options[order[0]]), side: order[0] }
 }
+
+/** Whether a point lies inside a closed polygon (even-odd rule); the last point joins the first. */
+export function pointInPolygon(point: Point, polygon: readonly Point[]) {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j]
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
+
+/**
+ * What a lasso picks: objects whose middle lies inside it, and arrows whose start, end and middle all
+ * do (after Excalidraw's lasso, which tests element points against the closed path).
+ */
+export function lassoPick(polygon: readonly Point[], nodes: readonly (Rect & { id: string })[], paths: ReadonlyMap<string, EdgePath | undefined>) {
+  if (polygon.length < 3) return []
+  const inside = (point: Point) => pointInPolygon(point, polygon)
+  return [
+    ...nodes.filter((node) => inside(center(node))).map(({ id }) => id),
+    ...[...paths].filter(([, path]) => path && inside(path.from) && inside(path.to) && inside(path.mid)).map(([id]) => id),
+  ]
+}

@@ -25,21 +25,21 @@ const edges = (page) => expect.poll(async () => (await boardState(page)).scene.e
 test('工具岛只有一排，快捷键切换工具，画完自动回到选择，Q 和双击工具按钮锁定工具', async ({ page }) => {
   const story = await board(page, { nodes: [keeper, captain] })
   const tools = toolbar(story).getByRole('button')
-  await expect(tools).toHaveCount(8)
+  await expect(tools).toHaveCount(9)
   const names = await tools.evaluateAll((items) => items.map((item) => item.getAttribute('aria-label')))
-  expect(names).toEqual(['选择', '平移', '卡片', '箭头', '文字', '分组框', '图片', '橡皮擦'])
+  expect(names).toEqual(['选择', '套索', '平移', '卡片', '箭头', '文字', '分组框', '图片', '橡皮擦'])
   const layout = await toolbar(story).evaluate((bar) => {
     const items = [...bar.querySelectorAll('button')].map((item) => item.getBoundingClientRect())
     return { tops: new Set(items.map((item) => Math.round(item.top))).size, scroll: bar.scrollWidth - bar.clientWidth, top: bar.getBoundingClientRect().top, keys: [...bar.querySelectorAll('kbd')].map((key) => key.textContent) }
   })
-  expect(layout).toEqual({ tops: 1, scroll: 0, top: layout.top, keys: ['1', 'H', '2', '5', '8', 'F', '9', '0'] })
+  expect(layout).toEqual({ tops: 1, scroll: 0, top: layout.top, keys: ['1', 'L', 'H', '2', '5', '8', 'F', '9', '0'] })
   expect(layout.top).toBeLessThan(30)
   // No permanent delete or copy buttons; properties only appear with a selection.
   await expect(action(story, '删除')).toHaveCount(0)
   await expect(props(story)).toBeHidden()
 
   const pressed = (name) => expect(tool(story, name)).toHaveAttribute('aria-pressed', 'true')
-  for (const [key, name] of [['h', '平移'], ['r', '卡片'], ['a', '箭头'], ['t', '文字'], ['f', '分组框'], ['e', '橡皮擦'], ['v', '选择'],
+  for (const [key, name] of [['l', '套索'], ['h', '平移'], ['r', '卡片'], ['a', '箭头'], ['t', '文字'], ['f', '分组框'], ['e', '橡皮擦'], ['v', '选择'],
     ['2', '卡片'], ['5', '箭头'], ['8', '文字'], ['0', '橡皮擦'], ['1', '选择']]) {
     await canvas(story).press(key)
     await pressed(name)
@@ -421,3 +421,58 @@ test('保存较慢时连续操作不会丢：连画箭头、马上写关系名�
   await expect.poll(async () => (await boardState(story)).scene.nodes[2].x, { timeout: 10_000 }).toBe(harbor.x)
   expect((await boardState(story)).scene.edges).toHaveLength(3)
 })
+
+test('套索：鼠标画不规则路径只选中圈住的对象，Shift 加选，选完回到选择并能拖动整组 @webkit', async ({ page }) => {
+  const note = { id: 'note', kind: 'text', x: 820, y: 460, width: 180, height: 72, text: '旁注' }
+  const story = await board(page, {
+    nodes: [keeper, captain, harbor, note],
+    edges: [arrow('link', 'keeper', 'harbor'), arrow('cross', 'keeper', 'captain')],
+  })
+  const pressed = (id) => story.locator(`[data-node-id="${id}"]`)
+  const lasso = async (points, modifiers = []) => {
+    for (const key of modifiers) await story.keyboard.down(key)
+    const [first, ...rest] = await Promise.all(points.map(([x, y]) => toPage(story, { x, y })))
+    await story.mouse.move(first.x, first.y)
+    await story.mouse.down()
+    for (const point of rest) await story.mouse.move(point.x, point.y, { steps: 4 })
+    // The trail shows while drawing, as a dashed line.
+    await expect(story.locator('.story-lasso')).toHaveAttribute('data-drawing', 'true')
+    await expect(story.locator('.story-lasso-path')).toHaveCSS('stroke-dasharray', /\d/)
+    await story.mouse.up()
+    for (const key of modifiers) await story.keyboard.up(key)
+  }
+  await canvas(story).press('l')
+  await expect(tool(story, '套索')).toHaveAttribute('aria-pressed', 'true')
+  // An irregular path, open at the end: it closes itself on release.
+  await lasso([[130, 170], [420, 175], [330, 330], [560, 400], [640, 600], [400, 640], [300, 470], [120, 420]])
+  await expect(pressed('keeper')).toHaveAttribute('aria-pressed', 'true')
+  await expect(pressed('harbor')).toHaveAttribute('aria-pressed', 'true')
+  await expect(pressed('captain')).toHaveAttribute('aria-pressed', 'false')
+  await expect(pressed('note')).toHaveAttribute('aria-pressed', 'false')
+  await expect(story.locator('[data-edge-id="link"]')).toHaveClass(/selected/)
+  await expect(story.locator('[data-edge-id="cross"]')).not.toHaveClass(/selected/)
+  // The trail fades out, and the select tool is back.
+  await expect(story.locator('.story-lasso')).not.toHaveAttribute('data-drawing', 'true')
+  await expect(tool(story, '选择')).toHaveAttribute('aria-pressed', 'true')
+
+  // Shift adds what the next lasso catches.
+  await canvas(story).press('l')
+  await lasso([[580, 170], [840, 190], [800, 360], [560, 340]], ['Shift'])
+  for (const id of ['keeper', 'harbor', 'captain']) await expect(pressed(id)).toHaveAttribute('aria-pressed', 'true')
+  await expect(pressed('note')).toHaveAttribute('aria-pressed', 'false')
+
+  // Drag the whole group from one of its cards; everything selected moves by the same amount.
+  const from = await toPage(story, { x: keeper.x + 100, y: keeper.y + 60 })
+  await story.keyboard.down('Control')
+  await drag(story, from, { x: from.x + 50, y: from.y + 40 })
+  await story.keyboard.up('Control')
+  await expect.poll(async () => (await boardState(story)).scene.nodes.map(({ id, x, y }) => [id, x, y])).toEqual([
+    ['keeper', keeper.x + 50, keeper.y + 40], ['captain', captain.x + 50, captain.y + 40],
+    ['harbor', harbor.x + 50, harbor.y + 40], ['note', note.x, note.y],
+  ])
+  const glued = await edgeGeometry(story, 'link')
+  const { nodes } = (await boardState(story)).scene
+  expectOnOutline(nodes[0], glued.from)
+  expectOnOutline(nodes[2], glued.to)
+})
+

@@ -37,6 +37,7 @@
 .story-canvas:is([data-tool="card"], [data-tool="arrow"], [data-tool="group"], [data-tool="text"]) { cursor: crosshair; }
 .story-canvas[data-tool="text"] { cursor: text; }
 .story-canvas[data-tool="eraser"] { cursor: cell; }
+.story-canvas[data-tool="lasso"] { cursor: crosshair; }
 .story-canvas[data-tool="hand"], .story-panning { cursor: grab; }
 .story-canvas:is([data-gesture="pan"], [data-gesture="pinch"]) { cursor: grabbing; }
 
@@ -139,7 +140,7 @@
 
 /* ——— Arrows ——— */
 .story-hit { stroke: transparent; pointer-events: stroke; cursor: pointer; }
-.story-canvas:not([data-tool="select"]):not([data-tool="eraser"]) .story-hit { pointer-events: none; }
+.story-canvas:not([data-tool="select"]):not([data-tool="lasso"]):not([data-tool="eraser"]) .story-hit { pointer-events: none; }
 .story-halo { stroke: var(--accent); opacity: 0; pointer-events: none; }
 .story-edge.selected .story-halo { opacity: .28; }
 .story-edge.story-bind-target .story-halo { opacity: .5; }
@@ -189,6 +190,10 @@
 .story-port::after { background: color-mix(in srgb, var(--accent) 22%, var(--surface-card)); }
 .story-bend-handle::after { inset: calc(50% - 6px); border-style: dashed; }
 .story-canvas-handle:hover::after { background: var(--accent); }
+.story-lasso { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.story-lasso:not([data-drawing]) { display: none; }
+.story-lasso-path { fill: color-mix(in srgb, var(--accent) 7%, transparent); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 5; stroke-linejoin: round; }
+.story-lasso.story-lasso-fade { opacity: 0; transition: opacity 300ms ease-out; }
 .story-marquee { position: absolute; z-index: 3; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .story-marquee.story-draw-preview { border: 1.5px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--surface-card) 70%, transparent); }
 .story-canvas-hint {
@@ -268,6 +273,19 @@
 .story-tool[aria-pressed="true"] { border-color: color-mix(in srgb, var(--ink) 18%, transparent); color: var(--on-yellow); background: var(--yellow); }
 .story-tool[data-locked]::after { content: ''; position: absolute; top: 4px; left: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .story-tool:disabled { color: var(--disabled-text); }
+.story-tool-alt, .story-tool-mark { display: none; }
+.story-tool-modes {
+  position: absolute;
+  z-index: 7;
+  display: grid;
+  min-width: 150px;
+  padding: 5px;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--island-radius);
+  background: var(--surface-card);
+  box-shadow: var(--island-shadow);
+}
+.story-tool-modes .story-menu-item[aria-checked="true"] { background: var(--tint); font-weight: 700; }
 .story-key { position: absolute; right: 3px; bottom: 1px; color: var(--muted); font: 600 9px/1 var(--sans, system-ui); pointer-events: none; }
 .story-tool[aria-pressed="true"] .story-key { color: var(--on-yellow); }
 .story-view-island { bottom: var(--island-gap); left: var(--island-gap); gap: 6px; }
@@ -445,6 +463,11 @@
   .story-menu-island { max-width: calc(100% - 16px); }
   .story-toolbar { top: auto; bottom: calc(var(--island-gap) + env(safe-area-inset-bottom, 0px)); gap: 0; padding: 3px; }
   .story-key { display: none; }
+  /* Select and Lasso share one button on phones; a corner mark says it has two modes. */
+  .story-tool[data-tool="lasso"] { display: none; }
+  .story-tool[data-mode="lasso"] > svg:first-of-type { display: none; }
+  .story-tool[data-mode="lasso"] > .story-tool-alt { display: block; }
+  .story-tool-mark { display: block; position: absolute; right: 4px; bottom: 4px; width: 0; height: 0; border-style: solid; border-width: 0 0 6px 6px; border-color: transparent transparent currentColor transparent; opacity: .6; pointer-events: none; }
   .story-view-island { bottom: calc(var(--island-gap) * 2 + var(--tool-size) + 8px + env(safe-area-inset-bottom, 0px)); }
   .story-toast { bottom: calc(var(--island-gap) * 3 + var(--tool-size) * 2 + 16px + env(safe-area-inset-bottom, 0px)); }
   .story-props { width: calc(100% - 16px); }

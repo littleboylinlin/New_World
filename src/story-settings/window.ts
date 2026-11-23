@@ -32,10 +32,10 @@ type Snapshot = Awaited<ReturnType<typeof readStorySettings>>
 interface HistoryEntry { before: StoryScene; after: StoryScene; trash: TrashEntry[] }
 
 const toolIcons: Record<StoryTool, IconName> = {
-  select: 'pointer', hand: 'hand', card: 'cards', arrow: 'arrowTool', text: 'format', group: 'frame', image: 'image', eraser: 'eraser',
+  select: 'pointer', lasso: 'lasso', hand: 'hand', card: 'cards', arrow: 'arrowTool', text: 'format', group: 'frame', image: 'image', eraser: 'eraser',
 }
 const toolKeys: Record<StoryTool, string[]> = {
-  select: ['V', '1'], hand: ['H'], card: ['R', '2'], arrow: ['A', '5'], text: ['T', '8'], group: ['F'], image: ['9'], eraser: ['E', '0'],
+  select: ['V', '1'], lasso: ['L'], hand: ['H'], card: ['R', '2'], arrow: ['A', '5'], text: ['T', '8'], group: ['F'], image: ['9'], eraser: ['E', '0'],
 }
 const edgeColors = [defaultStoryColor, '#e03131', '#f08c00', '#2f9e44', '#1971c2', '#9c36b5']
 const shortcuts: [string, string][] = [
@@ -229,20 +229,78 @@ function mount(route: NonNullable<typeof work>) {
     control.title = `${name} — ${toolKeys[tool].join(t('story.or'))}`
     control.dataset.tool = tool
     control.onclick = (event) => {
+      if (tool === 'select') { pickSelectMode(); return }
       if (event.detail === 2) { chooseTool(tool, true); return }
       chooseTool(tool)
     }
     toolButtons.set(tool, control)
     toolbar.append(control)
   }
+
+  // On phones Select and Lasso share one button: tap again to switch, or hold it to pick a mode.
+  const compactTools = matchMedia('(max-width: 600px)')
+  const selectButton = toolButtons.get('select')!
+  const lassoIcon = icon('lasso')
+  lassoIcon.classList.add('story-tool-alt')
+  selectButton.append(lassoIcon, element('span', 'story-tool-mark'))
+  const modes = element('div', 'story-tool-modes story-canvas-control')
+  modes.setAttribute('role', 'menu')
+  modes.setAttribute('aria-label', t('story.selectModes'))
+  modes.hidden = true
+  const modeItems = (['select', 'lasso'] as const).map((tool) => {
+    const item = button(t(`story.tool.${tool}`), 'story-menu-item', toolIcons[tool])
+    item.setAttribute('role', 'menuitemradio')
+    item.dataset.tool = tool
+    item.onclick = () => { closeModes(); chooseTool(tool) }
+    return item
+  })
+  modes.append(...modeItems)
+  let holdTimer = 0
+  let held = false
+  function pickSelectMode() {
+    if (held) { held = false; return }
+    const current = canvas.tool()
+    chooseTool(compactTools.matches && current === 'select' ? 'lasso' : 'select')
+  }
+  function openModes() {
+    held = true
+    for (const item of modeItems) item.setAttribute('aria-checked', String(item.dataset.tool === canvas.tool()))
+    modes.hidden = false
+    const box = selectButton.getBoundingClientRect(), base = stage.getBoundingClientRect()
+    modes.style.left = `${Math.max(8, box.left - base.left)}px`
+    modes.style.bottom = `${base.bottom - box.top + 8}px`
+    modeItems.find((item) => item.dataset.tool === canvas.tool())?.focus({ preventScroll: true })
+  }
+  function closeModes() { modes.hidden = true }
+  selectButton.addEventListener('pointerdown', () => {
+    held = false
+    clearTimeout(holdTimer)
+    if (compactTools.matches) holdTimer = window.setTimeout(openModes, 500)
+  })
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) selectButton.addEventListener(type, () => clearTimeout(holdTimer))
+  selectButton.addEventListener('contextmenu', (event) => event.preventDefault())
+  document.addEventListener('pointerdown', (event) => {
+    if (!modes.hidden && event.target instanceof Node && !modes.contains(event.target) && !selectButton.contains(event.target)) closeModes()
+  }, { signal })
+  compactTools.addEventListener('change', () => paintTools(canvas.tool(), canvas.locked()))
   function chooseTool(tool: StoryTool, lock = false) {
-    if (!editable() && tool !== 'select' && tool !== 'hand') return
+    if (!editable() && tool !== 'select' && tool !== 'lasso' && tool !== 'hand') return
     if (tool === 'group' && selection.size && !lock) { createGroup(); return }
     canvas.setTool(tool, lock)
   }
   function paintTools(tool: StoryTool, locked: boolean) {
+    // The shared phone button shows, and is named after, the selection mode in use.
+    const lassoMode = compactTools.matches && tool === 'lasso'
+    selectButton.toggleAttribute('data-mode', lassoMode)
+    if (lassoMode) selectButton.dataset.mode = 'lasso'
+    const shown = lassoMode ? 'lasso' : 'select'
+    selectButton.setAttribute('aria-label', t(`story.tool.${shown}`))
+    selectButton.title = compactTools.matches ? `${t(`story.tool.${shown}`)} — ${t('story.selectModesHint')}`
+      : `${t('story.tool.select')} — ${toolKeys.select.join(t('story.or'))}`
+    if (compactTools.matches) selectButton.setAttribute('aria-haspopup', 'menu')
+    else selectButton.removeAttribute('aria-haspopup')
     for (const [name, control] of toolButtons) {
-      control.setAttribute('aria-pressed', String(name === tool))
+      control.setAttribute('aria-pressed', String(name === tool || (name === 'select' && lassoMode)))
       control.toggleAttribute('data-locked', name === tool && locked)
       if (name === tool && locked) control.setAttribute('aria-description', t('story.toolLocked'))
       else control.removeAttribute('aria-description')
@@ -296,7 +354,7 @@ function mount(route: NonNullable<typeof work>) {
     if (file) void addImage(file, file.name, imagePoint).catch(report)
   }
 
-  stage.append(canvas.surface, menuIsland, menu, toolbar, viewIsland, props, left, right, message)
+  stage.append(canvas.surface, menuIsland, menu, toolbar, modes, viewIsland, props, left, right, message)
   main.append(stage, imageFile)
   main.classList.toggle('story-no-grid', !grid)
   ready = true
@@ -305,7 +363,7 @@ function mount(route: NonNullable<typeof work>) {
     const unavailable = !editable()
     undoButton.disabled = unavailable || !undo.length
     redoButton.disabled = unavailable || !redo.length
-    for (const [tool, control] of toolButtons) control.disabled = unavailable && tool !== 'select' && tool !== 'hand'
+    for (const [tool, control] of toolButtons) control.disabled = unavailable && tool !== 'select' && tool !== 'lasso' && tool !== 'hand'
   }
 
   function activeChapter(): StoryChapter | undefined {
@@ -797,12 +855,13 @@ function mount(route: NonNullable<typeof work>) {
   }, { signal })
 
   const keyTools: Record<string, StoryTool> = {
-    v: 'select', 1: 'select', h: 'hand', r: 'card', 2: 'card', a: 'arrow', 5: 'arrow', t: 'text', 8: 'text', f: 'group', 9: 'image', e: 'eraser', 0: 'eraser',
+    v: 'select', 1: 'select', l: 'lasso', h: 'hand', r: 'card', 2: 'card', a: 'arrow', 5: 'arrow', t: 'text', 8: 'text', f: 'group', 9: 'image', e: 'eraser', 0: 'eraser',
   }
   window.addEventListener('keydown', (event) => {
     if (event.isComposing || document.querySelector('dialog[open]')) return
     if (event.key === 'Escape') {
       if (!menu.hidden) { closeMenu(); menuButton.focus(); event.preventDefault(); return }
+      if (!modes.hidden) { closeModes(); selectButton.focus(); event.preventDefault(); return }
       if (canvas.dismiss()) { event.preventDefault(); return }
       if (textControl(event.target) && !right.contains(event.target as Node) && !left.contains(event.target as Node)) return
       if (panel) closePanel()

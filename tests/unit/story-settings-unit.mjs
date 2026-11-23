@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { bendThrough, bindingGap, borderPoint, freeBend, snapRect, storyEdgePaths } from '../../src/story-settings/geometry.ts'
+import { bendThrough, bindingGap, borderPoint, freeBend, lassoPick, pointInPolygon, snapRect, storyEdgePaths } from '../../src/story-settings/geometry.ts'
 import { blankStoryCard, defaultStoryColor, emptyStoryBoard, isStoryCard, isStoryScene, matchesStoryCard, repairStoryRows, repairStoryScene, storySceneProblem, storyStateAt, uniqueAliases, validStoryRows } from '../../src/story-settings/model.ts'
 
 const { isStorySettingsRoute, isTrustedSecondaryRenderer } = createRequire(import.meta.url)('../../desktop/ipc-guard.cjs')
@@ -169,4 +169,19 @@ test('a refused save names the card, the repeated chapter or the size', () => {
   assert.deepEqual(storySceneProblem(scene([node('a', '甲'), node('a', '乙')])), { kind: 'duplicate', id: 'a' })
   const loop = [relation('x', { edgeId: 'y', at: .5 }), relation('y', { edgeId: 'x', at: .5 })]
   assert.equal(storySceneProblem(scene([node('keeper', '甲')], loop)).kind, 'cycle')
+})
+
+test('a lasso picks objects by their middle and arrows only when both ends and the middle are inside', () => {
+  const box = (id, x, y) => ({ id, x, y, width: 100, height: 60 })
+  const nodes = [box('in', 0, 0), box('edge', 80, 0), box('out', 400, 0)]
+  const paths = new Map([
+    ['inside', { from: { x: 10, y: 10 }, to: { x: 90, y: 50 }, mid: { x: 50, y: 30 } }],
+    ['half', { from: { x: 10, y: 10 }, to: { x: 450, y: 30 }, mid: { x: 230, y: 20 } }],
+  ])
+  // A concave loop: the notch leaves out the middle of `edge` (at 130, 30).
+  const loop = [{ x: -20, y: -20 }, { x: 200, y: -20 }, { x: 115, y: 30 }, { x: 200, y: 80 }, { x: -20, y: 80 }]
+  assert.deepEqual(lassoPick(loop, nodes, paths), ['in', 'inside'])
+  assert.deepEqual(lassoPick(loop.slice(0, 2), nodes, paths), [])
+  assert.equal(pointInPolygon({ x: 0, y: 0 }, loop), true)
+  assert.equal(pointInPolygon({ x: 150, y: 30 }, loop), false)
 })
