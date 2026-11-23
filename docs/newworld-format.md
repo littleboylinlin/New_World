@@ -256,14 +256,14 @@ Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再
 | 元素 | 字段及语义 |
 | --- | --- |
 | 节点共有 | `id, kind, x, y, width, height` |
-| `kind: "card"` | `name, aliases, tagIds, fields, body, chapters, states`。名称必填。别名按 Unicode NFKC 和大小写去重。字段为有序的 `{ key, value }` 纯文本数组 |
+| `kind: "card"` | `name, aliases, tagIds, fields, body, wholeBook, chapters, states`。名称必填。别名按 Unicode NFKC 和大小写去重。字段为有序的 `{ key, value }` 纯文本数组。`wholeBook` 为 `true` 时卡片对全书有效、在任何章节都算关联，此时 `chapters` 必须为空；为 `false` 时 `chapters` 列出关联的一个或多个章节，空数组表示不关联章节 |
 | `kind: "text"` | `text` |
 | `kind: "group"` | `name`。拖动分组框时，其内部完整落在框内的元素随框一起移动 |
 | `kind: "image"` | `name, src`。`src` 为本地嵌入的 PNG、JPEG、GIF 或 WebP 数据，单张最多 4 MiB |
 | 标签 | `id, name, color`，颜色为六位十六进制色值 |
 | 连线（箭头） | `id, from, to, name, direction, stroke, color, bend`。端点有三种：绑定到卡片、文字或图片的 `{ nodeId }`，画在该对象朝向另一端的边缘上，对象移动或改变大小时跟随；绑定到另一条线的 `{ edgeId, at }`，`at` 为从那条线起点算起的曲线参数（0 到 1）；悬空的 `{ x, y }`，为画布坐标。分组框不能作为端点，两端不能绑定到同一个对象，线与线之间不能循环依赖。`bend` 是曲线中点偏离两端连线的距离（画布单位，正值在起点到终点方向的左手边），为 0 时是直线。方向可为 `forward`、`back`、`both` 或 `none`。线型可为 `solid`、`dash` 或 `dot` |
 
-章节链接为 `{ editionId, chapterId }`，章节状态在此基础上含有 `text`。状态按照同一编辑版本的目录顺序，从锚点所在章节生效。章名变化与章节重排使用同一章节 ID。
+章节链接为 `{ editionId, chapterId }`，同一张卡不重复。章节状态在此基础上含有 `text`。状态按照同一编辑版本的目录顺序，从锚点所在章节生效。章名变化与章节重排使用同一章节 ID。
 
 卡片删除时，`kind: "storyCard"` 的回收记录携带 `storyCard`，含原始位置和内容。连线留在画布中，端点恢复后可再次显示。永久删除造成的缺失端点 ID 纳入 `detached.canvas`；尚在回收站的端点保持对应的卡片 ID。备份中的整部作品回收记录可以携带完整 `storyBoard`。
 
