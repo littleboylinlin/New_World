@@ -722,7 +722,8 @@ export function storyCanvas(options: CanvasOptions) {
     scrolled.x += speed.x * step
     scrolled.y += speed.y * step
     dragTo(lastPointer)
-    scrollFrame = requestAnimationFrame(autoScroll)
+    // dragTo may already have queued the next frame; never run two scroll loops at once.
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(autoScroll)
   }
 
   function stopScroll() {

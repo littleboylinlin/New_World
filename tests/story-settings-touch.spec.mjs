@@ -265,14 +265,23 @@ test('手机箭头：从卡片拖到另一张卡时高亮并建立关系，拖�
   const other = (await edgeGeometry(story, second.id)).mid
   expect(Math.hypot(gap.x - other.x, gap.y - other.y)).toBeGreaterThan(30)
 
-  // Holding an arrow at the screen's edge scrolls the board.
+  // Holding an arrow at the screen's edge scrolls the board smoothly, however long it is held.
   await tool(story, '箭头').tap()
+  await expect(tool(story, '箭头')).toHaveAttribute('aria-pressed', 'true')
+  await story.evaluate(() => {
+    let last = performance.now()
+    window.storyFrames = []
+    const tick = (now) => { window.storyFrames.push(now - last); last = now; if (window.storyFrames.length < 600) requestAnimationFrame(tick) }
+    requestAnimationFrame(tick)
+  })
   const before = await liveView(story)
   await finger.start(await middle(story, b))
   await finger.move({ x: area.x + area.width - 4, y: area.y + area.height * .4 })
   await expect.poll(async () => (await liveView(story)).x).toBeLessThan(before.x - 20)
+  await story.waitForTimeout(1500)
   await finger.end()
   await links(story).toHaveLength(3)
+  expect(await story.evaluate(() => Math.max(...window.storyFrames))).toBeLessThan(250)
 })
 
 test('手机缩放到 50% 时线宽、箭头、关系名够大，线的可点区域更宽 @webkit', async ({ page }) => {
