@@ -92,6 +92,8 @@ export function createPopover(options: PopoverOptions) {
     lifetime = new AbortController()
     const { signal } = lifetime
     document.body.append(layer)
+    layer.inert = false
+    layer.removeAttribute('aria-hidden')
     layer.dataset.state = 'closed'
     place()
     void layer.offsetWidth
@@ -133,6 +135,9 @@ export function createPopover(options: PopoverOptions) {
     const back = anchorNode.isConnected && !anchorNode.hidden ? anchorNode : options.anchor
     if (returnFocus || layer.contains(document.activeElement)) back.focus({ preventScroll: true })
     layer.dataset.state = 'closing'
+    // A menu that is still fading out must not take clicks or be read as a second open menu.
+    layer.inert = true
+    layer.setAttribute('aria-hidden', 'true')
     finish = afterTransition(layer, 'instant', () => {
       finish = undefined
       if (!isOpen) { layer.remove(); layer.dataset.state = 'closed' }

@@ -38,6 +38,7 @@ export function leave(element: HTMLElement) {
   }
   element.classList.add('leaving')
   element.setAttribute('aria-hidden', 'true')
+  element.inert = true
   const done = () => element.remove()
   element.addEventListener('animationend', done, { once: true })
   window.setTimeout(done, motionMs('fast') + 60)
