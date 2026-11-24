@@ -364,6 +364,8 @@ test.describe('章节目录', () => {
     // The ways to open a chapter beside the text come first (第二期 split panes).
     await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText(['在右侧打开', '在下方打开', /^重命名章节/, '删除章节'])
     await page.keyboard.press('Escape')
+    // A menu that is still fading out is hidden from roles and takes no clicks.
+    await expect(page.getByRole('menu')).toHaveCount(0)
     await chapterItem(page, '甲').hover()
     await expect(chapterItem(page, '甲').locator('.chapter-more')).toBeVisible()
     await chapterItem(page, '甲').locator('.chapter-more').click()
