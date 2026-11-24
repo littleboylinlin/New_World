@@ -63,14 +63,14 @@ export function startOpenDrag(options: { label: string; payload: DragPayload; x:
     Object.assign(preview.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` })
     const duration = motionMs('base')
     if (!duration) return
-    // The fill grows out of the pointer until it covers the whole area.
+    // The fill settles into the area from the pointer, using only transform and opacity.
     const cx = Math.max(0, Math.min(rect.width, x - rect.left))
     const cy = Math.max(0, Math.min(rect.height, y - rect.top))
-    const radius = Math.hypot(Math.max(cx, rect.width - cx), Math.max(cy, rect.height - cy))
+    preview.style.transformOrigin = `${cx}px ${cy}px`
     spread = preview.animate([
-      { clipPath: `circle(0px at ${cx}px ${cy}px)`, opacity: .4 },
-      { clipPath: `circle(${Math.ceil(radius)}px at ${cx}px ${cy}px)`, opacity: 1 },
-    ], { duration: motionMs('slow'), easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-standard').trim() || 'ease-out' })
+      { transform: 'scale(.97)', opacity: 0 },
+      { transform: 'none', opacity: 1 },
+    ], { duration, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-enter').trim() || 'ease-out' })
   }
 
   function update() {
@@ -88,13 +88,13 @@ export function startOpenDrag(options: { label: string; payload: DragPayload; x:
       host.drop(options.payload, target.key)
       ghost.remove()
       preview.dataset.state = 'leaving'
-      const duration = motionMs('base')
+      const duration = motionMs('fast')
       if (duration) window.setTimeout(() => preview.remove(), duration)
       else preview.remove()
     } else {
       preview.remove()
-      // Nowhere to go: the name scatters and fades where it was let go.
-      const duration = motionMs('base')
+      // Nowhere to go: the name fades where it was let go.
+      const duration = motionMs('fast')
       if (!duration) ghost.remove()
       else {
         ghost.dataset.state = 'scatter'

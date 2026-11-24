@@ -1,83 +1,88 @@
 :root {
-  --ease-out: cubic-bezier(.2, .75, .25, 1);
-  --ease-pop: cubic-bezier(.3, 1.45, .5, 1);
-  /* Shared timing for every open, close, slide and switch. Components read these instead of literals. */
-  --motion-fast: 120ms;
-  --motion-base: 180ms;
+  /*
+   * Four durations, shared by every open, close, slide and switch. Components read these instead of literals.
+   * instant: hover, press, colour   fast: menus, tips, dropdowns
+   * base: dialogs, panels, notices  slow: page, chapter and large layout changes
+   * Leaving takes the step below the one used for arriving, about two thirds as long.
+   */
+  --motion-instant: 100ms;
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
   --motion-slow: 260ms;
-  --ease-standard: cubic-bezier(.2, .75, .25, 1);
+  /* Gap between list items rising one after another. */
+  --motion-stagger: 20ms;
+  /* Three curves: arriving, leaving, and a small overshoot kept for the undo toast and value pops. */
+  --ease-enter: cubic-bezier(.2, .8, .2, 1);
   --ease-exit: cubic-bezier(.4, 0, 1, 1);
   --ease-spring: cubic-bezier(.3, 1.3, .5, 1);
   --motion-shift: 6px;
-  --motion-scale: .96;
+  --motion-scale: .97;
 }
 
 /* With reduced motion every shared duration is zero, so things switch at once. */
 @media (prefers-reduced-motion: reduce) {
-  :root { --motion-fast: 0ms; --motion-base: 0ms; --motion-slow: 0ms; --motion-shift: 0px; --motion-scale: 1; }
+  :root { --motion-instant: 0ms; --motion-fast: 0ms; --motion-base: 0ms; --motion-slow: 0ms; --motion-stagger: 0ms; --motion-shift: 0px; --motion-scale: 1; }
 }
 
-@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+@keyframes rise { from { opacity: 0; transform: translateY(var(--motion-shift)); } }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
-@keyframes enter-forward { from { opacity: 0; transform: translateX(26px); } }
-@keyframes enter-back { from { opacity: 0; transform: translateX(-26px); } }
-@keyframes drop-in { from { opacity: 0; transform: translateY(-10px); } }
-@keyframes tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 6px)); } }
-@keyframes menu-in { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
-@keyframes menu-in-up { from { opacity: 0; transform: translateY(6px) scale(.97); } }
-@keyframes dialog-in { from { opacity: 0; transform: translateY(18px) scale(.96); } }
-@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 22px); } }
-@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 16px); } }
-@keyframes pop { 40% { transform: scale(1.28); } }
-@keyframes chapter-next { from { opacity: 0; transform: translateY(16px); } }
-@keyframes chapter-previous { from { opacity: 0; transform: translateY(-16px); } }
-@keyframes press { 50% { transform: scale(.9); } }
-@keyframes settings-panel-in { from { opacity: 0; transform: translateY(6px); } }
+@keyframes enter-forward { from { opacity: 0; transform: translateX(12px); } }
+@keyframes enter-back { from { opacity: 0; transform: translateX(-12px); } }
+@keyframes tip-in { from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)); } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px) scale(.97); } }
+@keyframes menu-in-up { from { opacity: 0; transform: translateY(4px) scale(.97); } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(4px) scale(.97); } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, var(--motion-shift)); } }
+@keyframes toast-out { to { opacity: 0; transform: translate(-50%, 4px); } }
+@keyframes pop { 40% { transform: scale(1.18); } }
+@keyframes chapter-next { from { opacity: 0; transform: translateY(8px); } }
+@keyframes chapter-previous { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes press { 50% { transform: scale(.94); } }
 
 @media (prefers-reduced-motion: no-preference) {
   /* Page changes. The new page arrives from the side it was opened from. */
-  .main-content[data-enter] > * { animation: 300ms var(--ease-out) backwards rise; }
+  .main-content[data-enter] > * { animation: var(--motion-slow) var(--ease-enter) backwards rise; }
   .main-content[data-enter="forward"] > * { animation-name: enter-forward; }
   .main-content[data-enter="back"] > * { animation-name: enter-back; }
   .main-content[data-enter].home-main > .home { animation: none; }
 
-  .stagger > * { animation: 380ms var(--ease-out) backwards rise; animation-delay: calc(var(--order, 0) * 28ms + 40ms); }
+  /* The first six items rise 20ms apart; the rest are simply there, so the whole list settles within 250ms. */
+  .stagger > * { animation: var(--motion-fast) var(--ease-enter) backwards rise; animation-delay: calc(var(--order, 0) * var(--motion-stagger)); }
+  .stagger > :nth-child(n + 7) { animation: none; }
 
-  .notice, .import-notice:not([hidden]), .field-error:not([hidden]) { animation: 240ms var(--ease-out) backwards drop-in; }
-  .update-banner:not([hidden]) { animation: 360ms var(--ease-out) backwards drop-in; }
-  .corner-tip { animation: 260ms var(--ease-out) backwards rise; }
-  .reader-panel, .continuation-list { animation: 360ms var(--ease-out) backwards rise; }
-  .continuation-list + .continuation-list { animation-delay: 70ms; }
-  .arrive { animation: 380ms var(--ease-out) backwards rise; }
-  .home-main:not([data-enter]) .writing-stats { animation: 420ms var(--ease-out) 120ms backwards rise; }
-  .heat-cell:not(.future) { transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), border-color 140ms ease; }
-  .heat-tooltip:not([hidden]) { animation: 160ms var(--ease-out) backwards tip-in; }
+  .notice, .import-notice:not([hidden]), .field-error:not([hidden]), .update-banner:not([hidden]) { animation: var(--motion-base) var(--ease-enter) backwards rise; }
+  .corner-tip { animation: var(--motion-fast) var(--ease-enter) backwards rise; }
+  .reader-panel, .continuation-list { animation: var(--motion-base) var(--ease-enter) backwards rise; }
+  .continuation-list + .continuation-list { animation-delay: var(--motion-stagger); }
+  .arrive { animation: var(--motion-base) var(--ease-enter) backwards rise; }
+  .home-main:not([data-enter]) .writing-stats { animation: var(--motion-slow) var(--ease-enter) backwards rise; }
+  .heat-cell:not(.future) { transition: transform var(--motion-instant) var(--ease-enter), box-shadow var(--motion-instant) var(--ease-enter), border-color var(--motion-instant) var(--ease-enter); }
+  .heat-tooltip:not([hidden]) { animation: var(--motion-fast) var(--ease-enter) backwards tip-in; }
 
-  .manage-dialog[open] { animation: 260ms var(--ease-pop) backwards dialog-in; }
-  .manage-dialog[open]::backdrop { animation: 220ms ease-out backwards fade-in; }
-  .popup-menu { animation: 150ms var(--ease-out) backwards menu-in; }
+  .manage-dialog[open] { animation: var(--motion-base) var(--ease-enter) backwards dialog-in; }
+  .manage-dialog[open]::backdrop { animation: var(--motion-base) var(--ease-enter) backwards fade-in; }
+  .popup-menu { animation: var(--motion-fast) var(--ease-enter) backwards menu-in; }
   .popup-menu[data-side="top"] { animation-name: menu-in-up; }
-  .undo-toast { animation: 320ms var(--ease-pop) backwards toast-in; }
-  .undo-toast.leaving { animation: 200ms ease-in both toast-out; }
-  .pop { animation: 360ms var(--ease-pop) pop; }
+  .undo-toast { animation: var(--motion-base) var(--ease-spring) backwards toast-in; }
+  .undo-toast.leaving { animation: var(--motion-fast) var(--ease-exit) both toast-out; }
+  .pop { animation: var(--motion-base) var(--ease-spring) pop; }
 
-  .novel-body { animation: 300ms var(--ease-out) backwards fade-in; }
+  .novel-body { animation: var(--motion-slow) var(--ease-enter) backwards fade-in; }
   .novel-body[data-turn="next"] { animation-name: chapter-next; }
   .novel-body[data-turn="previous"] { animation-name: chapter-previous; }
-  .chapter-jump[aria-current] { animation: 260ms var(--ease-pop) backwards fade-in; }
-  .format-button:active:not(:disabled) { animation: 180ms ease-out press; }
-  .chapter-navigation, .conversion-info { interpolate-size: allow-keywords; }
-  .chapter-navigation::details-content, .conversion-info::details-content { block-size: 0; overflow: clip; transition: block-size 260ms var(--ease-out), content-visibility 260ms allow-discrete; }
-  .chapter-navigation[open]::details-content, .conversion-info[open]::details-content { block-size: auto; }
-  .ideas-card[open] > .ideas-panel { animation: 200ms var(--ease-out) backwards fade-in; }
+  .chapter-jump[aria-current] { animation: var(--motion-fast) var(--ease-enter) backwards fade-in; }
+  .format-button:active:not(:disabled) { animation: var(--motion-instant) var(--ease-enter) press; }
+  /* Folding blocks open at once; only what is inside fades up, so nothing animates its height. */
+  :is(.chapter-navigation, .conversion-info)[open] > :not(summary) { animation: var(--motion-base) var(--ease-enter) backwards rise; }
+  .ideas-card[open] > .ideas-panel { animation: var(--motion-base) var(--ease-enter) backwards fade-in; }
 
-  .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump, .settings-nav-item, .settings-entry { transition: transform 160ms var(--ease-out), background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
-  .settings-panel-enter { animation: 170ms var(--ease-out) backwards settings-panel-in; }
-  .shelf-card:hover .card-enter svg { transform: translateX(5px); }
-  .version-tab:hover:not([aria-current]) { transform: translateY(-2px); }
-  .book-row:hover { transform: translateX(3px); }
-  .export-chapter input, .export-format { transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), background-color 140ms ease; }
+  .card-enter svg, .breadcrumbs a, .version-tab, .book-row, .chapter-jump, .outline-jump, .settings-nav-item, .settings-entry { transition: transform var(--motion-instant) var(--ease-enter), background-color var(--motion-instant) var(--ease-enter), color var(--motion-instant) var(--ease-enter), border-color var(--motion-instant) var(--ease-enter), box-shadow var(--motion-instant) var(--ease-enter); }
+  .settings-panel-enter { animation: var(--motion-base) var(--ease-enter) backwards rise; }
+  .shelf-card:hover .card-enter svg { transform: translateX(3px); }
+  .version-tab:hover:not([aria-current]) { transform: translateY(-1px); }
+  .book-row:hover { transform: translateX(2px); }
+  .export-chapter input, .export-format { transition: transform var(--motion-instant) var(--ease-enter), box-shadow var(--motion-instant) var(--ease-enter), background-color var(--motion-instant) var(--ease-enter); }
 }
 
 @media (prefers-reduced-motion: reduce) {

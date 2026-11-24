@@ -212,7 +212,7 @@ export function selectionToolbar({ targets, strip, actions, signal }: SelectionT
     if (place === 'strip') setExpanded(strip, false)
     if (place === 'floating' && !floating.hidden) {
       floating.dataset.state = 'closing'
-      settle = afterTransition(floating, 'fast', () => {
+      settle = afterTransition(floating, 'instant', () => {
         settle = undefined
         if (floating.dataset.state === 'closing') { floating.hidden = true; floating.dataset.state = 'closed' }
       })

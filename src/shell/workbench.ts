@@ -68,7 +68,7 @@ export function createWorkbench(options: { start?: SidePanelOptions; end?: SideP
       } else {
         aside.dataset.state = 'closed'
         aside.inert = true
-        settle = afterTransition(aside, 'slow', () => { settle = undefined; if (!open) aside.hidden = true })
+        settle = afterTransition(aside, 'base', () => { settle = undefined; if (!open) aside.hidden = true })
         if (!animate) settle()
       }
       paintScrim()
@@ -168,7 +168,7 @@ export function createWorkbench(options: { start?: SidePanelOptions; end?: SideP
       scrim.dataset.state = 'open'
     } else if (scrim.dataset.state !== 'closed') {
       scrim.dataset.state = 'closed'
-      afterTransition(scrim, 'slow', () => { if (scrim.dataset.state === 'closed') scrim.hidden = true })
+      afterTransition(scrim, 'base', () => { if (scrim.dataset.state === 'closed') scrim.hidden = true })
     }
   }
 
@@ -226,8 +226,8 @@ export function createTabs(label: string, onSelect: (id: string) => void) {
     const current = tabs.get(selected)?.button
     if (!current || !current.offsetWidth) { indicator.style.opacity = '0'; return }
     indicator.style.opacity = '1'
-    indicator.style.width = `${current.offsetWidth}px`
-    indicator.style.transform = `translateX(${current.offsetLeft}px)`
+    // A 1px bar stretched to the tab, so moving between tabs only ever animates transform.
+    indicator.style.transform = `translateX(${current.offsetLeft}px) scaleX(${current.offsetWidth})`
   }
   new ResizeObserver(paintIndicator).observe(list)
 

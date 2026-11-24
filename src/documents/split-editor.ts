@@ -114,7 +114,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     } else {
       drawer.dataset.state = scrim.dataset.state = 'closed'
       drawer.inert = true
-      settle = afterTransition(drawer, 'slow', () => { settle = undefined; if (!drawerOpen()) drawer.hidden = scrim.hidden = true })
+      settle = afterTransition(drawer, 'base', () => { settle = undefined; if (!drawerOpen()) drawer.hidden = scrim.hidden = true })
       setFocused(mainPane)
     }
   }
@@ -264,7 +264,7 @@ export function mountSplitEditor(options: SplitEditorOptions) {
     } else {
       split.remove(id)
       const leave = () => { split.detach(id); pane.destroy() }
-      const duration = motionMs('slow')
+      const duration = motionMs('base')
       if (duration) window.setTimeout(leave, duration + 40)
       else leave()
     }

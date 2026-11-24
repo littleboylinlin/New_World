@@ -133,7 +133,7 @@ export function createPopover(options: PopoverOptions) {
     const back = anchorNode.isConnected && !anchorNode.hidden ? anchorNode : options.anchor
     if (returnFocus || layer.contains(document.activeElement)) back.focus({ preventScroll: true })
     layer.dataset.state = 'closing'
-    finish = afterTransition(layer, 'fast', () => {
+    finish = afterTransition(layer, 'instant', () => {
       finish = undefined
       if (!isOpen) { layer.remove(); layer.dataset.state = 'closed' }
     })

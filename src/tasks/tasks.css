@@ -39,7 +39,7 @@
   font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
-  transition: background-color var(--motion-fast) ease, color var(--motion-fast) ease;
+  transition: background-color var(--motion-instant) var(--ease-enter), color var(--motion-instant) var(--ease-enter);
 }
 .task-nav-item:hover {
   background: var(--menu-hover);
@@ -160,7 +160,7 @@
   border-radius: 11px;
   background: var(--surface-card);
   box-shadow: var(--surface-shadow);
-  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+  transition: border-color var(--motion-instant) var(--ease-enter), background-color var(--motion-instant) var(--ease-enter);
 }
 .task-row:not(.is-expanded):hover {
   border-color: var(--surface-line-strong);
@@ -183,7 +183,7 @@
   line-height: 1;
   cursor: grab;
   opacity: 0;
-  transition: opacity var(--motion-fast) ease;
+  transition: opacity var(--motion-instant) var(--ease-enter);
   user-select: none;
 }
 .task-row:is(:hover, :focus-within) .task-drag-handle {
@@ -211,7 +211,7 @@
   border-radius: 50%;
   color: transparent;
   background: transparent;
-  transition: color var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, transform var(--motion-fast) var(--ease-spring);
+  transition: color var(--motion-instant) var(--ease-enter), background-color var(--motion-instant) var(--ease-enter), border-color var(--motion-instant) var(--ease-enter), transform var(--motion-instant) var(--ease-enter);
 }
 .task-check svg {
   width: 13px;
@@ -309,7 +309,7 @@
   border-radius: 8px;
   color: var(--muted);
   background: transparent;
-  transition: opacity var(--motion-fast) ease, color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+  transition: opacity var(--motion-instant) var(--ease-enter), color var(--motion-instant) var(--ease-enter), background-color var(--motion-instant) var(--ease-enter);
 }
 .task-more-btn svg,
 .task-icon-btn svg {
@@ -424,7 +424,7 @@
   background: var(--surface-well);
   font-size: 0.8rem;
   font-weight: 700;
-  transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease;
+  transition: background-color var(--motion-instant) var(--ease-enter), border-color var(--motion-instant) var(--ease-enter), color var(--motion-instant) var(--ease-enter);
 }
 .task-pill-btn:hover {
   background: var(--menu-hover);
