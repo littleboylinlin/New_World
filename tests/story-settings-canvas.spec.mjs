@@ -256,8 +256,11 @@ test('框选、Shift 加选、对齐参考线、方向键微移、复制粘贴�
   await expect(storyCard(story, '守灯人')).toHaveCount(2)
   await story.keyboard.press('Control+d')
   await expect(storyCard(story, '守灯人')).toHaveCount(3)
-  const copies = (await boardState(story)).scene.nodes.filter((node) => node.name === '守灯人')
-  expect(new Set(copies.map(({ id }) => id)).size).toBe(3)
+  // The cards are drawn before the save lands, so wait for the stored board to hold all three.
+  await expect.poll(async () => {
+    const copies = (await boardState(story)).scene.nodes.filter((node) => node.name === '守灯人')
+    return new Set(copies.map(({ id }) => id)).size
+  }).toBe(3)
   await story.keyboard.press('Control+z')
   await expect(storyCard(story, '守灯人')).toHaveCount(2)
   await story.keyboard.press('Control+z')
