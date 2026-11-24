@@ -21,7 +21,7 @@ async function settle(page) {
 }
 
 for (const platform of ['win32', 'darwin']) {
-  test(`桌面版（${platform}）顶栏只留图标，名字在侧栏收起按钮左边，收起时平滑隐藏 @webkit`, async ({ page }) => {
+  test(`桌面版（${platform}）顶栏只留图标，名字在侧栏收起按钮左边，收起时直接隐藏、展开时淡入 @webkit`, async ({ page }) => {
     await page.addInitScript(desktop, platform)
     await page.route('https://api.github.com/**', (route) => route.fulfill({ json: [] }))
     await page.emulateMedia({ reducedMotion: 'no-preference' })
@@ -74,13 +74,13 @@ for (const platform of ['win32', 'darwin']) {
     expect(toggle.width).toBeCloseTo(32, 0)
     expect(toggle.right).toBeCloseTo(sidebar.right - 3 - 12, 0)
 
-    // Collapsing narrows the name to nothing over the rail's 180ms transition, then hides it.
+    // Collapsing changes the rail at once: nothing animates its width or the name's.
     const transitions = await page.evaluate(() => {
       const node = document.querySelector('.sidebar-top .brand-name')
       document.querySelector('#sidebar-toggle').click()
       return node.getAnimations().map((animation) => ({ property: animation.transitionProperty, duration: animation.effect.getTiming().duration }))
     })
-    expect(transitions).toEqual(expect.arrayContaining([{ property: 'max-width', duration: 180 }, { property: 'opacity', duration: 140 }]))
+    expect(transitions).toEqual([])
     await settle(page)
     const collapsed = await rect(page, '#app-sidebar')
     const hidden = await rect(page, '.sidebar-top .brand-name')
@@ -91,7 +91,13 @@ for (const platform of ['win32', 'darwin']) {
     expect(Math.abs((centred.left + centred.right) / 2 - (collapsed.left + collapsed.right - 3) / 2)).toBeLessThan(1)
     await expect(page.locator('.sidebar-top .brand-name')).toBeHidden()
 
-    await page.locator('#sidebar-toggle').click()
+    // Expanding again only fades the name back in, over the shared 200ms step.
+    const expanding = await page.evaluate(() => {
+      const node = document.querySelector('.sidebar-top .brand-name')
+      document.querySelector('#sidebar-toggle').click()
+      return node.getAnimations().map((animation) => ({ property: animation.transitionProperty, duration: animation.effect.getTiming().duration }))
+    })
+    expect(expanding).toEqual([{ property: 'opacity', duration: 200 }])
     await settle(page)
     const back = await rect(page, '.sidebar-top .brand-name')
     expect(back.width).toBeCloseTo(name.width, 0)

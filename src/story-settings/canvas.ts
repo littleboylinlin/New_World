@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { motionMs } from '../motion'
 import { button, element } from '../ui'
 import { canvasToast, cardDetails, inlineEditor } from './canvas-overlays'
 import type { InlineEditor } from './canvas-overlays'
@@ -85,6 +86,8 @@ export function storyCanvas(options: CanvasOptions) {
   const lassoLine = svg('path', { class: 'story-lasso-path' })
   lasso.append(lassoLine)
   let lassoTimer = 0
+  // The selection the frame was last drawn for, so only a frame that has just appeared fades in.
+  let framedFor = ''
   const hint = element('p', 'story-canvas-hint')
   marquee.hidden = true
   world.append(groups, edgesLayer, nodesLayer)
@@ -311,6 +314,7 @@ export function storyCanvas(options: CanvasOptions) {
     const items: HTMLElement[] = []
     const active = drag && moved && drag.kind !== 'pan' && drag.kind !== 'pinch'
     const box = selectionRect()
+    let framed = ''
     if (box && tool !== 'eraser' && !(drag?.kind === 'arrow')) {
       const ids = [...selection]
       const single = ids.length === 1 ? ids[0] : undefined
@@ -318,6 +322,9 @@ export function storyCanvas(options: CanvasOptions) {
       const edge = single && !node ? edgeById(single) : undefined
       if (!edge || ids.length > 1) {
         const frame = element('div', 'story-selection-frame')
+        framed = ids.slice().sort().join(' ')
+        // Repaints while dragging, zooming or panning never replay the fade.
+        if (framed !== framedFor && !drag) frame.classList.add('story-selection-appear')
         const pad = 5
         Object.assign(frame.style, { left: `${box.x - pad}px`, top: `${box.y - pad}px`, width: `${box.width + pad * 2}px`, height: `${box.height + pad * 2}px` })
         items.push(frame)
@@ -350,6 +357,7 @@ export function storyCanvas(options: CanvasOptions) {
       }
     }
     controls.replaceChildren(...items)
+    framedFor = framed
     if (!active) options.layout()
   }
 
@@ -519,7 +527,7 @@ export function storyCanvas(options: CanvasOptions) {
     }
     lassoLine.setAttribute('d', `${lassoLine.getAttribute('d')} Z`)
     lasso.classList.add('story-lasso-fade')
-    lassoTimer = window.setTimeout(() => clearLasso(false), 320)
+    lassoTimer = window.setTimeout(() => clearLasso(false), motionMs('instant') + 20)
   }
 
   // ——— Gestures ———

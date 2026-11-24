@@ -161,14 +161,14 @@
   font-weight: 750;
 }
 .story-guides line { stroke: var(--accent); stroke-dasharray: 4 3; }
-@media (prefers-reduced-motion: no-preference) {
-  .story-edge-new .story-line { animation: story-link-appear 480ms ease-out; }
-  @keyframes story-link-appear { from { opacity: .3; } to { opacity: 1; } }
-}
 
 /* ——— Selection, handles and the marquee, drawn in screen pixels ——— */
 .story-controls { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 .story-selection-frame { position: absolute; border: 1.5px solid var(--accent); border-radius: 4px; pointer-events: none; }
+/* Dragging, zooming and panning repaint without any transition; only a frame that has just appeared fades in. */
+@media (prefers-reduced-motion: no-preference) {
+  .story-selection-frame.story-selection-appear { animation: var(--motion-instant) var(--ease-enter) backwards fade-in; }
+}
 .story-canvas-handle {
   /* The element is the hit area; the visible handle is drawn small in its middle. */
   position: absolute;
@@ -201,7 +201,7 @@
 .story-lasso { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .story-lasso:not([data-drawing]) { display: none; }
 .story-lasso-path { fill: color-mix(in srgb, var(--accent) 7%, transparent); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 5; stroke-linejoin: round; }
-.story-lasso.story-lasso-fade { opacity: 0; transition: opacity 300ms ease-out; }
+.story-lasso.story-lasso-fade { opacity: 0; transition: opacity var(--motion-instant) var(--ease-exit); }
 .story-marquee { position: absolute; z-index: 3; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .story-marquee.story-draw-preview { border: 1.5px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--surface-card) 70%, transparent); }
 .story-canvas-hint {

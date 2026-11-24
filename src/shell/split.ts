@@ -1,5 +1,5 @@
 import { t } from '../i18n'
-import { afterTransition, motionMs } from '../motion'
+import { motionMs } from '../motion'
 import { element } from '../ui'
 import { computeLayout, fits, insertPane, isBranch, moveDivider, paneIds, removePane, sideAt, zoneRect } from './split-tree'
 import type { Rect, SplitTree, Zone } from './split-tree'
@@ -35,7 +35,7 @@ export function createSplitView(options: SplitViewOptions) {
   const panes = new Map<string, HTMLElement>()
   let tree: SplitTree | undefined
   let focused = ''
-  let settle: (() => void) | undefined
+  const sliding = new WeakMap<HTMLElement, Animation>()
   let roomy = true
   let dragging = false
 
@@ -46,23 +46,28 @@ export function createSplitView(options: SplitViewOptions) {
     const { width, height } = size()
     if (!width || !height) return
     const layout = computeLayout(tree, width, height)
-    settle?.()
-    if (animate && motionMs('slow')) {
-      root.dataset.animating = ''
-      settle = afterTransition(root, 'slow', () => { settle = undefined; delete root.dataset.animating })
-    }
+    // Panes take their new size at once; panes that moved slide over from where they were, by transform only.
+    const glide = animate ? motionMs('base') : 0
+    const easing = glide ? getComputedStyle(document.documentElement).getPropertyValue('--ease-enter').trim() || 'ease-out' : ''
+    const origin = glide ? root.getBoundingClientRect() : undefined
     for (const [id, node] of panes) {
       const rect = layout.panes.get(id)
+      // Where the pane is on screen right now, mid-slide included, so an interrupted slide carries on from there.
+      const was = origin && node.style.width && !node.hidden ? node.getBoundingClientRect() : undefined
       node.hidden = !rect
       if (!rect) continue
-      // A pane shown for the first time starts at its place; only the panes already there glide.
-      const fresh = !node.style.width
-      if (fresh) node.style.transition = 'none'
+      const dx = was && origin ? was.left - origin.left - rect.left : 0
+      const dy = was && origin ? was.top - origin.top - rect.top : 0
       node.style.left = `${rect.left}px`
       node.style.top = `${rect.top}px`
       node.style.width = `${rect.width}px`
       node.style.height = `${rect.height}px`
-      if (fresh) { void node.offsetWidth; node.style.removeProperty('transition') }
+      // A newer layout replaces a slide still running instead of queueing behind it.
+      sliding.get(node)?.cancel()
+      sliding.delete(node)
+      if (glide && (Math.abs(dx) > .5 || Math.abs(dy) > .5)) {
+        sliding.set(node, node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: glide, easing }))
+      }
     }
     root.toggleAttribute('data-multi', layout.panes.size > 1)
     if (!dragging) paintDividers(layout.dividers)
@@ -154,7 +159,7 @@ export function createSplitView(options: SplitViewOptions) {
 
   const observer = new ResizeObserver(() => paint(false))
   observer.observe(root)
-  options.signal.addEventListener('abort', () => { observer.disconnect(); settle?.() }, { once: true })
+  options.signal.addEventListener('abort', () => { observer.disconnect() }, { once: true })
 
   function toClient(rect: Rect): Rect {
     const box = root.getBoundingClientRect()

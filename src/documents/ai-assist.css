@@ -10,7 +10,7 @@
 .ai-sg-ins { padding: 0 1px; border-radius: 3px; color: inherit; background: var(--ai-ins); text-decoration: underline; text-decoration-color: var(--ai-ins-line); text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .ai-sg-block { display: block; margin: 4px 0; padding: 4px 8px; white-space: pre-wrap; }
 .ai-sg-actions { display: inline-flex; gap: 2px; margin-inline: 3px; vertical-align: 2px; user-select: none; text-indent: 0; }
-.ai-sg-actions button { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1.5px solid var(--ink); border-radius: 6px; color: var(--ink); background: var(--sheet); font: 800 .72rem/1 system-ui, sans-serif; cursor: pointer; transition: transform var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+.ai-sg-actions button { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1.5px solid var(--ink); border-radius: 6px; color: var(--ink); background: var(--sheet); font: 800 .72rem/1 system-ui, sans-serif; cursor: pointer; transition: transform var(--motion-instant) var(--ease-enter), background-color var(--motion-instant) var(--ease-enter); }
 .ai-sg-actions .ai-sg-accept:hover { color: #fff; background: #1f8a4c; border-color: #1f8a4c; }
 .ai-sg-actions .ai-sg-reject:hover { color: var(--danger-text); background: var(--danger-bg); }
 .ai-sg-actions button:active { transform: scale(.92); }
@@ -31,7 +31,7 @@
   position: fixed; z-index: 31; display: grid; gap: 10px; max-height: min(60vh, 520px); padding: 12px 14px;
   border: 2px solid var(--pop-border); border-radius: 14px; color: var(--ink); background: var(--sheet);
   box-shadow: 4px 4px 0 var(--pop-hard), 0 18px 40px -18px var(--pop-soft);
-  transition: opacity var(--motion-base) var(--ease-standard), transform var(--motion-base) var(--ease-standard);
+  transition: opacity var(--motion-base) var(--ease-enter), transform var(--motion-base) var(--ease-enter);
 }
 .ai-assist[data-state="closed"] { opacity: 0; transform: translateY(calc(var(--motion-shift) * 2)) scale(var(--motion-scale)); }
 .ai-assist[data-state="closing"] { opacity: 0; pointer-events: none; transform: translateY(var(--motion-shift)) scale(var(--motion-scale)); transition-duration: var(--motion-fast); transition-timing-function: var(--ease-exit); }

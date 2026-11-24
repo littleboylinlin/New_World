@@ -99,6 +99,8 @@ export function chapterDirectory(options: DirectoryOptions) {
     return words
   }
 
+  const sliding = new WeakMap<HTMLElement, Animation>()
+
   /** Slides the chapters from where they were to where the new order puts them. */
   function flip(change: () => void) {
     const before = new Map([...list.querySelectorAll<HTMLElement>('.chapter-item')].map((item) => [item.dataset.id!, item.getBoundingClientRect().top]))
@@ -109,9 +111,12 @@ export function chapterDirectory(options: DirectoryOptions) {
       if (was === undefined) continue
       const delta = was - item.getBoundingClientRect().top
       if (!delta) continue
-      item.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], {
-        duration: motionMs('base'), easing: 'cubic-bezier(.2, .75, .25, 1)',
+      // A newer move replaces the slide still running instead of queueing behind it.
+      sliding.get(item)?.cancel()
+      const slide = item.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], {
+        duration: motionMs('base'), easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-enter').trim() || 'ease-out',
       })
+      sliding.set(item, slide)
     }
   }
 
@@ -263,8 +268,9 @@ export function chapterDirectory(options: DirectoryOptions) {
     }
     const duration = motionMs('fast')
     if (!duration || instant) { finish(); return }
+    // The ghost glides into the slot by transform; its top stays where the pointer left it.
+    state.ghost.style.setProperty('--drop-offset', `${slot.top - Number.parseFloat(state.ghost.style.top)}px`)
     state.ghost.classList.add('chapter-ghost-drop')
-    state.ghost.style.top = `${slot.top}px`
     window.setTimeout(finish, duration)
   }
 

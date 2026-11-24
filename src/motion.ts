@@ -15,10 +15,11 @@ export function changeView(view: HTMLElement, from: string, to: string, render: 
   view.dataset.enter = depth(to) > depth(from) ? 'forward' : depth(to) < depth(from) ? 'back' : 'level'
 }
 
-// Children of a list rise one after another the first time it is shown.
+// Children of a list rise one after another the first time it is shown. Only the first six take part;
+// the stylesheet shows the rest at once, so a long list never makes anyone wait.
 export function stagger(list: HTMLElement) {
   list.classList.add('stagger')
-  Array.from(list.children).forEach((item, index) => (item as HTMLElement).style.setProperty('--order', String(Math.min(index, 10))))
+  Array.from(list.children).slice(0, 6).forEach((item, index) => (item as HTMLElement).style.setProperty('--order', String(index)))
   return list
 }
 
@@ -39,11 +40,13 @@ export function leave(element: HTMLElement) {
   element.setAttribute('aria-hidden', 'true')
   const done = () => element.remove()
   element.addEventListener('animationend', done, { once: true })
-  window.setTimeout(done, 400)
+  window.setTimeout(done, motionMs('fast') + 60)
 }
 
+export type MotionToken = 'instant' | 'fast' | 'base' | 'slow'
+
 /** Reads one of the shared duration tokens in milliseconds; zero when motion is reduced. */
-export function motionMs(token: 'fast' | 'base' | 'slow' = 'base') {
+export function motionMs(token: MotionToken = 'base') {
   if (reducedMotion.matches) return 0
   const value = getComputedStyle(document.documentElement).getPropertyValue(`--motion-${token}`).trim()
   const number = Number.parseFloat(value)
@@ -55,7 +58,7 @@ export function motionMs(token: 'fast' | 'base' | 'slow' = 'base') {
  * Plays a CSS transition driven by a data-state attribute, and calls `done` once it ends.
  * Falls back to a timer so an interrupted or skipped transition never leaves the element stuck.
  */
-export function afterTransition(node: HTMLElement, token: 'fast' | 'base' | 'slow', done: () => void) {
+export function afterTransition(node: HTMLElement, token: MotionToken, done: () => void) {
   const wait = motionMs(token)
   let finished = false
   let timer = 0
