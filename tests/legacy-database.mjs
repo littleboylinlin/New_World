@@ -20,6 +20,12 @@ export async function createLegacyDatabase(version) {
         db.createObjectStore(name, { keyPath: 'id' })
       }
     }
+    const trash = q.transaction.objectStore('trash')
+    if (version >= 10) trash.createIndex('byDeletedAt', 'deletedAt')
+    if (version >= 11) db.createObjectStore('writingStyles', { keyPath: 'id' })
+    if (version >= 12) trash.createIndex('byWorkKind', ['library', 'bookId', 'kind'])
+    if (version >= 13) db.createObjectStore('storyBoards', { keyPath: ['library', 'bookId'] })
+    if (version >= 14) db.createObjectStore('bookChats', { keyPath: 'id' }).createIndex('byBook', ['library', 'bookId'])
   }
   await new Promise((r, j) => { q.onsuccess = r; q.onerror = () => j(q.error) }); q.result.close()
 }

@@ -1,6 +1,6 @@
 import { startWork, chooseImportType } from '../navigation-helpers.mjs'
 import { writingMotionFlow, measureTyping } from '../writing-motion-helpers.mjs'
-import { expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
+import { expectDesktopForeshadowing, expectDesktopWorkInformation, projectDesktopFlow } from './project-flow.mjs'
 import { desktopStorySettingsFlow } from './story-settings-flow.mjs'
 import { desktopBookChatFlow } from './book-chat-flow.mjs'
 import { desktopStoryAiFlow } from './story-ai-flow.mjs'
@@ -1342,6 +1342,7 @@ test('.newworld 冷启动导入、中文路径导出与系统关联热打开保�
     await reopened.goto(url)
     await expectDesktopWorkInformation(reopened)
     await expect(editor(reopened)).toHaveText('文件关联打开时仍在编辑的正文。')
+    await expectDesktopForeshadowing(reopened)
   } finally { await stop(app) }
 })
 

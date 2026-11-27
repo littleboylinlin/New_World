@@ -2,6 +2,7 @@ import { rememberWork } from './ideas'
 import { workTaskControls } from './tasks/links'
 import { showProjectExport } from './projects/view'
 import { workInformationPanel } from './work-information-view'
+import { foreshadowingPath } from './foreshadowing/route'
 import { t } from './i18n'
 import { bookImport } from './book-import-view'
 import { formDialog, nameField } from './dialogs'
@@ -27,7 +28,9 @@ export function renderContinuation(root: HTMLElement, id: string, signal: AbortS
   headingCopy.append(element('p', 'eyebrow', t('continuation.continuationProject')), title)
   const exportProject = button(t('project.export'), 'button button-quiet button-small', 'download')
   exportProject.addEventListener('click', () => { if (work) showProjectExport({ library: 'reference', id }, work.title) })
-  heading.append(headingCopy, exportProject)
+  const actions = element('div', 'shelf-actions')
+  actions.append(link(foreshadowingPath({ library: 'reference', bookId: id }), t('foreshadowing.titleOfBox'), 'button button-quiet button-small'), exportProject)
+  heading.append(headingCopy, actions)
   const lists = element('div', 'continuation-lists')
 
   const drafts = element('section', 'reader-panel continuation-list')

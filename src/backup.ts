@@ -16,6 +16,8 @@ import { styleChanges, styleStore } from './ai/styles'
 import { clearAllBaselines } from './ai/guard'
 import { validBookChats } from './ai/book-chat-model'
 import type { BookChat } from './ai/book-chat-model'
+import { validForeshadowingRows, validTrashedForeshadowing } from './foreshadowing/model'
+import type { Foreshadowing } from './foreshadowing/model'
 import { clearWritingSnapshotClock } from './documents/writing-history'
 import type { TaskData } from './tasks/model'
 import { decodeTaskResources, encodeTaskResources } from './tasks/transfer'
@@ -27,7 +29,7 @@ import type { StoryBoard } from './story-settings/model'
 
 const manifestName = 'new-world-backup.json'
 const formatName = 'new-world-backup'
-const formatVersion = 5
+const formatVersion = 6
 
 export const maxBackupZipEntries = 10_000
 export const maxBackupManifestBytes = 64 * 1024 * 1024
@@ -56,6 +58,7 @@ interface Manifest {
   taskData?: TaskData
   storyBoards?: StoryBoard[]
   bookChats?: BookChat[]
+  foreshadowing?: Foreshadowing[]
   format: typeof formatName
   version: number
   app: string
@@ -96,6 +99,7 @@ export interface BackupContents {
   taskData?: TaskData
   storyBoards?: StoryBoard[]
   bookChats?: BookChat[]
+  foreshadowing?: Foreshadowing[]
   summary: BackupSummary
   books: Book[]
   files: BookFile[]
@@ -185,8 +189,8 @@ export async function createBackup(password?: string) {
   const tx = db.transaction([...libraryStores, 'writingDays', 'ideas', 'revisions', 'revisionBlobs', 'ideaRevisions', 'aiBaselines', 'bookChats', styleStore, ...taskStores])
   const styleRows: Promise<StyleRecord[]> = resultOf(tx.objectStore(styleStore).getAll())
   const taskReads = Promise.all(taskStores.map(async name => [name, await resultOf(tx.objectStore(name).getAll())]))
-  const [books, files, editions, chapters, storedTrash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines, storedBoards, bookChats]: [
-    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[], AiChapterBaseline[], StoryBoard[], BookChat[],
+  const [books, files, editions, chapters, storedTrash, writingDays, ideas, revisions, revisionBlobRows, ideaRevisions, aiBaselines, storedBoards, bookChats, foreshadowing]: [
+    Book[], BookFile[], Edition[], ChapterRecord[], TrashEntry[], WritingDay[], Idea[], ChapterRevision[], RevisionBlobRecord[], IdeaRevision[], AiChapterBaseline[], StoryBoard[], BookChat[], Foreshadowing[],
   ] = await Promise.all([
     resultOf(tx.objectStore('books').getAll()),
     resultOf(tx.objectStore('files').getAll()),
@@ -201,6 +205,7 @@ export async function createBackup(password?: string) {
     resultOf(tx.objectStore('aiBaselines').getAll()),
     resultOf(tx.objectStore('storyBoards').getAll()),
     resultOf(tx.objectStore('bookChats').getAll()),
+    resultOf(tx.objectStore('foreshadowing').getAll()),
   ])
 
   // Canvas rows saved by an earlier build of the story canvas are brought up to date, never left to block the backup.
@@ -245,9 +250,11 @@ export async function createBackup(password?: string) {
   })
   if (!validStoryRows(storyBoards, books, chapters, trash)) throw new BackupError('format')
   if (!validBookChats(bookChats, books, trash)) throw new BackupError('format')
+  if (!validForeshadowingRows(foreshadowing, books) || !validTrashedForeshadowing(trash)) throw new BackupError('format')
   const manifest: Manifest = {
     storyBoards,
     bookChats,
+    foreshadowing,
     taskData: storedTasks,
     format: formatName, version: formatVersion, app: runningVersion, createdAt: Date.now(),
     editions, chapters, writingDays, ideas, revisions,
@@ -388,6 +395,11 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
     if (manifest.version < 5 ? manifest.bookChats !== undefined : !validBookChats(manifest.bookChats, manifest.books, manifest.trash)) {
       throw new BackupError('format')
     }
+    if (manifest.version < 6
+      ? manifest.foreshadowing !== undefined || manifest.trash.some((entry) => entry.foreshadowing !== undefined)
+      : !validForeshadowingRows(manifest.foreshadowing, manifest.books) || !validTrashedForeshadowing(manifest.trash)) {
+      throw new BackupError('format')
+    }
 
     const restore = async (stored: StoredFile): Promise<BookFile> => {
       if (typeof stored?.path !== 'string') throw new BackupError('format')
@@ -456,6 +468,7 @@ export async function readBackup(file: Blob, password?: string): Promise<BackupC
       summary: summarize(manifest),
       storyBoards,
       bookChats: manifest.bookChats,
+      foreshadowing: manifest.foreshadowing,
       books, files, editions: manifest.editions, chapters: manifest.chapters, trash,
       writingDays: (Array.isArray(manifest.writingDays) ? manifest.writingDays : [])
         .filter((day) => typeof day?.date === 'string' && Number.isFinite(day.words)),
@@ -489,6 +502,8 @@ export async function restoreBackup(contents: BackupContents) {
   if (!validStoryRows(storyBoards, contents.books, contents.chapters, contents.trash)) throw new BackupError('format')
   const bookChats = structuredClone(contents.bookChats ?? [])
   if (!validBookChats(bookChats, contents.books, contents.trash)) throw new BackupError('format')
+  const foreshadowing = structuredClone(contents.foreshadowing ?? [])
+  if (!validForeshadowingRows(foreshadowing, contents.books) || !validTrashedForeshadowing(contents.trash)) throw new BackupError('format')
   const incomingTasks = contents.taskData === undefined ? undefined : structuredClone(contents.taskData)
   if (incomingTasks) { validateTasks(incomingTasks); await validateTaskAssets(incomingTasks) }
   const db = await openDatabase()
@@ -545,6 +560,7 @@ export async function restoreBackup(contents: BackupContents) {
     for (const chapter of contents.chapters) tx.objectStore('chapters').add(chapter)
     for (const entry of contents.trash) tx.objectStore('trash').add(entry)
     for (const board of storyBoards) tx.objectStore('storyBoards').add(board)
+    for (const row of foreshadowing) tx.objectStore('foreshadowing').add({ ...row, revision: crypto.randomUUID() })
     for (const chat of bookChats) {
       // A stream in another window must not finish a pending turn from the restored snapshot.
       for (const turn of chat.turns) if (!turn.reply) turn.id = crypto.randomUUID()

@@ -10,6 +10,7 @@ import type { WorkMetadata } from './work-metadata'
 import { taskStores, TaskDataError } from './tasks/model'
 import { announceStoryChange } from './story-settings/changes'
 import type { StoryBoard, StoryCard } from './story-settings/model'
+import type { Foreshadowing } from './foreshadowing/model'
 
 export type LibraryId = 'original' | 'reference'
 
@@ -61,6 +62,7 @@ export interface TrashEntry {
   ideas?: Idea[]
   storyBoard?: StoryBoard
   storyCard?: StoryCard
+  foreshadowing?: Foreshadowing[]
   position?: { editionId: string; index: number }
 }
 
@@ -131,7 +133,7 @@ export interface AiChapterBaseline {
 }
 
 export const libraryChanges = new EventTarget()
-export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash', 'storyBoards']
+export const libraryStores = ['books', 'files', 'editions', 'chapters', 'trash', 'storyBoards', 'foreshadowing']
 
 let connection: Promise<IDBDatabase> | undefined
 export const maxTitleLength = 255
@@ -139,7 +141,7 @@ export const maxTitleLength = 255
 export function openDatabase() {
   if (connection) return connection
   const opening = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('new-world-library', 14)
+    const request = indexedDB.open('new-world-library', 15)
     let blocked = false
     request.onupgradeneeded = (event) => {
       const db = request.result
@@ -198,6 +200,10 @@ export function openDatabase() {
       if (event.oldVersion < 12) request.transaction!.objectStore('trash').createIndex('byWorkKind', ['library', 'bookId', 'kind'])
       if (event.oldVersion < 13) db.createObjectStore('storyBoards', { keyPath: ['library', 'bookId'] })
       if (event.oldVersion < 14) db.createObjectStore('bookChats', { keyPath: 'id' }).createIndex('byBook', ['library', 'bookId'])
+      if (event.oldVersion < 15) {
+        const foreshadowing = db.createObjectStore('foreshadowing', { keyPath: ['library', 'bookId', 'id'] })
+        foreshadowing.createIndex('byBook', ['library', 'bookId'])
+      }
     }
     request.onsuccess = () => {
       const db = request.result
@@ -440,6 +446,7 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
   const editions = tx.objectStore('editions')
   const chapters = tx.objectStore('chapters')
   const boards = tx.objectStore('storyBoards')
+  const foreshadowing = tx.objectStore('foreshadowing')
   const key = [library, id]
   const { step, done } = writing<TrashEntry>(tx)
   const conflictMsg = 'The target work changed before confirmation completed; nothing was deleted.'
@@ -458,7 +465,8 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
     const storedEditions = editions.index('byBook').getAll(key)
     const storedChapters = chapters.index('byBook').getAll(key)
     const storedBoard = boards.get(key)
-    storedBoard.onsuccess = step(() => {
+    const storedForeshadowing = foreshadowing.index('byBook').getAll(key)
+    storedForeshadowing.onsuccess = step(() => {
       if (owned.some((book, i) => book.format !== 'draft' && !storedFiles[i].result)) {
         throw new Error(t('library.theOriginalFileForThisWorkIsMissing'))
       }
@@ -474,6 +482,7 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
       entry.editions = editionRows
       entry.chapters = chapterRows
       if (storedBoard.result) entry.storyBoard = storedBoard.result
+      if (storedForeshadowing.result.length) entry.foreshadowing = storedForeshadowing.result
       for (const book of owned) {
         books.delete([library, book.id])
         files.delete([library, book.id])
@@ -481,6 +490,7 @@ export async function deleteBook(library: LibraryId, id: string, expectedFingerp
       for (const edition of entry.editions) editions.delete([library, id, edition.id])
       for (const chapter of entry.chapters) chapters.delete([library, id, chapter.editionId, chapter.id])
       boards.delete(key)
+      for (const row of entry.foreshadowing ?? []) foreshadowing.delete([...key, row.id])
       tx.objectStore('trash').add(entry)
       return entry
     })

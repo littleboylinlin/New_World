@@ -26,6 +26,8 @@ import { mountWebStorage } from './web-storage'
 import { mountFolderSync } from './web-folder'
 import { takeStoryJump } from './ai/story-jump'
 import { handleStoryWebRequests } from './ai/story-web-provider'
+import { parseForeshadowingPath } from './foreshadowing/route'
+import { renderForeshadowing } from './foreshadowing/view'
 
 handleStoryWebRequests()
 
@@ -88,7 +90,13 @@ function render(moveFocus = false) {
     activeHash = '#/writing'
     history.replaceState(null, '', activeHash)
   }
-  const match = activeHash.match(/^#\/(original|reference)(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}|original))?)?\/?$/)
+  const match = activeHash.match(/^#\/(original|reference)(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}|original)(?:\/chapter\/([0-9a-f-]{36}))?)?)?\/?$/)
+  const chapterId = match?.[3] !== 'original' ? match?.[4] : undefined
+  if (chapterId) {
+    activeHash = activeHash.slice(0, activeHash.lastIndexOf('/chapter/'))
+    history.replaceState(null, '', activeHash)
+  }
+  const foreshadowing = parseForeshadowingPath(activeHash)
   const notes = notesPath(activeHash)
   if (notes && notes !== activeHash) {
     activeHash = notes
@@ -105,6 +113,12 @@ function render(moveFocus = false) {
     main.classList.add('settings-main')
     main.append(settings.element)
     handledFocus = settings.showCategory(settingsCategory, false)
+  } else if (foreshadowing) {
+    sidebar.active('writing', true)
+    main.classList.add(`mode-${foreshadowing.work.library}`)
+    renderForeshadowing(main, foreshadowing.work, foreshadowing.target, scope.signal, (guard) => {
+      if (view === scope) leaveGuard = guard
+    })
   } else if (match) {
     sidebar.active('writing', true)
     const library = match[1] as LibraryId
@@ -113,7 +127,7 @@ function render(moveFocus = false) {
     if (library === 'reference' && match[2] && !match[3]) renderContinuation(main, match[2], scope.signal)
     else if (match[2]) void renderReader(main, library, match[2], match[3] === 'original' ? undefined : match[3], scope.signal, (guard) => {
       if (view === scope) leaveGuard = guard
-    }, storyJump)
+    }, storyJump, chapterId)
   } else if (/^#\/writing\/?$/.test(activeHash)) {
     sidebar.active('writing')
     document.title = t('navigation.writing') + ' · New World'

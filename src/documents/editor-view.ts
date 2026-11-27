@@ -27,6 +27,7 @@ import { openStorySettings } from '../story-settings/route'
 import { listStoryCards } from '../story-settings/store'
 import { storyCardApplies } from '../story-settings/model'
 import type { StoryCard } from '../story-settings/model'
+import { chapterForeshadowing } from '../foreshadowing/chapter-panel'
 import { createTabs, createWorkbench } from '../shell/workbench'
 import { showExportDialog } from './export-view'
 import { cleanMarkup, inertMarkup, rasterData } from './markup'
@@ -112,10 +113,11 @@ const isLongChapter = (record: ChapterRecord) => JSON.stringify(record.content).
 
 export async function renderEdition(
   host: HTMLElement, root: HTMLElement, book: Book, initial: Edition, signal: AbortSignal, registerLeave: RegisterLeave,
-  work: WorkContext = { title: book.title, menu: () => [] }, storyJump?: StoryJump,
+  work: WorkContext = { title: book.title, menu: () => [] }, storyJump?: StoryJump, targetChapterId?: string,
 ) {
   let edition = initial
-  const remembered = storyJump?.chapterId ?? lastChapter(edition)
+  const targetExists = targetChapterId && edition.chapters.some(({ id }) => id === targetChapterId)
+  const remembered = (targetExists ? targetChapterId : storyJump?.chapterId) ?? lastChapter(edition)
   let chapter = await readChapter(edition, edition.chapters.some(({ id }) => id === remembered) ? remembered : edition.chapters[0].id)
   signal.throwIfAborted()
   let editor!: Editor
@@ -459,9 +461,12 @@ export async function renderEdition(
       trigger.focus({ preventScroll: true })
     }, signal,
   })
+  const linkedForeshadowing = chapterForeshadowing(storyWork,
+    () => ({ editionId: edition.id, chapterId: chapter.id, title: chapterInfo().title }), signal)
   const tabs = createTabs(t('editor.sidePanel'), (id) => {
     updateEditorPreferences({ sideTab: id })
     if (id === 'chat') void chat.open()
+    if (id === 'foreshadowing') void linkedForeshadowing.refresh()
   })
   tabs.element.classList.add('editor-side-tabs')
   const ideasPanel = element('section', 'ideas-panel')
@@ -523,6 +528,7 @@ export async function renderEdition(
   tabs.add({ id: 'compare', label: t('compare.tab'), panel: splitEditor.panel })
   // Private web pages are a desktop feature; the web version shows no 网页 tab at all.
   if (canBrowse()) tabs.add({ id: 'web', label: t('web.tab'), panel: webTab((url, where) => splitEditor.openWeb(url, where), splitEditor.openItems, signal) })
+  const foreshadowingTab = tabs.add({ id: 'foreshadowing', label: t('foreshadowing.tab'), panel: linkedForeshadowing.element })
   wb.end!.body.append(tabs.element)
 
   // The page keeps one top-level heading for assistive technology; the toolbar shows the name.
@@ -877,6 +883,7 @@ export async function renderEdition(
     navLabel.textContent = t('editor.chapterList105', [edition.chapters.length])
     wordLabels = directory.render()
     refreshWords()
+    if (tabs.selected() === 'foreshadowing') void linkedForeshadowing.refresh()
   }
 
   function applyMode() {
@@ -1144,7 +1151,10 @@ export async function renderEdition(
   libraryChanges.addEventListener('update', () => { void refreshIdeas() }, { signal })
   void refreshIdeas()
   watchStoryChanges(storyWork, () => { void refreshStoryLinks() }, signal)
-  window.addEventListener('focus', () => { void refreshStoryLinks() }, { signal })
+  window.addEventListener('focus', () => {
+    void refreshStoryLinks()
+    if (tabs.selected() === 'foreshadowing') void linkedForeshadowing.refresh()
+  }, { signal })
   void refreshStoryLinks()
   announceEditorChapter(storyWork, { editionId: edition.id, chapterId: chapter.id })
 
@@ -1252,6 +1262,10 @@ export async function renderEdition(
       { label: t('editor.export'), icon: 'download', action: () => exportVersion() },
       { label: t('revisions.button'), icon: 'history', hint: historyTotal ? String(historyTotal) : undefined, action: showHistory },
       { label: t('tasks.addChapterTask'), icon: 'check', action: chapterTask },
+      { label: t('foreshadowing.thisChapter'), icon: 'bookmark', action: () => {
+        openSide('foreshadowing')
+        foreshadowingTab.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      } },
       { label: t('aiAssist.chapterMenu'), icon: 'ai', children: () => [
         ...assist.chapterItems(),
         { label: t('storyAi.check'), children: () => (['selection', 'chapter', 'book'] as const).map((scope) => ({
@@ -1350,11 +1364,13 @@ export async function renderEdition(
   const waiting = takeOpenRequest()
   if (waiting) splitEditor.open(waiting.source, waiting.placement)
   registerLeave(flush)
+  if (targetExists) capturePlace()
+  else if (targetChapterId) showNotice(t('foreshadowing.missingChapter'))
   if (storyJump) {
     try { await goToStoryQuote(storyJump) } catch (cause) { if (!signal.aborted) showNotice(storageError(cause)) }
   }
   const jump = takeTaskJump(edition)
-  if (jump?.chapterId) {
+  if (!targetChapterId && jump?.chapterId) {
     await switchChapter(jump.chapterId)
     if (!signal.aborted && chapter.id === jump.chapterId && jump.position) {
       if (hashDocumentContent(chapter.content) === jump.position.contentHash && jump.position.to <= editor.state.doc.content.size) editor.commands.setTextSelection({ from: jump.position.from, to: jump.position.to })

@@ -6,7 +6,7 @@ import { ZipReader, ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.j
 import { test, expect as baseExpect, withoutRelease } from './app-test.mjs'
 import { seedProject, databaseSnapshot, projectFixture } from './project-fixture.mjs'
 import { pixel } from './fixtures.mjs'
-import { editWorkInformation, editorAction } from './editor-helpers.mjs'
+import { editWorkInformation, editorAction, workAction } from './editor-helpers.mjs'
 
 const expect = baseExpect.configure({ timeout: 15000 })
 test.setTimeout(90000)
@@ -121,7 +121,7 @@ for (const library of ['original', 'reference']) test(`${library} 工程完整�
   await page.goto(`/#/${library}`)
   const path = info.outputPath('带作品信息.newworld'); await exportProject(page, path)
   expect(await page.evaluate(databaseSnapshot)).toEqual(before)
-  const entries = await unpack(path); expect(JSON.parse(Buffer.from(entries.get('manifest.json')).toString()).schemaVersion).toBe(4)
+  const entries = await unpack(path); expect(JSON.parse(Buffer.from(entries.get('manifest.json')).toString()).schemaVersion).toBe(5)
   // Keep the published Schema 2 and 3 fixtures available for backwards compatibility tests.
   const context = await withoutRelease(await browser.newContext({ locale: 'zh-CN' }))
   const clean = await context.newPage(); await clean.addInitScript(() => { window.showSaveFilePicker = undefined })
@@ -172,6 +172,14 @@ test('不安全/超限元数据、未知结构字段及未来 Schema 明确拒�
 
 test('正文六种格式的信息选项默认关闭，可选择标题副标题、作者与多段简介', async ({ page }, info) => {
   await create(page, 'original', '元数据导出书', { ...values, author: 'Export Author', synopsis: 'Intro one.\nLine two.\n\nIntro three.' })
+  const privateClue = 'PRIVATE CLUE FOR THE AUTHOR'
+  await workAction(page, '伏笔箱')
+  await page.getByRole('button', { name: '新增伏笔', exact: true }).click()
+  const clue = page.locator('.foreshadowing-form')
+  await clue.getByRole('textbox', { name: '标题', exact: true }).fill(privateClue)
+  await clue.getByRole('button', { name: '完成', exact: true }).click()
+  await expect(page.getByRole('heading', { name: privateClue, exact: true })).toBeVisible()
+  await page.getByRole('link', { name: '返回作品', exact: true }).click()
   await editor(page).fill('BODY ONLY CONTENT.'); await page.keyboard.press('Control+s'); await expect(page.locator('.save-status')).toHaveText('已保存')
   async function exportAs(format, selected) {
     await editorAction(page, '导出')
@@ -211,6 +219,9 @@ test('正文六种格式的信息选项默认关闭，可选择标题副标题�
   await form.getByRole('radio',{name:'PDF',exact:true}).check(); for (const label of selected) await form.getByRole('checkbox',{name:label,exact:true}).check()
   await form.getByRole('button',{name:'开始导出',exact:true}).click(); await expect(form).toBeHidden()
   const printed = await page.evaluate(()=>window.printedWork); expect(printed).toContain('export-work-info'); expect(printed).toContain('Intro three.'); expect(printed).toContain('BODY ONLY CONTENT.')
+  for (const content of [plain, title, markdown, html, xml, core, epubPlainOpf, epubPlainCh1, epubInfoOpf, epubTitlePage, epubInfoCh1, printed]) {
+    expect(content).not.toContain(privateClue)
+  }
 })
 
 test('移除及恢复续写工程首个原文件不丢失或回写旧作品信息', async ({ page }) => {

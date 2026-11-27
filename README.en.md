@@ -64,7 +64,7 @@ Simplified Chinese and English are supported. The Windows installer bundles both
 
 Pick a language in "Settings → General" and apply it. The app saves your text first, then fetches any language pack not yet downloaded; if the download fails, the current language is kept. Downloaded languages work offline, and the selected language persists across restarts and upgrades. Work titles, chapter titles, and body text never change with the interface language. The web version picks the browser language on first visit and requests only the pack it needs.
 
-Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For offline pack placement, put the required pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.31.3\zh-CN.json` or `en.json`; it is used once verification passes.
+Language preferences and the desktop language cache are stored in `%APPDATA%\NewWorld-languages`, unaffected by library storage changes. Normal uninstalls keep the cache. For offline pack placement, put the required pack from the same release at `%APPDATA%\NewWorld-languages\packs\0.32.0\zh-CN.json` or `en.json`; it is used once verification passes.
 
 The app bar at the top of the window doubles as the title bar and can be dragged to move the window; the minimize, maximize/restore, and close buttons at the top-right are drawn by the app and show no system tooltip on hover. Zoom with `Ctrl` + `+`, `-`, `0`; fullscreen with `F11`. In full screen the top-right buttons become “Exit full screen” and close, and on macOS the app bar takes back the space of the traffic lights. Desktop libraries and browser libraries are stored separately; existing browser data remains accessible in the original browser and address.
 
@@ -186,6 +186,12 @@ Since v0.15.1, complete pre-edit chapter and idea revision snapshots (`revisions
 
 Open **Story settings** from the editor toolbar to work on a local whiteboard in a separate window or web tab. Double-click to add a card and drag from its edge to draw a connection. Cards support custom tags and fields, body text and chapter links. Arrange cards, text, images and frames, then use the card list to locate a card by name or alias. The canvas remembers your layout and view. Restore deleted cards from Trash.
 
+## Foreshadowing
+
+Open **Foreshadowing** from the work menu to keep track of clues, promises, and details that need to stay consistent. Enter a title to start and fill in the rest later. An entry can link to multiple chapters for its setup and payoff, with a note or excerpt for each location. The editor's **Clues** tab shows the entries linked to the current chapter.
+
+Entries save automatically and travel with full-library backups and single-work `.newworld` projects. Manuscript exports omit them.
+
 ## Backup and restore
 
 "Settings → Backup & restore" packs both libraries, every edition, the original files, custom covers, the trash, quick notes, story canvases, writing stats, chapter and idea revision history, writing styles, AI cumulative-loss baselines (`aiBaselines`), and all task data (including projects, labels, templates, filters, completion history and attachments) into one `.zip` file.
@@ -198,6 +204,7 @@ Open **Story settings** from the editor toolbar to work on a local whiteboard in
 - Restore from Backup: choose a backup file and enter its password if it is encrypted. After confirming, the backup replaces the current library, all at once or not at all. The desktop app first backs up the current library to the backup folder (`New-World-before-restore-…zip`).
 - v0.30.0 writes backup format 3, packing AI cumulative-loss baselines (`aiBaselines`) and restoring them together; it continues reading formats 1 and 2 (format 1 keeps existing tasks; legacy formats 1 and 2 without `aiBaselines` clear local baselines to empty instead of attaching mismatched local baselines to restored chapters). Older apps reject format 3; keep a pre-upgrade backup if you might roll back.
 - v0.31.0 writes full-library backup format 5 and reads formats 1–5. Format 5 includes story canvases and local AI conversations. See the [v0.31.0 release notes](docs/releases/v0.31.0.md) for compatibility and rollback details.
+- v0.32.0 writes full-library backup format 6 and reads formats 1–6. Format 6 includes foreshadowing. See the [v0.32.0 release notes](docs/releases/v0.32.0.md) for upgrade and rollback details.
 - Local-only data such as appearance, language, storage location, AI service configurations, API keys, and chapter summary caches are not included in backups.
 
 ## Format support

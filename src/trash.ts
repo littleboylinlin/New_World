@@ -63,6 +63,7 @@ export async function restoreTrash(id: string) {
       for (const edition of entry.editions) editions.add(edition)
       for (const chapter of entry.chapters) chapters.add(chapter)
       if (entry.storyBoard) boards.add({ ...entry.storyBoard, revision: crypto.randomUUID() })
+      for (const row of entry.foreshadowing ?? []) tx.objectStore('foreshadowing').add({ ...row, revision: crypto.randomUUID() })
       return { entry }
     }
 
