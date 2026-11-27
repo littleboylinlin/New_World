@@ -96,7 +96,7 @@ for (const library of ['original', 'reference'])
     expect(await page.evaluate(databaseSnapshot)).toEqual(before)
     const entries = await unpack(path),
       manifest = JSON.parse(Buffer.from(entries.get('manifest.json')).toString())
-    expect(manifest.schemaVersion).toBe(4)
+    expect(manifest.schemaVersion).toBe(5)
     for (const bytes of entries.values())
       expect(Buffer.from(bytes).toString()).not.toContain('PRIVATE-')
     const clean = await fresh(browser)

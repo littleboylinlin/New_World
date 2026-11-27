@@ -4,6 +4,7 @@ import { t } from './i18n'
 import { revealOriginalQuote } from './ai/story-jump'
 import type { StoryJump } from './ai/story-jump'
 import { showWorkInformation, workInformationPanel } from './work-information-view'
+import { foreshadowingPath } from './foreshadowing/route'
 import type { ShellMenuItem } from './shell/popover'
 import { showNotice } from './undo'
 import { annotateTextPreviews } from './annotations/preview'
@@ -253,7 +254,8 @@ async function showPreview(host: HTMLElement, book: ImportedBook, blob: Blob, si
 }
 
 export async function renderReader(
-  root: HTMLElement, library: LibraryId, id: string, editionId: string | undefined, signal: AbortSignal, registerLeave: RegisterLeave, storyJump?: StoryJump,
+  root: HTMLElement, library: LibraryId, id: string, editionId: string | undefined, signal: AbortSignal, registerLeave: RegisterLeave,
+  storyJump?: StoryJump, chapterId?: string,
 ) {
   const panel = element('section', `reader-page mode-${library}`)
   const content = element('div')
@@ -309,6 +311,9 @@ export async function renderReader(
             void createLinkedTask({ library: book.library, bookId: book.workId ?? book.id, title: book.title }).catch((error) => showNotice(storageError(error)))
           } })
           items.push({ label: t('tasks.workTasks'), icon: 'check', action: () => { location.hash = workTaskPath(book.library, book.workId ?? book.id) } })
+          items.push({ label: t('foreshadowing.titleOfBox'), icon: 'bookmark', action: () => {
+            location.hash = foreshadowingPath({ library, bookId: workId })
+          } })
         }
         if (linkedOriginal?.blob) {
           const original = linkedOriginal
@@ -318,7 +323,7 @@ export async function renderReader(
         return items
       }
       const { renderEdition } = await import('./documents/editor-view')
-      await renderEdition(body, root, book, selected, signal, registerLeave, { title: book.title, menu: workMenu }, jump)
+      await renderEdition(body, root, book, selected, signal, registerLeave, { title: book.title, menu: workMenu }, jump, chapterId)
       return
     }
     const heading = element('header', 'page-heading reader-heading')
@@ -326,7 +331,12 @@ export async function renderReader(
     title.append(element('p', 'eyebrow', reference ? (editionId ? t('reader.continuationDraft') : t('reader.readSource')) : t('navigation.workDetails')), element('h1', '', book.title))
     if (!reference || !editionId) title.append(fileDetails(book))
     heading.append(title)
-    if(!book.workId)heading.append(workTaskControls(book))
+    if (!book.workId) {
+      const actions = workTaskControls(book)
+      actions.classList.add('shelf-actions')
+      actions.append(link(foreshadowingPath({ library, bookId: workId }), t('foreshadowing.titleOfBox'), 'button button-quiet button-small'))
+      heading.append(actions)
+    }
     if (linkedOriginal?.blob) {
       const original = linkedOriginal
       const download = button(t('reader.downloadOriginalFile'), 'button button-primary', 'download')

@@ -74,6 +74,8 @@ export async function collectProject(root: ProjectRoot): Promise<ProjectData> {
   }
   const board = tx.objectStore('storyBoards').get([root.library, root.id])
   board.onsuccess = () => { if (board.result) data.storyBoards.push(board.result) }
+  const foreshadowing = tx.objectStore('foreshadowing').index('byBook').getAll([root.library, root.id])
+  foreshadowing.onsuccess = () => { data.foreshadowing = foreshadowing.result }
   await committed(tx)
   // Task ownership is explicit and uniform throughout each subtree. Never pull a personal parent.
   data.tasks=data.tasks.filter(t=>t.link&&!t.link.unconfirmed&&t.link.library===root.library&&t.link.bookId===root.id)
@@ -104,6 +106,7 @@ function identities(data: ProjectData): Set<string> {
     ...annotations,
     ...Object.values(refs).flatMap((v) => [...v]),
     ...data.revisions.map((v) => v.id), ...data.ideaRevisions.map((v) => v.id), ...data.trash.map((v) => v.id),
+    ...data.foreshadowing.map((v) => v.id), ...data.trash.flatMap((entry) => entry.foreshadowing?.map((v) => v.id) ?? []),
   ])
 }
 function conflicts(incoming: ProjectContents, existing: ProjectData): ProjectConflicts {

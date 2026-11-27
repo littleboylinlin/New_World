@@ -139,7 +139,7 @@ test('全库备份往返保留活动卡片、卡片回收记录和已删除作�
   const path = info.outputPath('story-backup.zip')
   await (await download).saveAs(path)
   const manifest = await archiveJson(path, manifestName)
-  expect(manifest.version).toBe(5)
+  expect(manifest.version).toBe(6)
   expect(manifest.storyBoards).toEqual(before.storyBoards)
   expect(manifest.trash.find((entry) => entry.kind === 'book').storyBoard.scene.nodes[0].name).toBe('青铜罗盘')
 
@@ -160,6 +160,7 @@ test('全库备份往返保留活动卡片、卡片回收记录和已删除作�
   const legacy = { ...manifest, version: 3, trash: [] }
   delete legacy.storyBoards
   delete legacy.bookChats
+  delete legacy.foreshadowing
   const legacyArchive = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
   await legacyArchive.add(manifestName, new TextReader(JSON.stringify(legacy)))
   const legacyPath = info.outputPath('old-v3.zip')
@@ -181,7 +182,7 @@ test('工程保留本书卡片和回收记录，副本重映射版本、章节�
   const path = info.outputPath('雾灯故事.newworld')
   await downloadProject(page, title, path)
   const manifest = await archiveJson(path, 'manifest.json')
-  expect(manifest.schemaVersion).toBe(4)
+  expect(manifest.schemaVersion).toBe(5)
   expect(await archiveJson(path, manifest.records.storyBoards)).toEqual([original])
   const trash = await archiveJson(path, manifest.records.trash)
   expect(trash).toEqual(before.trash)

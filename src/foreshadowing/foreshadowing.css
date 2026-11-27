@@ -1,0 +1,34 @@
+.foreshadowing-content, .foreshadowing-tools, .foreshadowing-form, .foreshadowing-list { display: grid; gap: 14px; }
+.foreshadowing-content > :empty, .foreshadowing-list:empty { display: none; }
+.foreshadowing-page .page-heading-copy, .foreshadowing-entry, .foreshadowing-scope { overflow-wrap: anywhere; }
+.foreshadowing-tools { gap: 8px; }
+.foreshadowing-scope, .foreshadowing-controls, .foreshadowing-filters, .foreshadowing-actions, .foreshadowing-entry-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+}
+.foreshadowing-controls { justify-content: space-between; }
+.foreshadowing-controls input { flex: 1 1 220px; max-width: 360px; }
+.foreshadowing-filters .button[aria-pressed="true"] { background: var(--tint); border-color: var(--input-border); color: var(--ink); }
+.foreshadowing-entry-head { justify-content: space-between; }
+.foreshadowing-entry-head h2, .foreshadowing-form h2 { margin: 0; font-size: 1.1rem; }
+.foreshadowing-entry { display: grid; gap: 10px; }
+.foreshadowing-list, .foreshadowing-chapter-list { margin: 0; padding: 0; list-style: none; }
+.foreshadowing-location-group h3 { margin: 0 0 4px; font: inherit; font-weight: 750; }
+.foreshadowing-location-group ul { margin: 0; padding-inline-start: 20px; }
+.foreshadowing-location-group li + li { margin-top: 6px; }
+.foreshadowing-link { color: var(--ink); text-decoration: underline; text-underline-offset: .2em; }
+.foreshadowing-edition { margin-inline-start: 8px; font-size: .8rem; color: var(--muted); }
+.foreshadowing-missing { color: var(--danger-text); }
+.foreshadowing-copy { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.foreshadowing-form textarea { resize: vertical; }
+.foreshadowing-form .dialog-controls, .foreshadowing-form .dialog-help, .foreshadowing-counts { margin-top: 0; }
+.foreshadowing-locations { min-width: 0; margin: 0; padding: 8px 12px 12px; border: 1px solid var(--surface-line); border-radius: 10px; }
+.foreshadowing-locations legend { padding-inline: 4px; font-size: .9rem; font-weight: 750; }
+.foreshadowing-location-row { display: grid; gap: 8px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--surface-line); }
+.foreshadowing-location-row > button { justify-self: end; }
+.foreshadowing-chapter-panel { display: grid; gap: 8px; padding: 12px; overflow-wrap: anywhere; }
+.foreshadowing-chapter-panel h2 { margin: 0; font-size: .9rem; }
+.foreshadowing-chapter-panel .dialog-help { margin: 0; }
+.foreshadowing-chapter-panel > .button { justify-self: start; }
+.foreshadowing-chapter-list li { padding-block: 8px; border-bottom: 1px solid var(--surface-line); }
+.foreshadowing-chapter-list .foreshadowing-copy { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.editor-side-tabs > .shell-tablist { overflow-x: auto; scrollbar-width: thin; }

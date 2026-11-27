@@ -14,6 +14,7 @@ import { validateTaskAssets } from '../tasks/resources'
 import type { Detached, ProjectData, ProjectRoot } from './model'
 import { MetadataError, validateWorkMetadata } from '../work-metadata'
 import { storyCards, storyEndRefs, validStoryRows } from '../story-settings/model'
+import { validForeshadowingRows } from '../foreshadowing/model'
 
 const schema = getSchema(documentExtensions)
 const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 255 && !/[\x00-\x1f]/.test(v)
@@ -158,6 +159,13 @@ export function referencedIds(data: ProjectData) {
   data.aiBaselines.forEach((v) => { refs.books.add(v.bookId); refs.editions.add(v.editionId); refs.chapters.add(v.chapterId) })
   data.tasks.forEach(t=>{refs.tasks.add(t.id);if(t.link){refs.books.add(t.link.bookId);if(t.link.editionId)refs.editions.add(t.link.editionId);if(t.link.chapterId)refs.chapters.add(t.link.chapterId)}})
   data.taskCompletions.forEach(e=>e.cycle?.forEach(c=>refs.tasks.add(c.taskId)))
+  for (const item of [...data.foreshadowing, ...data.trash.flatMap((entry) => entry.foreshadowing ?? [])]) {
+    for (const { chapter } of [...item.setups, ...item.payoffs]) {
+      if (!chapter) continue
+      refs.editions.add(chapter.editionId)
+      refs.chapters.add(chapter.chapterId)
+    }
+  }
   const boards = [...data.storyBoards, ...data.trash.flatMap((entry) => entry.storyBoard ? [entry.storyBoard] : [])]
   const cards = boards.flatMap((board) => storyCards(board.scene))
   cards.push(...data.trash.flatMap((entry) => entry.storyCard ? [entry.storyCard] : []))
@@ -242,6 +250,8 @@ export function validateData(data: ProjectData, root: ProjectRoot, detached: Det
   }
   validateRows(data, true)
   if (schemaVersion < 4) ok(!data.storyBoards.length, 'story boards require Schema 4')
+  if (schemaVersion < 5) ok(!data.foreshadowing.length, 'foreshadowing requires Schema 5')
+  ok(validForeshadowingRows(data.foreshadowing, [rootBook]), 'foreshadowing')
   for (const v of data.trash) {
     fields(v, 'id kind library bookId title deletedAt books files editions chapters', 'ideas position' + (schemaVersion >= 4 ? ' storyCard' : ''))
     ok(uuid(v.id) && (belongs(v) || (v.kind === 'idea' && belongsIdea(v))) && (['original', 'edition', 'chapter', 'idea'].includes(v.kind) || (schemaVersion >= 4 && v.kind === 'storyCard')) && str(v.title) && num(v.deletedAt), 'trash ownership')

@@ -1,8 +1,8 @@
-# New_World 工程格式规范（Schema 1 / 2 / 3 / 4）
+# New_World 工程格式规范（Schema 1 / 2 / 3 / 4 / 5）
 
 状态：本仓库原生工程交换格式，扩展名 `.newworld`，MIME `application/vnd.newworld.project+zip`。
 
-工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。v0.19.0 正式写入 **Schema 3**，显式读取 Schema 1、2、3。v0.18.1 及更旧应用不能读取 Schema 3。v0.31.0 随故事设定库引入 Schema 4，读取 Schema 1–4，写入 Schema 4。升级、回退和全库备份格式见[v0.31.0 发行说明](releases/v0.31.0.md)。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
+工程 Schema 与应用版本 `appVersion` 独立。已发布 v0.18.0 使用 Schema 1，v0.18.1 写入 Schema 2。v0.19.0 正式写入 **Schema 3**，显式读取 Schema 1、2、3。v0.18.1 及更旧应用不能读取 Schema 3。v0.31.0 随故事设定库引入 Schema 4，读取 Schema 1–4，写入 Schema 4。升级、回退和全库备份格式见[v0.31.0 发行说明](releases/v0.31.0.md)。v0.32.0 随伏笔箱引入 Schema 5，读取 Schema 1–5，写入 Schema 5。Schema 1 不做破坏性改写：缺少的作品信息保持缺少，不填入作者或状态。实现入口为 `src/projects/`；这是作品级导入，不是 `new-world-backup.json` 全库备份，不能调用备份恢复函数。工程导入后仍在 IndexedDB 书库编辑；修改后须重新导出文件，不存在外部工程自动保存。
 
 ## v0.19.0 升级与回退
 
@@ -41,10 +41,11 @@ tasks/sections.json
 tasks/labels.json
 tasks/completions.json
 tasks/attachments.json
-story/boards.json            # 自 Schema 4 起必需
+story/boards.json                 # 自 Schema 4 起必需
+foreshadowing/index.json          # 自 Schema 5 起必需
 ```
 
-Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项。Schema 4 再增加一个画布索引。各项均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
+Schema 1/2 的十个索引文件全部必需；Schema 3 另增加六个任务索引，共十六项。Schema 4 增加画布索引，Schema 5 再增加伏笔索引。各项均为 JSON 数组，空数据用 `[]`。不得省略空表，不允许未列入资源清单的额外条目，也不允许清单中未被引用的资源。文件名不取自用户上传的原文件名，原文件名保存在作品元数据中，中文及特殊字符不会变成 ZIP 路径。
 
 ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只能使用小写字母、数字、`-`、`.`、`/`。路径分段不得为空、`.`、`..`；禁止反斜线、驱动器、绝对路径、NUL、URI 和百分号编码。永远不将归档解压到本机路径，也不执行其中任何内容。
 
@@ -55,7 +56,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 | 字段 | 类型与含义 |
 | --- | --- |
 | `format` | 固定字符串 `new-world-project` |
-| `schemaVersion` | 整数 `1`、`2`、`3` 或 `4`，当前写入 `4` |
+| `schemaVersion` | 整数 `1`–`5`，当前写入 `5` |
 | `appVersion` | 字符串，导出时应用版本，仅作来源信息 |
 | `createdAt` | 非负安全整数，导出时间，Unix 毫秒 |
 | `root` | `{ "library": "original" 或 "reference", "id": "作品 UUID" }` |
@@ -63,7 +64,7 @@ ZIP 内路径是大小写敏感的相对 ASCII 路径，长度至多 240，只�
 | `detached` | `{ books: string[], editions: string[], chapters: string[], ideas: string[], tasks: string[], canvas: string[] }`（`tasks` 自 Schema 3 起必需，`canvas` 自 Schema 4 起必需） |
 | `resources` | 全部索引及二进制资源的清单（不含 manifest 自身） |
 
-`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。Schema 4 还要求 `storyBoards → story/boards.json`。
+`records` 固定映射：`books → books.json`、`files → originals/index.json`、`editions → editions/index.json`、`chapters → chapters/index.json`、`ideas → ideas/index.json`、`revisions → revisions/chapters.json`、`revisionBlobs → revisions/blobs.json`、`ideaRevisions → revisions/ideas.json`、`aiBaselines → revisions/baselines.json`、`trash → trash/index.json`。Schema 3 还要求 `tasks → tasks/index.json`、`taskProjects → tasks/projects.json`、`taskSections → tasks/sections.json`、`taskLabels → tasks/labels.json`、`taskCompletions → tasks/completions.json`、`taskAttachments → tasks/attachments.json`；Schema 1/2 禁止这些新增表。Schema 4 起要求 `storyBoards → story/boards.json`。Schema 5 起要求 `foreshadowing → foreshadowing/index.json`。
 
 每项资源必填：
 
@@ -268,3 +269,11 @@ Schema 1/2 读取时使用原有十表规范，验证原有四组 detached，再
 卡片删除时，`kind: "storyCard"` 的回收记录携带 `storyCard`，含原始位置和内容。连线留在画布中，端点恢复后可再次显示。永久删除造成的缺失端点 ID 纳入 `detached.canvas`；尚在回收站的端点保持对应的卡片 ID。备份中的整部作品回收记录可以携带完整 `storyBoard`。
 
 Schema 1–3 导入时，`storyBoards` 和 `detached.canvas` 在内存中为空。Schema 4 保存这两个字段，空内容对应空数组。
+
+## Schema 5 伏笔箱
+
+`foreshadowing` 数组只包含当前作品的伏笔。记录字段为 `library, bookId, id, revision, updatedAt, title, description, setups, payoffs, resolved, notes`。归属由 `library` 和 `bookId` 确定，`id` 和 `revision` 为 UUID，`updatedAt` 为 Unix 毫秒。标题必填，`resolved` 为布尔值，其余文本可为空。
+
+`setups` 和 `payoffs` 均为位置数组。每个位置有 `note`，也可附上 `chapter: { editionId, chapterId, title }`。有章节时，`title` 保存记录关联时的章节名，界面优先显示书库中的当前名称。没有章节时，位置必须含有说明。已经彻底删除的章节和版本 ID 计入 `detached.chapters` 和 `detached.editions`，说明和原章名随工程保留。导入为副本会重映射伏笔、作品及关联的章节和版本 ID，包括失效的关联。
+
+导入 Schema 1–4 时，伏笔数组为空。全库备份格式 6 也保存被移入回收站的作品所拥有的伏笔。

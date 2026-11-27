@@ -4,6 +4,13 @@ import { readFile } from 'node:fs/promises'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { editWorkInformation, editorAction, openVersion } from '../editor-helpers.mjs'
 
+const clueTitle = 'Unpublished desktop clue'
+
+export async function expectDesktopForeshadowing(page) {
+  await editorAction(page, '本章伏笔')
+  await expect(page.locator('.foreshadowing-chapter-panel')).toContainText(clueTitle)
+}
+
 export async function expectDesktopWorkInformation(page) {
   await editWorkInformation(page)
   const form = page.getByRole('dialog', { name: '编辑作品信息', exact: true })
@@ -37,6 +44,14 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   const editor = page.getByRole('textbox', { name: '章节正文', exact: true })
   await expect(editor).toContainText('灯塔亮了。')
   const workId = new URL(page.url()).hash.split('/')[2]
+  await editorAction(page, '本章伏笔')
+  await page.getByRole('link', { name: '管理本章伏笔', exact: true }).click()
+  await page.getByRole('button', { name: '新增伏笔', exact: true }).click()
+  const clue = page.locator('.foreshadowing-form')
+  await clue.getByRole('textbox', { name: '标题', exact: true }).fill(clueTitle)
+  await expect(clue.getByRole('status')).toHaveText('已保存')
+  await page.getByRole('link', { name: '返回章节', exact: true }).click()
+  await expect(editor).toContainText('灯塔亮了。')
   await editorAction(page, '从当前章节创建任务')
   const taskForm=page.getByRole('dialog',{name:'添加任务',exact:true})
   await taskForm.getByLabel('任务标题',{exact:true}).fill('Desktop linked task')
@@ -51,7 +66,15 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
   await page.getByRole('button', { name: '保存工程', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '导出 New_World 工程（.newworld）' })).toBeHidden()
   expect((await readFile(output)).subarray(0, 2).toString()).toBe('PK')
-  const taskZip=new ZipReader(new Uint8ArrayReader(await readFile(output)),{useWebWorkers:false});const zipEntries=await taskZip.getEntries();const manifest=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename==='manifest.json').getData(new Uint8ArrayWriter())).toString());expect(manifest.schemaVersion).toBe(4);const exportedTasks=JSON.parse(Buffer.from(await zipEntries.find(e=>e.filename===manifest.records.tasks).getData(new Uint8ArrayWriter())).toString());expect(exportedTasks.map(t=>t.title)).toEqual(['Desktop linked task']);await taskZip.close()
+  const projectZip = new ZipReader(new Uint8ArrayReader(await readFile(output)), { useWebWorkers: false })
+  try {
+    const entries = await projectZip.getEntries()
+    const json = async (path) => JSON.parse(Buffer.from(await entries.find((entry) => entry.filename === path).getData(new Uint8ArrayWriter())).toString())
+    const manifest = await json('manifest.json')
+    expect(manifest.schemaVersion).toBe(5)
+    expect((await json(manifest.records.tasks)).map((task) => task.title)).toEqual(['Desktop linked task'])
+    expect((await json(manifest.records.foreshadowing)).map((row) => row.title)).toEqual([clueTitle])
+  } finally { await projectZip.close() }
   await card.getByRole('link', { name: '查看 雾港 · 原创验收', exact: true }).click()
   await openVersion(page, '初稿')
   await expect(editor).toBeVisible()
@@ -82,6 +105,7 @@ export async function projectDesktopFlow({ app, page, output, openThroughOS }) {
     expect(introduction).toContain('Second paragraph.')
     expect(introduction).not.toContain('Desktop project manuscript.')
     expect(await text(2)).toContain('Desktop project manuscript.')
+    for (let index = 1; index <= pdf.numPages; index++) expect(await text(index)).not.toContain(clueTitle)
   } finally { await loading.destroy() }
   await editor.fill('文件关联打开时仍在编辑的正文。')
   await openThroughOS(output)

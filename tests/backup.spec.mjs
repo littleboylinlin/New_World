@@ -424,15 +424,15 @@ test('全库备份与恢复包含 AI 防丢基线，并兼容不含基线的旧�
     return { bookId: ed.bookId, editionId: ed.id, chapterId: chId, baseline }
   })
 
-  const v5Path = await backUp(page, testInfo, 'v5-baseline-backup.zip')
-  const v5Zip = new ZipReader(new Uint8ArrayReader(await readFile(v5Path)))
-  const v5Entries = []
-  for (const entry of await v5Zip.getEntries()) {
-    v5Entries.push([entry.filename, await entry.getData(new Uint8ArrayWriter())])
+  const v6Path = await backUp(page, testInfo, 'v6-baseline-backup.zip')
+  const v6Zip = new ZipReader(new Uint8ArrayReader(await readFile(v6Path)))
+  const v6Entries = []
+  for (const entry of await v6Zip.getEntries()) {
+    v6Entries.push([entry.filename, await entry.getData(new Uint8ArrayWriter())])
   }
-  await v5Zip.close()
-  const manifest = JSON.parse(Buffer.from(v5Entries.find(([name]) => name === 'new-world-backup.json')[1]).toString())
-  expect(manifest.version).toBe(5)
+  await v6Zip.close()
+  const manifest = JSON.parse(Buffer.from(v6Entries.find(([name]) => name === 'new-world-backup.json')[1]).toString())
+  expect(manifest.version).toBe(6)
   expect(manifest.aiBaselines).toEqual([seeded.baseline])
 
   // Overwrite local baseline & edit chapter so local state diverges from the backup.
@@ -457,8 +457,8 @@ test('全库备份与恢复包含 AI 防丢基线，并兼容不含基线的旧�
     db.close()
   }, seeded.baseline)
 
-  // Restore v5 backup: text, history, and baseline must all come back consistently.
-  await chooseBackup(page, v5Path)
+  // Restore v6 backup: text, history, and baseline must all come back consistently.
+  await chooseBackup(page, v6Path)
   await page.getByRole('dialog', { name: '从备份恢复' }).getByRole('button', { name: '替换当前书库' }).click()
   await expect(page.getByText('已从备份恢复 1 部作品。')).toBeVisible()
 
@@ -484,9 +484,10 @@ test('全库备份与恢复包含 AI 防丢基线，并兼容不含基线的旧�
   delete legacyV2.aiBaselines
   delete legacyV2.storyBoards
   delete legacyV2.bookChats
+  delete legacyV2.foreshadowing
   const v2Path = testInfo.outputPath('legacy-v2-backup.zip')
   const v2Writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
-  for (const [name, bytes] of v5Entries) {
+  for (const [name, bytes] of v6Entries) {
     await v2Writer.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(legacyV2)) : bytes))
   }
   await writeFile(v2Path, await v2Writer.close())
@@ -529,25 +530,25 @@ test('全库备份与恢复包含 AI 防丢基线，并兼容不含基线的旧�
   expect(baselinesAfterLegacy).toEqual([])
 
   // A backup missing aiBaselines and a future format are rejected cleanly.
-  const brokenV5 = { ...manifest }
-  delete brokenV5.aiBaselines
-  const brokenV5Path = testInfo.outputPath('broken-v5-backup.zip')
+  const brokenV6 = { ...manifest }
+  delete brokenV6.aiBaselines
+  const brokenV6Path = testInfo.outputPath('broken-v6-backup.zip')
   const brokenWriter = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
-  for (const [name, bytes] of v5Entries) {
-    await brokenWriter.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(brokenV5)) : bytes))
+  for (const [name, bytes] of v6Entries) {
+    await brokenWriter.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(brokenV6)) : bytes))
   }
-  await writeFile(brokenV5Path, await brokenWriter.close())
-  await chooseBackup(page, brokenV5Path)
+  await writeFile(brokenV6Path, await brokenWriter.close())
+  await chooseBackup(page, brokenV6Path)
   await expect(backupSection(page).getByRole('alert')).toHaveText('这不是 New World 备份文件，或文件已损坏。')
   await closeSettings(page)
 
-  const futureV6 = { ...manifest, version: 6 }
-  const futureV6Path = testInfo.outputPath('future-v6-backup.zip')
+  const futureV7 = { ...manifest, version: 7 }
+  const futureV7Path = testInfo.outputPath('future-v7-backup.zip')
   const futureWriter = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
-  for (const [name, bytes] of v5Entries) {
-    await futureWriter.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(futureV6)) : bytes))
+  for (const [name, bytes] of v6Entries) {
+    await futureWriter.add(name, new Uint8ArrayReader(name === 'new-world-backup.json' ? Buffer.from(JSON.stringify(futureV7)) : bytes))
   }
-  await writeFile(futureV6Path, await futureWriter.close())
-  await chooseBackup(page, futureV6Path)
+  await writeFile(futureV7Path, await futureWriter.close())
+  await chooseBackup(page, futureV7Path)
   await expect(backupSection(page).getByRole('alert')).toHaveText('这份备份来自更新版本的 New World，请先更新应用。')
 })

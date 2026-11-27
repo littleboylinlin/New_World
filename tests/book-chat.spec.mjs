@@ -283,7 +283,7 @@ test('对话的全库备份往返，单书工程不含任何对话数据', async
     const path = info.outputPath('chat-backup.zip')
     await archive.saveAs(path)
     const manifest = JSON.parse((await zipText(archive))['new-world-backup.json'])
-    expect(manifest.version).toBe(5)
+    expect(manifest.version).toBe(6)
     expect(manifest.bookChats[0].turns[0]).toMatchObject({
       question: '只保存在对话里的问题。', reply: { text: '只保存在对话里的回答。', context: { current: { number: 1 } } },
     })
@@ -311,6 +311,7 @@ test('对话的全库备份往返，单书工程不含任何对话数据', async
 
     const legacy = { ...manifest, version: 4 }
     delete legacy.bookChats
+    delete legacy.foreshadowing
     const old = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })
     await old.add('new-world-backup.json', new TextReader(JSON.stringify(legacy)))
     const oldPath = info.outputPath('chat-legacy-v4.zip')
